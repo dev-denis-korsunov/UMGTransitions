@@ -114,19 +114,6 @@ void FWidgetTransition::SetWidgetPropertyValue(const float Value, const bool bLa
 	}
 	default: ;
 	}
-
-	if (ModifierWidget.IsValid())
-	{
-		const FTransitionModifierEvent ModifierEvent = ToTransitionModifierEvent();
-		if (bLastFrame)
-		{
-			ModifierWidget->OnTransitionComplete(ModifierEvent);
-		}
-		else
-		{
-			ModifierWidget->OnTransitionUpdate(ModifierEvent);
-		}
-	}
 }
 
 float FWidgetTransition::GetWidgetPropertyValue() const
@@ -176,24 +163,6 @@ bool FWidgetTransition::Equal(const FWidgetTransition& Trs) const
 	const bool bCustomProperty = Trs.WidgetProperty == WidgetProperty && WidgetProperty == EWidgetProperty::Custom && Trs.CustomProperty == CustomProperty;
 
 	return bConnectedWidget && (bNativeProperty || bCustomProperty);
-}
-
-FTransitionModifierEvent FWidgetTransition::ToTransitionModifierEvent() const
-{
-	FTransitionModifierEvent TransitionModifierEvent;
-
-	TransitionModifierEvent.Widget = Widget.Get();
-	TransitionModifierEvent.WidgetProperty = WidgetProperty;
-	TransitionModifierEvent.bCustomFloatProperty = WidgetProperty == EWidgetProperty::Custom;
-	TransitionModifierEvent.CustomFloatProperty = FCustomFloatTransitionProperty(CustomProperty.Pin());
-	TransitionModifierEvent.ToValue = ToValue;
-	TransitionModifierEvent.FromValue = FromValue;
-	TransitionModifierEvent.Delay = Delay;
-	TransitionModifierEvent.Time = Time;
-	TransitionModifierEvent.CurrentValue = CurrentValue;
-	TransitionModifierEvent.CurrentTime = CurrentTime;
-
-	return TransitionModifierEvent;
 }
 
 FCustomFloatTransitionProperty::FCustomFloatTransitionProperty(const TSharedPtr<FCustomFloatTransitionPropertyImpl>& PropertyImpl)
@@ -292,13 +261,7 @@ void UWidgetTransitionFunctionLibrary::AddWidgetTransition(const UObject* WorldC
 		Transition.SpringFloat->Start(Transition.FromValue, Transition.ToValue);
 	}
 
-	if (Transition.ModifierWidget.IsValid())
-	{
-		Transition.ModifierWidget->OnTransitionStart(Transition.ToTransitionModifierEvent());
-	}
-
 	widgetTrsSubsystem->WidgetTransitions.Emplace(Transition);
-
 }
 
 void UWidgetTransitionFunctionLibrary::AddWidgetTransitionArray(const UObject* WorldContextObject, UWidget* UserWidget, const TArray<FWidgetTransition>& TransitionArray)
@@ -459,14 +422,6 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::FromVisibility(const FWidget
 	return NewTransition;
 }
 
-FWidgetTransition UWidgetTransitionFunctionLibrary::Modifier(const FWidgetTransition& Transition, UTransitionModifierWidget* ModifierWidget)
-{
-	auto NewTransition = Transition;
-	NewTransition.ModifierWidget = ModifierWidget;
-
-	return NewTransition;
-}
-
 FWidgetTransition UWidgetTransitionFunctionLibrary::Spring(const FWidgetTransition& Transition, float SpringFactor, const float DampingFactor, const float MaxVelocity, const float CompleteTolerance, bool bElastic)
 {
 	auto NewTransition = Transition;
@@ -588,22 +543,4 @@ void FCustomFloatTransitionPropertyImpl::DispatchCompleteValue() const
 	{
 		OnValueComplete.Execute(Value);
 	}
-}
-
-void UTransitionModifierWidget::OnTransitionStart(const FTransitionModifierEvent& EventData)
-{
-	OnTransitionStartDelegate.Broadcast(EventData);
-	K2_OnTransitionStart(EventData);
-}
-
-void UTransitionModifierWidget::OnTransitionUpdate(const FTransitionModifierEvent& EventData)
-{
-	OnTransitionUpdateDelegate.Broadcast(EventData);
-	K2_OnTransitionUpdate(EventData);
-}
-
-void UTransitionModifierWidget::OnTransitionComplete(const FTransitionModifierEvent& EventData)
-{
-	OnTransitionCompleteDelegate.Broadcast(EventData);
-	K2_OnTransitionComplete(EventData);
 }

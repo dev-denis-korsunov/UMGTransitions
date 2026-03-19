@@ -8,7 +8,6 @@
 #include "WidgetTransition.generated.h"
 
 class FSpringFloat;
-class UTransitionModifierWidget;
 class FCustomFloatTransitionPropertyImpl;
 class UWidgetTransitionSubsystem;
 class UWidgetTransitionFunctionLibrary;
@@ -74,42 +73,6 @@ struct TStructOpsTypeTraits<FCustomFloatTransitionProperty>
 };
 
 USTRUCT(BlueprintType)
-struct ELASTICUMG_API FTransitionModifierEvent
-{
-	GENERATED_BODY()
-
-	UPROPERTY(BlueprintReadOnly)
-	UWidget* Widget = nullptr;
-
-	UPROPERTY(BlueprintReadOnly)
-	EWidgetProperty WidgetProperty = EWidgetProperty::TranslationX;
-
-	UPROPERTY(BlueprintReadOnly)
-	bool bCustomFloatProperty = false;
-
-	UPROPERTY(BlueprintReadOnly)
-	FCustomFloatTransitionProperty CustomFloatProperty;
-
-	UPROPERTY(BlueprintReadOnly)
-	float ToValue = 0.0f;
-
-	UPROPERTY(BlueprintReadOnly)
-	float FromValue = 0.0f;
-
-	UPROPERTY(BlueprintReadOnly)
-	float Delay = 0.0f;
-
-	UPROPERTY(BlueprintReadOnly)
-	float Time = 0.0f;
-
-	UPROPERTY(BlueprintReadOnly)
-	float CurrentValue = 0.0f;
-
-	UPROPERTY(BlueprintReadOnly)
-	float CurrentTime = 0.0f;
-};
-
-USTRUCT(BlueprintType)
 struct ELASTICUMG_API FWidgetTransition
 {
 	GENERATED_BODY()
@@ -130,7 +93,6 @@ protected:
 	friend UWidgetTransitionSubsystem;
 
 	TWeakObjectPtr<UWidget> Widget = nullptr;
-	TWeakObjectPtr<UTransitionModifierWidget> ModifierWidget = nullptr;
 	EWidgetProperty WidgetProperty = EWidgetProperty::TranslationX;
 	TWeakPtr<FCustomFloatTransitionPropertyImpl> CustomProperty = nullptr;
 	TSharedPtr<FSpringFloat> SpringFloat = nullptr;
@@ -162,7 +124,6 @@ public:
 	float GetWidgetPropertyValue() const;
 	float GetRemainingTime() const;
 	bool Equal(const FWidgetTransition& Trs) const;
-	FTransitionModifierEvent ToTransitionModifierEvent() const;
 };
 
 UCLASS()
@@ -219,9 +180,6 @@ public:
 	UFUNCTION(BlueprintPure, Category = "WidgetTransition", meta = (AdvancedDisplay = "bFromVisibility"))
 	static FWidgetTransition FromVisibility(const FWidgetTransition& Transition, const ESlateVisibility FromVisibility = ESlateVisibility::HitTestInvisible, const bool bFromVisibility = true);
 
-	UFUNCTION(BlueprintPure, Category = "WidgetTransition")
-	static FWidgetTransition Modifier(const FWidgetTransition& Transition, UTransitionModifierWidget* ModifierWidget);
-
 	UFUNCTION(BlueprintPure, Category="WidgetTransition", meta = (AdvancedDisplay = "SpringFactor, DampingFactor, MaxVelocity, CompleteTolerance, bElastic"))
 	static FWidgetTransition Spring(const FWidgetTransition& Transition, float SpringFactor = 180.0f, const float DampingFactor = 16.0f, const float MaxVelocity = 1800.0f, float CompleteTolerance = 0.01f, bool bElastic = true);
 
@@ -264,39 +222,4 @@ protected:
 	FOnCustomFloatPropertyUpdate OnValueUpdate;
 	FOnCustomFloatPropertyComplete OnValueComplete;
 	float Value = 0.0f;
-};
-
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnTransitionStartDelegate, const FTransitionModifierEvent&, EventData);
-
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnTransitionUpdateDelegate, const FTransitionModifierEvent&, EventData);
-
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnTransitionCompleteDelegate, const FTransitionModifierEvent&, EventData);
-
-UCLASS(Abstract, DisplayName = "Transition Modifier Widget")
-class ELASTICUMG_API UTransitionModifierWidget : public UUserWidget
-{
-	GENERATED_BODY()
-
-public:
-	UPROPERTY(BlueprintAssignable, BlueprintReadOnly, meta=(DisplayName = "OnTransitionStart"))
-	FOnTransitionStartDelegate OnTransitionStartDelegate;
-
-	UPROPERTY(BlueprintAssignable, BlueprintReadOnly, meta=(DisplayName = "OnTransitionUpdate"))
-	FOnTransitionUpdateDelegate OnTransitionUpdateDelegate;
-
-	UPROPERTY(BlueprintAssignable, BlueprintReadOnly, meta=(DisplayName = "OnTransitionComplete"))
-	FOnTransitionCompleteDelegate OnTransitionCompleteDelegate;
-
-	virtual void OnTransitionStart(const FTransitionModifierEvent& EventData);
-	virtual void OnTransitionUpdate(const FTransitionModifierEvent& EventData);
-	virtual void OnTransitionComplete(const FTransitionModifierEvent& EventData);
-
-	UFUNCTION(BlueprintImplementableEvent, meta=(DisplayName = "OnStart", ScriptName = "OnStart", Keywords = "OnStart"))
-	void K2_OnTransitionStart(const FTransitionModifierEvent& EventData);
-
-	UFUNCTION(BlueprintImplementableEvent, meta=(DisplayName = "OnUpdate", ScriptName = "OnUpdate", Keywords = "OnUpdate"))
-	void K2_OnTransitionUpdate(const FTransitionModifierEvent& EventData);
-
-	UFUNCTION(BlueprintImplementableEvent, meta=(DisplayName = "OnComplete", ScriptName = "OnComplete", Keywords = "OnComplete"))
-	void K2_OnTransitionComplete(const FTransitionModifierEvent& EventData);
 };
