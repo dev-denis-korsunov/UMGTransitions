@@ -2,20 +2,22 @@
 
 #include "CoreMinimal.h"
 #include "Components/SlateWrapperTypes.h"
-#include "Components/ContentWidget.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
+#include "Kismet/BlueprintAsyncActionBase.h"
 
 #include "WidgetTransition.generated.h"
 
 class FSpringFloat;
-class FCustomFloatTransitionPropertyImpl;
+class FWidgetTransitionHandleImpl;
 class UWidgetTransitionSubsystem;
 class UWidgetTransitionFunctionLibrary;
 class UWidget;
 
-DECLARE_DYNAMIC_DELEGATE_OneParam(FOnCustomFloatPropertyUpdate, float, NewValue);
+DECLARE_DYNAMIC_DELEGATE_OneParam(FOnWidgetTransitionUpdate, float, NewValue);
 
-DECLARE_DYNAMIC_DELEGATE_OneParam(FOnCustomFloatPropertyComplete, float, CompleteValue);
+DECLARE_DYNAMIC_DELEGATE_OneParam(FOnWidgetTransitionComplete, float, CompleteValue);
+
+DECLARE_DYNAMIC_DELEGATE_OneParam(FOnWidgetTransitionStart, float, StartValue);
 
 UENUM(BlueprintType)
 enum class EWidgetProperty : uint8
@@ -36,35 +38,35 @@ enum class EWidgetProperty : uint8
 };
 
 USTRUCT(BlueprintType)
-struct ELASTICUMG_API FCustomFloatTransitionProperty
+struct ELASTICUMG_API FWidgetTransitionHandle
 {
 	GENERATED_BODY()
 
-	FCustomFloatTransitionProperty()
+	FWidgetTransitionHandle()
 	{
 	}
 
-	explicit FCustomFloatTransitionProperty(const TSharedPtr<FCustomFloatTransitionPropertyImpl>& PropertyImpl);
+	explicit FWidgetTransitionHandle(const TSharedPtr<FWidgetTransitionHandleImpl>& PropertyImpl);
 
-	TSharedPtr<FCustomFloatTransitionPropertyImpl> GetPropertyImpl() const;
+	TSharedPtr<FWidgetTransitionHandleImpl> GetHandleImpl() const;
 
-	friend uint32 GetTypeHash(const FCustomFloatTransitionProperty& TransitionProperty)
+	friend uint32 GetTypeHash(const FWidgetTransitionHandle& TransitionProperty)
 	{
-		return GetTypeHash(TransitionProperty.GetPropertyImpl());
+		return GetTypeHash(TransitionProperty.GetHandleImpl());
 	}
 
-	bool operator==(const FCustomFloatTransitionProperty& Other) const
+	bool operator==(const FWidgetTransitionHandle& Other) const
 	{
-		return GetPropertyImpl() == Other.GetPropertyImpl();
+		return GetHandleImpl() == Other.GetHandleImpl();
 	}
 
 protected:
-	mutable TSharedPtr<FCustomFloatTransitionPropertyImpl> CustomTransitionPropertyImpl = nullptr;
+	mutable TSharedPtr<FWidgetTransitionHandleImpl> TransitionHandleImpl = nullptr;
 };
 
 template<>
-struct TStructOpsTypeTraits<FCustomFloatTransitionProperty>
-	: public TStructOpsTypeTraitsBase2<FCustomFloatTransitionProperty>
+struct TStructOpsTypeTraits<FWidgetTransitionHandle>
+	: public TStructOpsTypeTraitsBase2<FWidgetTransitionHandle>
 {
 	enum
 	{
@@ -85,6 +87,7 @@ struct ELASTICUMG_API FWidgetTransition
 		, bToVisibility(false)
 		, bRemoveFromParent(false)
 		, bSpring(false)
+		, bStartDispatched(false)
 	{
 	}
 
@@ -94,7 +97,7 @@ protected:
 
 	TWeakObjectPtr<UWidget> Widget = nullptr;
 	EWidgetProperty WidgetProperty = EWidgetProperty::TranslationX;
-	TWeakPtr<FCustomFloatTransitionPropertyImpl> CustomProperty = nullptr;
+	TWeakPtr<FWidgetTransitionHandleImpl> TransitionHandle = nullptr;
 	TSharedPtr<FSpringFloat> SpringFloat = nullptr;
 
 	float ToValue = 0.0f;
@@ -118,9 +121,11 @@ protected:
 	uint8 bToVisibility : 1;
 	uint8 bRemoveFromParent : 1;
 	uint8 bSpring : 1;
+	uint8 bStartDispatched : 1;
 
 public:
 	void SetWidgetPropertyValue(const float Value, const bool bLastFrame = false) const;
+	void DispatchStartEvent() const;
 	float GetWidgetPropertyValue() const;
 	float GetRemainingTime() const;
 	bool Equal(const FWidgetTransition& Trs) const;
@@ -132,32 +137,26 @@ class ELASTICUMG_API UWidgetTransitionFunctionLibrary : public UBlueprintFunctio
 	GENERATED_BODY()
 
 public:
-	UFUNCTION(BlueprintCallable, Category = "WidgetTransition", meta = (WorldContext = "WorldContextObject"))
-	static void AddWidgetTransition(const UObject* WorldContextObject, UWidget* UserWidget, FWidgetTransition Transition);
+	UFUNCTION(BlueprintCallable, Category = "WidgetTransition", meta = (WorldContext = "WorldContextObject", AdvancedDisplay = "OnUpdate, OnComplete, OnStart"))
+	static FWidgetTransitionHandle AddWidgetTransition(const UObject* WorldContextObject, UWidget* UserWidget, FWidgetTransition Transition, FOnWidgetTransitionUpdate OnUpdate, FOnWidgetTransitionComplete OnComplete, FOnWidgetTransitionStart OnStart);
 
-	UFUNCTION(BlueprintCallable, Category = "WidgetTransition", meta = (WorldContext = "WorldContextObject"))
-	static void AddWidgetTransitionArray(const UObject* WorldContextObject, UWidget* UserWidget, const TArray<FWidgetTransition>& TransitionArray);
+	UFUNCTION(BlueprintCallable, Category = "WidgetTransition", meta = (WorldContext = "WorldContextObject", AdvancedDisplay = "OnUpdate, OnComplete, OnStart"))
+	static TArray<FWidgetTransitionHandle> AddWidgetTransitionArray(const UObject* WorldContextObject, UWidget* UserWidget, const TArray<FWidgetTransition>& TransitionArray, FOnWidgetTransitionUpdate OnUpdate, FOnWidgetTransitionComplete OnComplete, FOnWidgetTransitionStart OnStart);
+
+	UFUNCTION(BlueprintCallable, Category = "WidgetTransition")
+	static void SetWidgetTransitionUpdateDelegate(FWidgetTransitionHandle Handle, FOnWidgetTransitionUpdate OnUpdate);
+
+	UFUNCTION(BlueprintCallable, Category = "WidgetTransition")
+	static void SetWidgetTransitionCompleteDelegate(FWidgetTransitionHandle Handle, FOnWidgetTransitionComplete OnComplete);
+
+	UFUNCTION(BlueprintCallable, Category = "WidgetTransition")
+	static void SetWidgetTransitionStartDelegate(FWidgetTransitionHandle Handle, FOnWidgetTransitionStart OnStart);
 
 	UFUNCTION(BlueprintCallable, Category = "WidgetTransition", meta = (WorldContext = "WorldContextObject"))
 	static void ClearAllWidgetTransitions(const UObject* WorldContextObject, UWidget* UserWidget);
 
 	UFUNCTION(BlueprintPure, Category = "WidgetTransition", meta = (AdvancedDisplay = "Delay, Interpolation"))
 	static FWidgetTransition CreateWidgetTransition(EWidgetProperty WidgetProperty = EWidgetProperty::TranslationX, float TargetValue = 0.0f, float Time = 0.0f, float Delay = 0.0f, UCurveFloat* Interpolation = nullptr);
-
-	UFUNCTION(BlueprintPure, Category = "WidgetTransition", meta = (AdvancedDisplay = "Delay, Interpolation"))
-	static FWidgetTransition CreateWidgetCustomFloatTransition(const FCustomFloatTransitionProperty& CustomProperty, float TargetValue = 0.0f, float Time = 0.0f, float Delay = 0.0f, UCurveFloat* Interpolation = nullptr);
-
-	UFUNCTION(BlueprintCallable, Category = "WidgetTransition")
-	static void SetCustomFloatTransitionPropertyDelegate(const FCustomFloatTransitionProperty& CustomProperty, UPARAM(DisplayName = "Event") FOnCustomFloatPropertyUpdate Delegate);
-
-	UFUNCTION(BlueprintCallable, Category = "WidgetTransition")
-	static void SetCustomFloatTransitionPropertyValue(const FCustomFloatTransitionProperty& CustomProperty, const float NewValue);
-
-	UFUNCTION(BlueprintCallable, Category = "WidgetTransition")
-	static void SetCustomFloatTransitionPropertyCompleteDelegate(const FCustomFloatTransitionProperty& CustomProperty, UPARAM(DisplayName = "Event") FOnCustomFloatPropertyComplete Delegate);
-
-	UFUNCTION(BlueprintPure, Category = "WidgetTransition")
-	static float GetCustomFloatTransitionPropertyValue(const FCustomFloatTransitionProperty& CustomProperty);
 
 	UFUNCTION(BlueprintPure, Category = "WidgetTransition", meta = (AdvancedDisplay = "bFrom, bChangePropertyAfterDelay"))
 	static FWidgetTransition From(const FWidgetTransition& Transition, bool bFrom = true, float FromValue = 0.0f, bool bChangePropertyAfterDelay = false);
@@ -183,8 +182,8 @@ public:
 	UFUNCTION(BlueprintPure, Category="WidgetTransition", meta = (AdvancedDisplay = "SpringFactor, DampingFactor, MaxVelocity, CompleteTolerance, bElastic"))
 	static FWidgetTransition Spring(const FWidgetTransition& Transition, float SpringFactor = 180.0f, const float DampingFactor = 16.0f, const float MaxVelocity = 1800.0f, float CompleteTolerance = 0.01f, bool bElastic = true);
 
-	UFUNCTION(BlueprintPure, meta=(DisplayName="Equal (CustomFloatTransitionProperty)", CompactNodeTitle="==", BlueprintThreadSafe), Category="WidgetTransition")
-	static bool EqualEqual_TrsCustomPropTrsCustomProp(const FCustomFloatTransitionProperty& A, const FCustomFloatTransitionProperty& B);
+	UFUNCTION(BlueprintPure, meta=(DisplayName="Equal (WidgetTransitionHandle)", CompactNodeTitle="==", BlueprintThreadSafe), Category="WidgetTransition")
+	static bool EqualEqual_WidgetTransitionHandle(const FWidgetTransitionHandle& A, const FWidgetTransitionHandle& B);
 };
 
 UCLASS()
@@ -205,21 +204,21 @@ protected:
 	TSparseArray<FWidgetTransition> WidgetTransitions;
 };
 
-class FCustomFloatTransitionPropertyImpl final
+class ELASTICUMG_API FWidgetTransitionHandleImpl final
 {
 public:
-	void SetValue(const float InValue, const bool bDispatchEvent = true);
-	FORCEINLINE float GetValue() const { return Value; }
-	void SetChangeValueDelegate(const FOnCustomFloatPropertyUpdate& Delegate);
-	void SetCompleteValueDelegate(const FOnCustomFloatPropertyComplete& Delegate);
+	void SetStartValueDelegate(const FOnWidgetTransitionStart& Delegate);
+	void SetChangeValueDelegate(const FOnWidgetTransitionUpdate& Delegate);
+	void SetCompleteValueDelegate(const FOnWidgetTransitionComplete& Delegate);
+
+	FOnWidgetTransitionStart OnValueStart;
+	FOnWidgetTransitionUpdate OnValueUpdate;
+	FOnWidgetTransitionComplete OnValueComplete;
 
 protected:
 	friend FWidgetTransition;
 
-	void DispatchUpdateValue() const;
-	void DispatchCompleteValue() const;
-
-	FOnCustomFloatPropertyUpdate OnValueUpdate;
-	FOnCustomFloatPropertyComplete OnValueComplete;
-	float Value = 0.0f;
+	void DispatchUpdateValue(const float CurrentValue) const;
+	void DispatchCompleteValue(const float CurrentValue) const;
+	void DispatchStartValue(const float CurrentValue) const;
 };

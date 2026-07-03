@@ -102,17 +102,24 @@ void FWidgetTransition::SetWidgetPropertyValue(const float Value, const bool bLa
 		break;
 	}
 	case EWidgetProperty::Custom:
+	default: ;
+	}
+
+	if (TransitionHandle.IsValid())
 	{
-		if (CustomProperty.IsValid())
+		TransitionHandle.Pin()->DispatchUpdateValue(Value);
+		if (bLastFrame)
 		{
-			CustomProperty.Pin()->SetValue(Value);
-			if (bLastFrame)
-			{
-				CustomProperty.Pin()->DispatchCompleteValue();
-			}
+			TransitionHandle.Pin()->DispatchCompleteValue(Value);
 		}
 	}
-	default: ;
+}
+
+void FWidgetTransition::DispatchStartEvent() const
+{
+	if (TransitionHandle.IsValid())
+	{
+		TransitionHandle.Pin()->DispatchStartValue(CurrentValue);
 	}
 }
 
@@ -140,11 +147,6 @@ float FWidgetTransition::GetWidgetPropertyValue() const
 	PropertyValue = WidgetProperty == EWidgetProperty::PivotX ? widgetPivot.X : PropertyValue;
 	PropertyValue = WidgetProperty == EWidgetProperty::PivotY ? widgetPivot.Y : PropertyValue;
 
-	if (CustomProperty.IsValid())
-	{
-		PropertyValue = WidgetProperty == EWidgetProperty::Custom ? CustomProperty.Pin()->GetValue() : PropertyValue;
-	}
-
 	return PropertyValue;
 }
 
@@ -160,46 +162,59 @@ bool FWidgetTransition::Equal(const FWidgetTransition& Trs) const
 {
 	const bool bConnectedWidget = Trs.Widget.Get() == Widget.Get();
 	const bool bNativeProperty = Trs.WidgetProperty == WidgetProperty && WidgetProperty != EWidgetProperty::Custom;
-	const bool bCustomProperty = Trs.WidgetProperty == WidgetProperty && WidgetProperty == EWidgetProperty::Custom && Trs.CustomProperty == CustomProperty;
+	const bool bCustomProperty = Trs.WidgetProperty == WidgetProperty && WidgetProperty == EWidgetProperty::Custom && Trs.TransitionHandle == TransitionHandle;
 
 	return bConnectedWidget && (bNativeProperty || bCustomProperty);
 }
 
-FCustomFloatTransitionProperty::FCustomFloatTransitionProperty(const TSharedPtr<FCustomFloatTransitionPropertyImpl>& PropertyImpl)
+FWidgetTransitionHandle::FWidgetTransitionHandle(const TSharedPtr<FWidgetTransitionHandleImpl>& PropertyImpl)
 {
-	CustomTransitionPropertyImpl = PropertyImpl;
+	TransitionHandleImpl = PropertyImpl;
 }
 
-TSharedPtr<FCustomFloatTransitionPropertyImpl> FCustomFloatTransitionProperty::GetPropertyImpl() const
+TSharedPtr<FWidgetTransitionHandleImpl> FWidgetTransitionHandle::GetHandleImpl() const
 {
-	if (!CustomTransitionPropertyImpl.IsValid())
+	if (!TransitionHandleImpl.IsValid())
 	{
-		CustomTransitionPropertyImpl = MakeShared<FCustomFloatTransitionPropertyImpl>();
+		TransitionHandleImpl = MakeShared<FWidgetTransitionHandleImpl>();
 	}
 
-	return CustomTransitionPropertyImpl;
+	return TransitionHandleImpl;
 }
 
-void UWidgetTransitionFunctionLibrary::AddWidgetTransition(const UObject* WorldContextObject, UWidget* UserWidget, FWidgetTransition Transition)
+FWidgetTransitionHandle UWidgetTransitionFunctionLibrary::AddWidgetTransition(const UObject* WorldContextObject, UWidget* UserWidget, FWidgetTransition Transition, FOnWidgetTransitionUpdate OnUpdate, FOnWidgetTransitionComplete OnComplete, FOnWidgetTransitionStart OnStart)
 {
 	if (!IsValid(UserWidget))
 	{
-		return;
+		return FWidgetTransitionHandle();
 	}
 
 	const UWorld* world = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
 	if (!IsValid(world))
 	{
-		return;
+		return FWidgetTransitionHandle();
 	}
 
 	auto* widgetTrsSubsystem = world->GetSubsystem<UWidgetTransitionSubsystem>();
 	if (!IsValid(widgetTrsSubsystem))
 	{
-		return;
+		return FWidgetTransitionHandle();
 	}
 
 	Transition.Widget = UserWidget;
+
+	if (!Transition.TransitionHandle.IsValid())
+	{
+		Transition.TransitionHandle = MakeShared<FWidgetTransitionHandleImpl>();
+	}
+
+	const TSharedPtr<FWidgetTransitionHandleImpl> HandleImpl = Transition.TransitionHandle.Pin();
+	if (HandleImpl.IsValid())
+	{
+		HandleImpl->OnValueUpdate = OnUpdate;
+		HandleImpl->OnValueComplete = OnComplete;
+		HandleImpl->OnValueStart = OnStart;
+	}
 
 	// "custom from" value behavior
 	if (Transition.bFrom)
@@ -262,13 +277,44 @@ void UWidgetTransitionFunctionLibrary::AddWidgetTransition(const UObject* WorldC
 	}
 
 	widgetTrsSubsystem->WidgetTransitions.Emplace(Transition);
+
+	return FWidgetTransitionHandle(Transition.TransitionHandle.Pin().ToSharedRef());
 }
 
-void UWidgetTransitionFunctionLibrary::AddWidgetTransitionArray(const UObject* WorldContextObject, UWidget* UserWidget, const TArray<FWidgetTransition>& TransitionArray)
+TArray<FWidgetTransitionHandle> UWidgetTransitionFunctionLibrary::AddWidgetTransitionArray(const UObject* WorldContextObject, UWidget* UserWidget, const TArray<FWidgetTransition>& TransitionArray, FOnWidgetTransitionUpdate OnUpdate, FOnWidgetTransitionComplete OnComplete, FOnWidgetTransitionStart OnStart)
 {
+	TArray<FWidgetTransitionHandle> handles;
 	for (const auto& Transition : TransitionArray)
 	{
-		AddWidgetTransition(WorldContextObject, UserWidget, Transition);
+		handles.Add(AddWidgetTransition(WorldContextObject, UserWidget, Transition, OnUpdate, OnComplete, OnStart));
+	}
+	return handles;
+}
+
+void UWidgetTransitionFunctionLibrary::SetWidgetTransitionUpdateDelegate(FWidgetTransitionHandle Handle, FOnWidgetTransitionUpdate OnUpdate)
+{
+	const TSharedPtr<FWidgetTransitionHandleImpl> HandleImpl = Handle.GetHandleImpl();
+	if (HandleImpl.IsValid())
+	{
+		HandleImpl->OnValueUpdate = OnUpdate;
+	}
+}
+
+void UWidgetTransitionFunctionLibrary::SetWidgetTransitionCompleteDelegate(FWidgetTransitionHandle Handle, FOnWidgetTransitionComplete OnComplete)
+{
+	const TSharedPtr<FWidgetTransitionHandleImpl> HandleImpl = Handle.GetHandleImpl();
+	if (HandleImpl.IsValid())
+	{
+		HandleImpl->OnValueComplete = OnComplete;
+	}
+}
+
+void UWidgetTransitionFunctionLibrary::SetWidgetTransitionStartDelegate(FWidgetTransitionHandle Handle, FOnWidgetTransitionStart OnStart)
+{
+	const TSharedPtr<FWidgetTransitionHandleImpl> HandleImpl = Handle.GetHandleImpl();
+	if (HandleImpl.IsValid())
+	{
+		HandleImpl->OnValueStart = OnStart;
 	}
 }
 
@@ -311,47 +357,6 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::CreateWidgetTransition(EWidg
 	newTransition.InterpolationCurve = IsValid(Interpolation) ? Interpolation->FloatCurve : FRichCurve();
 
 	return newTransition;
-}
-
-FWidgetTransition UWidgetTransitionFunctionLibrary::CreateWidgetCustomFloatTransition(const FCustomFloatTransitionProperty& CustomProperty, float TargetValue, float Time, float Delay, UCurveFloat* Interpolation)
-{
-	auto transition = CreateWidgetTransition(EWidgetProperty::Custom, TargetValue, Time, Delay, Interpolation);
-	transition.CustomProperty = CustomProperty.GetPropertyImpl();
-
-	return transition;
-}
-
-void UWidgetTransitionFunctionLibrary::SetCustomFloatTransitionPropertyDelegate(const FCustomFloatTransitionProperty& CustomProperty, FOnCustomFloatPropertyUpdate Delegate)
-{
-	const TSharedPtr<FCustomFloatTransitionPropertyImpl> customPropertyImpl = CustomProperty.GetPropertyImpl();
-	if (customPropertyImpl.IsValid())
-	{
-		customPropertyImpl->SetChangeValueDelegate(Delegate);
-	}
-}
-
-void UWidgetTransitionFunctionLibrary::SetCustomFloatTransitionPropertyValue(const FCustomFloatTransitionProperty& CustomProperty, const float NewValue)
-{
-	CustomProperty.GetPropertyImpl()->SetValue(NewValue);
-}
-
-void UWidgetTransitionFunctionLibrary::SetCustomFloatTransitionPropertyCompleteDelegate(const FCustomFloatTransitionProperty& CustomProperty, FOnCustomFloatPropertyComplete Delegate)
-{
-	const TSharedPtr<FCustomFloatTransitionPropertyImpl> customPropertyImpl = CustomProperty.GetPropertyImpl();
-	if (customPropertyImpl.IsValid())
-	{
-		customPropertyImpl->SetCompleteValueDelegate(Delegate);
-	}
-}
-
-float UWidgetTransitionFunctionLibrary::GetCustomFloatTransitionPropertyValue(const FCustomFloatTransitionProperty& CustomProperty)
-{
-	const TSharedPtr<FCustomFloatTransitionPropertyImpl> customPropertyImpl = CustomProperty.GetPropertyImpl();
-	if (customPropertyImpl.IsValid())
-	{
-		return customPropertyImpl->GetValue();
-	}
-	return 0.0f;
 }
 
 FWidgetTransition UWidgetTransitionFunctionLibrary::From(const FWidgetTransition& Transition, bool bFrom, float FromValue, bool bChangePropertyAfterDelay)
@@ -431,7 +436,7 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::Spring(const FWidgetTransiti
 	return NewTransition;
 }
 
-bool UWidgetTransitionFunctionLibrary::EqualEqual_TrsCustomPropTrsCustomProp(const FCustomFloatTransitionProperty& A, const FCustomFloatTransitionProperty& B)
+bool UWidgetTransitionFunctionLibrary::EqualEqual_WidgetTransitionHandle(const FWidgetTransitionHandle& A, const FWidgetTransitionHandle& B)
 {
 	return A == B;
 }
@@ -463,6 +468,12 @@ void UWidgetTransitionSubsystem::Tick(float DeltaTime)
 		if (It->CurrentTime < It->Delay)
 		{
 			continue;
+		}
+
+		if (!It->bStartDispatched)
+		{
+			It->bStartDispatched = true;
+			It->DispatchStartEvent();
 		}
 
 		/**
@@ -510,37 +521,41 @@ void UWidgetTransitionSubsystem::Tick(float DeltaTime)
 	}
 }
 
-void FCustomFloatTransitionPropertyImpl::SetValue(const float InValue, const bool bDispatchEvent)
+void FWidgetTransitionHandleImpl::SetStartValueDelegate(const FOnWidgetTransitionStart& Delegate)
 {
-	Value = InValue;
-	if (bDispatchEvent)
-	{
-		DispatchUpdateValue();
-	}
+	OnValueStart = Delegate;
 }
 
-void FCustomFloatTransitionPropertyImpl::SetChangeValueDelegate(const FOnCustomFloatPropertyUpdate& Delegate)
+void FWidgetTransitionHandleImpl::SetChangeValueDelegate(const FOnWidgetTransitionUpdate& Delegate)
 {
 	OnValueUpdate = Delegate;
 }
 
-void FCustomFloatTransitionPropertyImpl::SetCompleteValueDelegate(const FOnCustomFloatPropertyComplete& Delegate)
+void FWidgetTransitionHandleImpl::SetCompleteValueDelegate(const FOnWidgetTransitionComplete& Delegate)
 {
 	OnValueComplete = Delegate;
 }
 
-void FCustomFloatTransitionPropertyImpl::DispatchUpdateValue() const
+void FWidgetTransitionHandleImpl::DispatchUpdateValue(const float CurrentValue) const
 {
 	if (OnValueUpdate.IsBound())
 	{
-		OnValueUpdate.Execute(Value);
+		OnValueUpdate.Execute(CurrentValue);
 	}
 }
 
-void FCustomFloatTransitionPropertyImpl::DispatchCompleteValue() const
+void FWidgetTransitionHandleImpl::DispatchCompleteValue(const float CurrentValue) const
 {
 	if (OnValueComplete.IsBound())
 	{
-		OnValueComplete.Execute(Value);
+		OnValueComplete.Execute(CurrentValue);
+	}
+}
+
+void FWidgetTransitionHandleImpl::DispatchStartValue(const float CurrentValue) const
+{
+	if (OnValueStart.IsBound())
+	{
+		OnValueStart.Execute(CurrentValue);
 	}
 }
