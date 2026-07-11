@@ -1,146 +1,63 @@
-# ElasticUMG: README and usage guide
+# ElasticUMG
 
-ElasticUMG — плагин для Unreal Engine, который позволяет анимировать свойства виджетов UMG через плавные переходы (float-поля) с поддержкой типа"эльастик" и настраиваемых кривых. Весь функционал доступен как Blueprint-функции через UWidgetTransitionFunctionLibrary и через Editor-утилиты плагина.
-
-Чтобы начать работать с плагином, убедитесь, что он включен в ваш проект и собирается вместе с вашей сборкой Unreal.
-
-## Что внутри плагина
-- Модуль ElasticUMG: набор функций для управления переходами свойств виджетов.
-- Модуль ElasticUMGEditor: редакторские инструменты (пользовательские пины для выбора свойств), чтобы упрощать работу в редакторе.
-- Реализация Transition-логики в `WidgetTransition`, включая обычные свойства (RenderTransform, Opacity и т.д.) и свойства слотов (Slot.Padding, Slot.Position, Slot.Size и т.д.).
-- Поддержка пользовательских свойств через `FCustomFloatTransitionProperty` и делегаты обновления.
-- Поддержка «Spring»-переходов через `FSpringFloat` для более естественной анимации.
-
-## Как использовать (Blueprint)
-1. Включите плагин ElasticUMG в проекте (Plugins -> ElasticUMG -> Enable).
-2. В любом Blueprint виджета (или в Graph-Blueprint, где есть доступ к виджету) используйте функции из `WidgetTransitionFunctionLibrary`:
-   - CreateWidgetTransition(WidgetProperty, TargetValue, Time, Delay, Interpolation)
-   - CreateWidgetPropertyTransition(InWidget, InPropertyPath, TargetValue, Time, Delay, Interpolation)
-   - CreateWidgetCustomFloatTransition(CustomProperty, TargetValue, Time, Delay, Interpolation)
-   - AddWidgetTransition(WorldContextObject, UserWidget, Transition)
-   - AddWidgetTransitionArray(WorldContextObject, UserWidget, Transitions)
-   - ClearAllWidgetTransitions(WorldContextObject, UserWidget)
-   - Curve(Transition, Curve) и др.
-
-3. Пример: плавно изменить X-координату Translнации виджета на 100 за 0.5 сек.
-   - Transition = CreateWidgetPropertyTransition(MyWidget, "RenderTransform.Translation.X", 100.0, 0.5, 0.0, nullptr)
-   - AddWidgetTransition(GetWorld(), MyWidget, Transition)
-
-4. Чтобы собрать несколько переходов последовательно или параллельно, используйте From / Pipe / RemoveFromParent / Curve и т.д. Концепции аналогичны API-подходу.
-
-## API обзор (ключевые функции)
-- CreateWidgetTransition(WidgetProperty, TargetValue, Time, Delay, Interpolation)
-- CreateWidgetPropertyTransition(InWidget, InPropertyPath, TargetValue, Time, Delay, Interpolation)
-- CreateWidgetCustomFloatTransition(const FCustomFloatTransitionProperty& CustomProperty, ...)
-- AddWidgetTransition(WorldContextObject, UserWidget, Transition)
-- AddWidgetTransitionArray(WorldContextObject, UserWidget, TransitionArray)
-- ClearAllWidgetTransitions(WorldContextObject, UserWidget)
-- From / Pipe / RemoveFromParent / Curve / Visibility / ToVisibility / FromVisibility
-- Spring(...) — включение упругой синхронизации через FSpringFloat
-- SetCustomFloatTransitionPropertyDelegate / SetCustomFloatTransitionPropertyValue / SetCustomFloatTransitionPropertyCompleteDelegate / GetCustomFloatTransitionPropertyValue
-- EqualEqual_TrsCustomPropTrsCustomProp — сравнение двух переходов
-- GetWidgetAnimatableFloatProperties / GetAvailableWidgetProperties
-- GetWidgetSlotInfo — получить список слотов и их float-свойств
-
-Часть функций доступна как Blueprint (UFUNCTION(BlueprintCallable|BlueprintPure)). Это позволяет вливать анимацию напрямую в ваши виджеты без шимирования кода.
-
-## Взаимодействие с Editor
-- ElasticUMGEditor регистрирует специальный Pin Factory для свойств виджетов, чтобы удобно подбирать путь к свойству в редакторе графов.
-- В проекте должен быть доступен редакторский модуль; при включении плагина редакторские инструменты активируются автоматически.
-
-## Примеры использования (C++ точка входа)
-```cpp
-// Внутри вашего виджета/актора
-UWidget* MyWidget = /* получаем виджет */;
-FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetPropertyTransition(
-    MyWidget,
-    TEXT("RenderTransform.Translation.X"),
-    200.0f, // TargetValue
-    0.8f,    // Time
-    0.0f,    // Delay
-    nullptr  // InterpolationCurve
-);
-UWidgetTransitionFunctionLibrary::AddWidgetTransition(this, MyWidget, Transition);
-```
-
-## Важные нюансы
-- Переходы работают только для float-значений свойств (рефлекшен-обращение к FProperty/FStructProperty).
-- Возможны переходы в слоты и их свойствам (Padding, Alignment, Position, Size, Anchors и пр.).
-- Можно комбинировать переходы, используя Pipe/From/Curve и др. для построения цепочек анимаций.
-- Встроенный Spring-механизм позволяет получить более «натуральные» движения за счет физического моделирования.
-- В случае ошибок проверьте, что имя свойства/path корректно разборывается и свойство действительно является float-значением или содержит вложенные float-поля.
-
-## Известные ограничения
-- Набор свойств может не содержать некоторых пользовательских кастомных свойств — доступна только рефлексия и обработка float-полей.
-- Нюансы доступа к полям в Slot (Padding, Position и т.д.) зависят от конкретного типа панели, используемой в виджете.
-
-## Как собрать
-- Убедитесь, что проект компилируется под Unreal Engine 5.6 или совместимую версию.
-- Включите плагин ElasticUMG в вашем проекте (Plugins -> ElasticUMG -> Enable) и соберите проект через Unreal Editor или через UnrealBuildTool/CI.
-- Рекомендуется запускать сборку в режиме Development для отладки и логирования.
-
-## Быстрый старт (повторяемый)
-- Включите ElasticUMG в проекте.
-- Откройте Blueprint или C++ и попробуйте сделать первый переход:
-  1) Создайте Transition через CreateWidgetPropertyTransition (или CreateWidgetTransition для базового).
-  2) Добавьте переход через AddWidgetTransition.
-  3) При необходимости комбинируйте Pipe/From/Curve для цепочек переходов.
-- Проверьте вывод логов: категории LogWidgetTransition2 в UE_LOG.
-
-## API обзор (детализация)
-- CreateWidgetTransition(
-  EWidgetProperty WidgetProperty = EWidgetProperty::TranslationX,
-  float TargetValue = 0.0f,
-  float Time = 0.0f,
-  float Delay = 0.0f,
-  UCurveFloat* Interpolation = nullptr
-): FWidgetTransition
-- CreateWidgetPropertyTransition(UWidget* InWidget, const FString& InPropertyPath, float TargetValue = 0.0f, float Time = 0.0f, float Delay = 0.0f, UCurveFloat* Interpolation = nullptr): FWidgetTransition
-- CreateWidgetCustomFloatTransition(const FCustomFloatTransitionProperty& CustomProperty, float TargetValue = 0.0f, float Time = 0.0f, float Delay = 0.0f, UCurveFloat* Interpolation = nullptr): FWidgetTransition
-- AddWidgetTransition(WorldContextObject, UserWidget, Transition)
-- AddWidgetTransitionArray(WorldContextObject, UserWidget, TransitionArray)
-- ClearAllWidgetTransitions(WorldContextObject, UserWidget)
-- From / Pipe / RemoveFromParent / Curve / Visibility / ToVisibility / FromVisibility / Modifier / Spring
-- GetWidgetAnimatableFloatProperties / GetAvailableWidgetProperties
-- GetWidgetSlotInfo(Widget, SlotClassName, SlotFloatProperties)
-- SetCustomFloatTransitionPropertyDelegate / SetCustomFloatTransitionPropertyValue / SetCustomFloatTransitionPropertyCompleteDelegate / GetCustomFloatTransitionPropertyValue
-- EqualEqual_TrsCustomPropTrsCustomProp
-
-## Примеры использования Blueprint
-- Пример 1: плавное изменение RenderTransform.Translation.X внутри Widgets
-  - Transition = CreateWidgetPropertyTransition(MyWidget, "RenderTransform.Translation.X", 200.0, 0.8, 0.0, nullptr)
-  - AddWidgetTransition(GetWorld(), MyWidget, Transition)
-  - Optional: Curve(Transition, MyCurve) для плавной кривой
-- Пример 2: изменение Padding слота CanvasPanelSlot Left
-  - Transition = CreateWidgetPropertyTransition(MyWidget, "Slot.Padding.Left", 10.0, 0.3, 0.0, nullptr)
-  - AddWidgetTransition(GetWorld(), MyWidget, Transition)
-
-## Примеры использования C++
-- Пример 1: аналогично Blueprint, но через вызов CreateWidgetPropertyTransition и AddWidgetTransition из C++
-- Пример 2: создание кастомного перехода с использованием FCustomFloatTransitionProperty
-
-## Отладка и логи
-- Включайте вывод логов через UE_LOG(LogWidgetTransition2, Log/Verbose) для визуализации цепочек и ошибок.
-- В некоторых случаях полезно проверить путь свойства: RenderTransform.Translation.X или Slot.Padding.Left.
-- Если путь содержит вложенные структуры, убедитесь, что они поддерживаются рефлексией UE4/5 и что свойства помечены CPF_Edit, если требуется редактор.
-
-## Editor-подсистема
-- ElasticUMGEditor регистрирует WidgetPropertyPinFactory для удобного выбора свойств в редакторе.
-- При запуске редактора плагин добавляет соответствующие пины, чтобы облегчить сборку путей свойств напрямую в нодах.
-
-## Совместимость и лицензия
-- Плагин рассчитан на UE5.6+; некоторые детали могут зависеть от версии. Проверьте совместимость в вашем проекте.
-- Лицензия: см. LICENSE в репозитории проекта (если доступно). Если нет, используйте только для некоммерческих целей или по согласованию с автором.
-
-## История изменений
-- Добавлен базовый README и дальнейшее расширение API-справки.
-
-- Убедитесь, что проект компилируется под Unreal Engine 5.6 или совместимую версию.
-- Включите плагин ElasticUMG в вашем проекте (Plugins -> ElasticUMG -> Enable) и соберите проект через Unreal Editor или через UnrealBuildTool/CI.
-
-## Контакты и вклад
-- Автор плагина: Denis Korsunov (см. файл .uplugin для сведений).
-- Поддержка редакторских функций доступна через ElasticUMGEditor.
+**ElasticUMG** — это плагин для Unreal Engine 5, разработанный для быстрого прототипирования интерфейсов (UMG). Он позволяет анимировать свойства виджетов прямо из кода или блупринтов с помощью простых правил интерполяции и физики, полностью отказываясь от жесткого встроенного редактора анимаций (Sequencer).
 
 ---
-Это черновой черновик README. При необходимости можно дополнить примеры на Blueprint и добавить инструкции по деплою.
+
+## 💎 Базовые принципы (База)
+
+Вся работа плагина строится вокруг четырех фундаментальных идей:
+
+### 1. Гибкость без привязки к конкретным узлам
+*   Анимации в ElasticUMG не «привязаны» намертво к конкретному виджету или иерархии в дизайнере. 
+*   Вы создаете **логическое правило перехода** (например, «плавно изменить масштаб с 0 до 1 за 0.3 секунды») и можете применить его к **любому** виджету на экране или перенести на другой проект.
+*   Анимация без проблем ложится на любые свойства самого виджета или структуру его контейнера (например, `Slot.Padding` или `Slot.Position`), позволяя легко двигать элементы разметки.
+
+### 2. Предельно простая настройка (Всего 2 ключа)
+*   Вам больше не нужно открывать таймлайны и расставлять десятки точек. 
+*   Любая анимация здесь — это переход от **Начального значения (From)** к **Конечному значению (To)** с заданной кривой интерполяции. Настройка сводится к паре понятных параметров.
+
+### 3. Полный контроль (Прослушка и Управление)
+*   Вы можете тонко управлять жизненным циклом анимации: мгновенно прерывать, очищать все активные переходы на виджете или подписываться на события (когда анимация началась, когда обновилась и когда полностью завершилась).
+
+### 4. Физика пружин (Spring-эффект)
+*   Вместо классических графиков сглаживания вы можете включить физический симулятор. Элементы интерфейса начинают вести себя как физические тела с заданной жесткостью пружины и демпфированием (массой/сопротивлением). Они реалистично ускоряются, слегка «пролетают» целевую точку и пружинят обратно.
+
+---
+
+## 📊 ElasticUMG против стандартного редактора UE5 (Sequencer)
+
+| Что сравниваем | Стандартный Sequencer в UE5 | ElasticUMG |
+| :--- | :--- | :--- |
+| **Связь с виджетом** | Жесткая. Анимация пишется внутри конкретного Widget Blueprint и привязана к его компонентам. | Полная независимость. Логика анимации описывается отдельно и применяется к любому виджету. |
+| **Создание анимаций** | Мышкой на таймлайне: вручную расставлять ключи и дорожки. | Кодом или нодами: задать свойства и целевые значения прямо в логике. |
+| **Скорость работы** | Медленно. Нужно заходить в каждый виджет и настраивать ключи. | Очень быстро. Настройка анимации занимает несколько секунд. |
+| **Сложные сценарии** | Сложно. Приходится писать запутанные блупринты для запуска цепочек. | Просто. Анимации легко связываются друг за другом (метод `Pipe`). |
+| **Динамика** | Плохо. Сложно изменить конечную точку анимации во время игры. | Отлично. Конечная точка рассчитывается прямо в рантайме. |
+| **Анимация разметки** | Практически невозможно анимировать сложные параметры вроде отступов слота. | Легко. Можно плавно менять любые свойства вроде `Slot.Padding`. |
+| **Производительность** | Нагружает систему при большом количестве одновременно играющих анимаций. | Очень легкий. Работает через оптимизированную C++ подсистему. |
+| **Эффект пружины** | Приходится вручную рисовать кривые отскока. | Встроен по умолчанию. Достаточно вызвать ноду `Spring`. |
+
+### 👍 Плюсы:
+*   Полная отвязка логики анимации от верстки UI — одну анимацию можно переиспользовать на сотнях кнопок.
+*   Не нужно тратить время на расстановку ключей анимации вручную.
+*   Легко делать «умные» сдвиги интерфейса, которые подстраиваются под размер экрана.
+*   Минимальное влияние на производительность игры.
+
+### 👎 Минусы:
+*   Нет визуального редактора с таймлайном (все настраивается параметрами).
+*   Работает только с числами с плавающей точкой (`float` свойства).
+
+---
+
+## 🛠️ Основные ноды в Блупринтах
+
+### Создание анимации:
+*   `CreateWidgetTransition` — создает простую анимацию для базовых свойств (прозрачность, угол поворота).
+*   `CreateWidgetPropertyTransition` — позволяет анимировать любое конкретное свойство по его текстовому пути (например, `Slot.Padding.Left` для отступа или `RenderTransform.Scale.X` для масштаба).
+
+### Настройка поведения (цепочки вызовов):
+*   `From` — заставляет анимацию начинаться с конкретного значения (например, проявить виджет с прозрачности `0.2` до `1.0`).
+*   `Pipe` — связывает анимации в очередь (одна запускается сразу после другой).
+*   `Spring` — включает физику пружины для этого перехода.
+*   `Curve` — позволяет использовать стандартную кривую сглаживания из ассета.
