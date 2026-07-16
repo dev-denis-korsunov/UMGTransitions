@@ -11,11 +11,34 @@ class UWidgetTransitionSubsystem;
 class UWidgetTransitionFunctionLibrary;
 class UWidget;
 
-DECLARE_DYNAMIC_DELEGATE_TwoParams(FOnWidgetTransitionUpdate, float, NewValue, float, ElapsedTime);
+USTRUCT(BlueprintType)
+struct ELASTICUMG_API FAnimationUpdateResult
+{
+	GENERATED_BODY()
 
-DECLARE_DYNAMIC_DELEGATE_OneParam(FOnWidgetTransitionComplete, float, CompleteValue);
+	UPROPERTY(BlueprintReadOnly, Category = "Animation Update")
+	UWidget* Widget = nullptr;
 
-DECLARE_DYNAMIC_DELEGATE_OneParam(FOnWidgetTransitionStart, float, StartValue);
+	UPROPERTY(BlueprintReadOnly, Category = "Animation Update")
+	UWidget* FromWidget = nullptr;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Animation Update")
+	UWidget* ToWidget = nullptr;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Animation Update")
+	bool bFirstFrame = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Animation Update")
+	bool bEndFrame = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Animation Update")
+	float Value = 0.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Animation Update")
+	float RelativeValue = 0.0f;
+};
+
+DECLARE_DYNAMIC_DELEGATE_OneParam(FOnWidgetTransitionUpdate, FAnimationUpdateResult, UpdateResult);
 
 UENUM(BlueprintType)
 enum class EWidgetProperty : uint8
@@ -47,7 +70,7 @@ struct ELASTICUMG_API FWidgetTransition
 		, bRemoveFromParent(false)
 		, bSpring(false)
 		, bYoYo(false)
-		, bStartDispatched(false)
+		, bFirstFrameDispatched(false)
 	{
 	}
 
@@ -59,10 +82,8 @@ protected:
 	EWidgetProperty WidgetProperty = EWidgetProperty::TranslationX;
 	TSharedPtr<FSpringFloat> SpringFloat = nullptr;
 
-	// Делегаты привязываются через BindOnUpdate / BindOnComplete / BindOnStart
+	// Делегат привязывается через BindOnUpdate
 	FOnWidgetTransitionUpdate OnUpdate;
-	FOnWidgetTransitionComplete OnComplete;
-	FOnWidgetTransitionStart OnStart;
 
 	float ToValue = 0.0f;
 	float FromValue = 0.0f;
@@ -94,11 +115,10 @@ protected:
 	uint8 bRemoveFromParent : 1;
 	uint8 bSpring : 1;
 	uint8 bYoYo : 1;
-	uint8 bStartDispatched : 1;
+	uint8 bFirstFrameDispatched : 1;
 
 public:
 	void SetWidgetPropertyValue(const float Value, const bool bLastFrame = false) const;
-	void DispatchStartEvent() const;
 	float GetWidgetPropertyValue() const;
 	float GetRemainingTime() const;
 	bool Equal(const FWidgetTransition& Trs) const;
@@ -162,17 +182,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "WidgetTransition", meta = (AdvancedDisplay = "bYoYo"))
 	static FWidgetTransition YoYo(const FWidgetTransition& Transition, bool bYoYo = true);
 
-	/** Привязывает BlueprintPure функцию к событию обновления значения (Value, ElapsedTime). */
+	/** Привязывает BlueprintPure функцию к событию обновления значения. */
 	UFUNCTION(BlueprintPure, Category = "WidgetTransition")
 	static FWidgetTransition BindOnUpdate(const FWidgetTransition& Transition, FOnWidgetTransitionUpdate OnUpdate);
-
-	/** Привязывает BlueprintPure функцию к событию завершения анимации. */
-	UFUNCTION(BlueprintPure, Category = "WidgetTransition")
-	static FWidgetTransition BindOnComplete(const FWidgetTransition& Transition, FOnWidgetTransitionComplete OnComplete);
-
-	/** Привязывает BlueprintPure функцию к событию старта анимации. */
-	UFUNCTION(BlueprintPure, Category = "WidgetTransition")
-	static FWidgetTransition BindOnStart(const FWidgetTransition& Transition, FOnWidgetTransitionStart OnStart);
 };
 
 UCLASS()
