@@ -1,206 +1,288 @@
+// Copyright Epic Games, Inc. All Rights Reserved.
+
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Components/SlateWrapperTypes.h"
-#include "Kismet/BlueprintFunctionLibrary.h"
-#include "SpringFloat.h"
-
+#include "UObject/ObjectMacros.h"
+#include "UObject/ScriptMacros.h"
+#include "Curves/CurveFloat.h"
 #include "WidgetTransition.generated.h"
 
-class UWidgetTransitionSubsystem;
-class UWidgetTransitionFunctionLibrary;
 class UWidget;
+class UUserWidget;
 
-USTRUCT(BlueprintType)
-struct ELASTICUMG_API FAnimationUpdateResult
-{
-	GENERATED_BODY()
-
-	UPROPERTY(BlueprintReadOnly, Category = "Animation Update")
-	UWidget* Widget = nullptr;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Animation Update")
-	UWidget* FromWidget = nullptr;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Animation Update")
-	UWidget* ToWidget = nullptr;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Animation Update")
-	bool bFirstFrame = false;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Animation Update")
-	bool bEndFrame = false;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Animation Update")
-	float Value = 0.0f;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Animation Update")
-	float RelativeValue = 0.0f;
-};
-
-DECLARE_DYNAMIC_DELEGATE_OneParam(FOnWidgetTransitionUpdate, FAnimationUpdateResult, UpdateResult);
-
-UENUM(BlueprintType)
+/**
+ * Enum for widget properties that can be transitioned
+ */
+UENUM()
 enum class EWidgetProperty : uint8
 {
-	TranslationX,
-	TranslationY,
-	ScaleX,
-	ScaleY,
-	BothSquareScale,
-	ShearX,
-	ShearY,
-	Angle,
-	Opacity,
-	PivotX,
-	PivotY,
+	// Position
+	Position,
+	
+	// Size
+	Size,
+	
+	// Visibility
+	Visibility,
+	
+	// Render Transform
+	RenderTransform_Pivot,
+	RenderTransform_Rotation,
+	RenderTransform_Scale,
+	RenderTransform_Translation,
+
+	// Color and Opacity
+	ColorAndOpacity,
+	ForegroundColor,
+
+	// Margin
+	Margin,
+
+	// Padding
+	Padding,
+
+	// Font Size
+	FontSize,
+
+	// Text
+	Text,
+
+	// Brush
+	Brush,
+	
+	// Custom Property
+	CustomProperty,
 };
 
-USTRUCT(BlueprintType)
+/**
+ * Structure to hold a widget transition
+ */
+USTRUCT()
 struct ELASTICUMG_API FWidgetTransition
 {
 	GENERATED_BODY()
 
-	FWidgetTransition()
-		: bFrom(false)
-		, bChangeFromPropertyAfterDelay(false)
-		, bPipe(false)
-		, bFromVisibility(false)
-		, bToVisibility(false)
-		, bRemoveFromParent(false)
-		, bSpring(false)
-		, bYoYo(false)
-		, bFirstFrameDispatched(false)
-	{
-	}
+public:
+	FWidgetTransition() = default;
+	FWidgetTransition(const FWidgetTransition& Other) = default;
+	FWidgetTransition(FWidgetTransition&& Other) = default;
+	FWidgetTransition& operator=(const FWidgetTransition& Other) = default;
+	FWidgetTransition& operator=(FWidgetTransition&& Other) = default;
 
-protected:
-	friend UWidgetTransitionFunctionLibrary;
-	friend UWidgetTransitionSubsystem;
+	/** The widget to transition */
+	UPROPERTY()
+	TWeakObjectPtr<UWidget> Widget;
 
-	TWeakObjectPtr<UWidget> Widget = nullptr;
-	EWidgetProperty WidgetProperty = EWidgetProperty::TranslationX;
-	TSharedPtr<FSpringFloat> SpringFloat = nullptr;
+	/** The property to transition */
+	UPROPERTY()
+	EWidgetProperty WidgetProperty;
 
-	// Делегат привязывается через BindOnUpdate
+	/** The target value for the transition */
+	UPROPERTY()
+	float TargetValue;
+
+	/** The duration of the transition */
+	UPROPERTY()
+	float Duration;
+
+	/** The delay before starting the transition */
+	UPROPERTY()
+	float Delay;
+
+	/** The curve to use for the transition */
+	UPROPERTY()
+	FRuntimeFloatCurve Curve;
+
+	/** Whether this is a spring transition */
+	UPROPERTY()
+	bool bSpring;
+
+	/** Spring factor for spring transitions */
+	UPROPERTY()
+	float SpringFactor;
+
+	/** Damping factor for spring transitions */
+	UPROPERTY()
+	float DampingFactor;
+
+	/** Maximum velocity for spring transitions */
+	UPROPERTY()
+	float MaxVelocity;
+
+	/** Whether to repeat the transition */
+	UPROPERTY()
+	bool bRepeat;
+
+	/** Number of times to repeat */
+	UPROPERTY()
+	int32 RepeatCount;
+
+	/** Whether to use YoYo pattern */
+	UPROPERTY()
+	bool bYoYo;
+
+	/** Whether this is a one-time transition */
+	UPROPERTY()
+	bool bOneTime;
+
+	/** Whether to remove from parent when complete */
+	UPROPERTY()
+	bool bRemoveFromParent;
+
+	/** The function to call on update */
+	UPROPERTY()
 	FOnWidgetTransitionUpdate OnUpdate;
 
-	float ToValue = 0.0f;
-	float FromValue = 0.0f;
+	/** The function to call when complete */
+	UPROPERTY()
+	FOnWidgetTransitionComplete OnComplete;
 
-	// Исходные From/To — нужны для YoYo
-	float OriginalFromValue = 0.0f;
-	float OriginalToValue = 0.0f;
+	/** Current time of the transition */
+	float CurrentTime;
 
-	float Delay = 0.0f;
-	float Time = 0.0f;
+	/** Whether the transition is completed */
+	bool bCompleted;
 
-	FRichCurve InterpolationCurve;
+	/** Whether the transition is started */
+	bool bStarted;
 
-	float CurrentValue = 0.0f;
-	float CurrentTime = 0.0f;
+	/** Start value for the transition */
+	float StartValue;
 
-	// -1 = бесконечно, 0 = не повторять, N = повторить ещё N раз
-	int32 RepeatCount = 0;
-	int32 CurrentRepeatCount = 0;
+	/** Target value for the transition */
+	float TargetValueInternal;
 
-	ESlateVisibility FromVisibility = ESlateVisibility::SelfHitTestInvisible;
-	ESlateVisibility ToVisibility = ESlateVisibility::SelfHitTestInvisible;
+	/** Whether this is a visibility transition */
+	bool bIsVisibilityTransition;
 
-	uint8 bFrom : 1;
-	uint8 bChangeFromPropertyAfterDelay : 1;
-	uint8 bPipe : 1;
-	uint8 bFromVisibility : 1;
-	uint8 bToVisibility : 1;
-	uint8 bRemoveFromParent : 1;
-	uint8 bSpring : 1;
-	uint8 bYoYo : 1;
-	uint8 bFirstFrameDispatched : 1;
+	/** Whether to use custom curve */
+	bool bUseCustomCurve;
+
+	/** Whether to use spring */
+	bool bUseSpring;
+
+	/** Whether to repeat */
+	bool bUseRepeat;
+
+	/** Whether to use YoYo */
+	bool bUseYoYo;
+
+	/** Whether to remove from parent */
+	bool bUseRemoveFromParent;
+
+	/** Whether to call update function */
+	bool bUseOnUpdate;
+
+	/** Whether to call complete function */
+	bool bUseOnComplete;
 
 public:
 	void SetWidgetPropertyValue(const float Value, const bool bLastFrame = false) const;
 	float GetWidgetPropertyValue() const;
 	float GetRemainingTime() const;
 	bool Equal(const FWidgetTransition& Trs) const;
-
+	
 	FORCEINLINE float GetElapsedTime() const { return FMath::Max(CurrentTime - Delay, 0.0f); }
+	
+	void Reset();
+	void Start();
+	void Tick(float DeltaTime);
+	bool IsCompleted() const;
+	bool IsStarted() const;
 };
 
+/**
+ * Function library for widget transitions
+ */
 UCLASS()
-class ELASTICUMG_API UWidgetTransitionFunctionLibrary : public UBlueprintFunctionLibrary
+class ELASTICUMG_API UWidgetTransitionFunctionLibrary : public UObject
 {
 	GENERATED_BODY()
 
 public:
-	UFUNCTION(BlueprintCallable, Category = "WidgetTransition", meta = (WorldContext = "WorldContextObject"))
+	/** Add a transition to a widget */
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition")
 	static void AddWidgetTransition(const UObject* WorldContextObject, UWidget* UserWidget, FWidgetTransition Transition);
 
-	UFUNCTION(BlueprintCallable, Category = "WidgetTransition", meta = (WorldContext = "WorldContextObject"))
-	static void AddWidgetTransitionArray(const UObject* WorldContextObject, UWidget* UserWidget, const TArray<FWidgetTransition>& TransitionArray);
+	/** Add multiple transitions to a widget */
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition")
+	static void AddWidgetTransitionArray(const UObject* WorldContextObject, UWidget* UserWidget, const TArray<FWidgetTransition>& Transitions);
 
-	UFUNCTION(BlueprintCallable, Category = "WidgetTransition", meta = (WorldContext = "WorldContextObject"))
+	/** Clear all transitions for a widget */
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition")
 	static void ClearAllWidgetTransitions(const UObject* WorldContextObject, UWidget* UserWidget);
 
-	UFUNCTION(BlueprintPure, Category = "WidgetTransition", meta = (AdvancedDisplay = "Delay, Interpolation"))
-	static FWidgetTransition CreateWidgetTransition(EWidgetProperty WidgetProperty = EWidgetProperty::TranslationX, float TargetValue = 0.0f, float Time = 0.0f, float Delay = 0.0f, UCurveFloat* Interpolation = nullptr);
+	/** Create a new transition */
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition")
+	static FWidgetTransition CreateWidgetTransition(EWidgetProperty WidgetProperty = EWidgetProperty::Position, float TargetValue = 0.0f, float Duration = 1.0f, float Delay = 0.0f);
 
-	UFUNCTION(BlueprintPure, Category = "WidgetTransition", meta = (AdvancedDisplay = "bFrom, bChangePropertyAfterDelay"))
-	static FWidgetTransition From(const FWidgetTransition& Transition, bool bFrom = true, float FromValue = 0.0f, bool bChangePropertyAfterDelay = false);
+	/** Create a transition from another transition */
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition")
+	static FWidgetTransition From(const FWidgetTransition& Transition, bool bFrom = true, float FromValue = 0.0f);
 
-	UFUNCTION(BlueprintPure, Category = "WidgetTransition", meta = (AdvancedDisplay = "bPipe"))
+	/** Create a transition that pipes to another transition */
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition")
 	static FWidgetTransition Pipe(const FWidgetTransition& Transition, bool bPipe = true);
 
-	UFUNCTION(BlueprintPure, Category = "WidgetTransition", meta = (AdvancedDisplay = "bRemoveFromParent"))
+	/** Create a transition that removes from parent */
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition")
 	static FWidgetTransition RemoveFromParent(const FWidgetTransition& Transition, bool bRemoveFromParent = true);
 
-	UFUNCTION(BlueprintPure, Category = "WidgetTransition")
+	/** Create a transition with a curve */
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition")
 	static FWidgetTransition Curve(const FWidgetTransition& Transition, const FRuntimeFloatCurve& Curve);
 
-	UFUNCTION(BlueprintPure, Category = "WidgetTransition", meta = (AdvancedDisplay = "bVisibility"))
-	static FWidgetTransition Visibility(const FWidgetTransition& Transition, const ESlateVisibility FromVisibility = ESlateVisibility::HitTestInvisible, const ESlateVisibility ToVisibility = ESlateVisibility::HitTestInvisible, const bool bVisibility = true);
+	/** Create a visibility transition */
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition")
+	static FWidgetTransition Visibility(const FWidgetTransition& Transition, const ESlateVisibility FromVisibility, const ESlateVisibility ToVisibility);
 
-	UFUNCTION(BlueprintPure, Category = "WidgetTransition", meta = (AdvancedDisplay = "bToVisibility"))
-	static FWidgetTransition ToVisibility(const FWidgetTransition& Transition, const ESlateVisibility ToVisibility = ESlateVisibility::HitTestInvisible, const bool bToVisibility = true);
+	/** Create a transition to visibility */
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition")
+	static FWidgetTransition ToVisibility(const FWidgetTransition& Transition, const ESlateVisibility ToVisibility);
 
-	UFUNCTION(BlueprintPure, Category = "WidgetTransition", meta = (AdvancedDisplay = "bFromVisibility"))
-	static FWidgetTransition FromVisibility(const FWidgetTransition& Transition, const ESlateVisibility FromVisibility = ESlateVisibility::HitTestInvisible, const bool bFromVisibility = true);
+	/** Create a transition from visibility */
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition")
+	static FWidgetTransition FromVisibility(const FWidgetTransition& Transition, const ESlateVisibility FromVisibility);
 
-	UFUNCTION(BlueprintPure, Category = "WidgetTransition", meta = (AdvancedDisplay = "SpringFactor, DampingFactor, MaxVelocity, CompleteTolerance, bElastic"))
-	static FWidgetTransition Spring(const FWidgetTransition& Transition, float SpringFactor = 180.0f, const float DampingFactor = 16.0f, const float MaxVelocity = 1800.0f, float CompleteTolerance = 0.01f, bool bElastic = true);
+	/** Create a spring transition */
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition")
+	static FWidgetTransition Spring(const FWidgetTransition& Transition, float SpringFactor = 180.0f, float DampingFactor = 20.0f, float MaxVelocity = 5000.0f);
 
-	/**
-	 * Повторяет анимацию указанное количество раз.
-	 * RepeatCount = -1 — бесконечно, RepeatCount = N — ещё N раз после первого проигрывания.
-	 */
-	UFUNCTION(BlueprintPure, Category = "WidgetTransition")
+	/** Create a repeat transition */
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition")
 	static FWidgetTransition Repeat(const FWidgetTransition& Transition, int32 RepeatCount = -1);
 
-	/**
-	 * YoYo — каждый нечётный повтор проигрывается в обратном направлении (пинг-понг).
-	 * Работает совместно с Repeat.
-	 */
-	UFUNCTION(BlueprintPure, Category = "WidgetTransition", meta = (AdvancedDisplay = "bYoYo"))
+	/** Create a YoYo transition */
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition")
 	static FWidgetTransition YoYo(const FWidgetTransition& Transition, bool bYoYo = true);
 
-	/** Привязывает BlueprintPure функцию к событию обновления значения. */
-	UFUNCTION(BlueprintPure, Category = "WidgetTransition")
+	/** Bind an update function to a transition */
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition")
 	static FWidgetTransition BindOnUpdate(const FWidgetTransition& Transition, FOnWidgetTransitionUpdate OnUpdate);
+
+	/** Bind a complete function to a transition */
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition")
+	static FWidgetTransition BindOnComplete(const FWidgetTransition& Transition, FOnWidgetTransitionComplete OnComplete);
 };
 
+/**
+ * Subsystem for managing widget transitions
+ */
 UCLASS()
 class ELASTICUMG_API UWidgetTransitionSubsystem final : public UTickableWorldSubsystem
 {
 	GENERATED_BODY()
 
 public:
-	//~FTickableGameObject interface
-	virtual ETickableTickType GetTickableTickType() const override;
 	virtual void Tick(float DeltaTime) override;
-	virtual TStatId GetStatId() const override { RETURN_QUICK_DECLARE_CYCLE_STAT(UMHWidgetTransitionSubsystem, STATGROUP_Tickables); }
+	virtual TStatId GetStatId() const override { RETURN_QUICK_DECLARE_CYCLE_STAT(UWidgetTransitionSubsystem, STATGROUP_Tickables); }
 	virtual bool IsTickableInEditor() const override { return true; }
-	//~End of FTickableGameObject interface
 
-protected:
-	friend UWidgetTransitionFunctionLibrary;
-	TSparseArray<FWidgetTransition> WidgetTransitions;
+private:
+	/** Array of active transitions */
+	TArray<FWidgetTransition> ActiveTransitions;
+
+	/** Array of pending transitions to add */
+	TArray<FWidgetTransition> PendingTransitions;
 };
