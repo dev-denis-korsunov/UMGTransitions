@@ -5,6 +5,22 @@
 
 #include "Blueprint/UserWidget.h"
 
+namespace
+{
+FAnimationUpdateResult MakeAnimationUpdateResult(UWidget* Widget, const bool bFirstFrame, const bool bEndFrame, const float Value, const float RelativeValue)
+{
+	FAnimationUpdateResult Result;
+	Result.Widget = Widget;
+	Result.FromWidget = Widget;
+	Result.ToWidget = Widget;
+	Result.bFirstFrame = bFirstFrame;
+	Result.bEndFrame = bEndFrame;
+	Result.Value = Value;
+	Result.RelativeValue = RelativeValue;
+	return Result;
+}
+} // namespace
+
 void FWidgetTransition::SetWidgetPropertyValue(const float Value, const bool bLastFrame) const
 {
 	if (!Widget.IsValid())
@@ -93,24 +109,6 @@ void FWidgetTransition::SetWidgetPropertyValue(const float Value, const bool bLa
 		break;
 	}
 	default: break;
-	}
-
-	if (OnUpdate.IsBound())
-	{
-		OnUpdate.Execute(Value, GetElapsedTime());
-	}
-
-	if (bLastFrame && OnComplete.IsBound())
-	{
-		OnComplete.Execute(Value);
-	}
-}
-
-void FWidgetTransition::DispatchStartEvent() const
-{
-	if (OnStart.IsBound())
-	{
-		OnStart.Execute(CurrentValue);
 	}
 }
 
@@ -390,20 +388,6 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::BindOnUpdate(const FWidgetTr
 	return NewTransition;
 }
 
-FWidgetTransition UWidgetTransitionFunctionLibrary::BindOnComplete(const FWidgetTransition& Transition, FOnWidgetTransitionComplete OnComplete)
-{
-	auto NewTransition = Transition;
-	NewTransition.OnComplete = OnComplete;
-	return NewTransition;
-}
-
-FWidgetTransition UWidgetTransitionFunctionLibrary::BindOnStart(const FWidgetTransition& Transition, FOnWidgetTransitionStart OnStart)
-{
-	auto NewTransition = Transition;
-	NewTransition.OnStart = OnStart;
-	return NewTransition;
-}
-
 ETickableTickType UWidgetTransitionSubsystem::GetTickableTickType() const
 {
 	// The CDO of this should never tick
@@ -433,11 +417,8 @@ void UWidgetTransitionSubsystem::Tick(float DeltaTime)
 			continue;
 		}
 
-		if (!It->bStartDispatched)
-		{
-			It->bStartDispatched = true;
-			It->DispatchStartEvent();
-		}
+		const bool bFirstFrame = !It->bFirstFrameDispatched;
+		It->bFirstFrameDispatched = true;
 
 		/**
 		 * This code handles the transition of a widget's property value either through a spring effect or linear/curve-based interpolation.
@@ -449,30 +430,42 @@ void UWidgetTransitionSubsystem::Tick(float DeltaTime)
 		 * When the spring effect is disabled, the code calculates the progress (`alpha`) of the transition and applies either linear
 		 * interpolation or an interpolation curve (if provided) to smoothly transition the value from the start to the end.
 		 */
+		float RelativeValue = 0.0f;
 		bool bTransitionEnd;
 		if (It->bSpring && It->SpringFloat.IsValid())
 		{
 			It->SpringFloat->Tick(DeltaTime);
 			It->CurrentValue = It->SpringFloat->GetValue();
+			RelativeValue = FMath::IsNearlyZero(It->ToValue - It->FromValue)
+				? 1.0f
+				: (It->CurrentValue - It->FromValue) / (It->ToValue - It->FromValue);
 
 			bTransitionEnd = It->SpringFloat->IsCompleted();
 		}
 		else
 		{
-			const float Alpha = FMath::Clamp((It->CurrentTime - It->Delay) / It->Time, 0.0f, 1.0f);
-			bTransitionEnd = Alpha == 1.0f;
+			const float Alpha = It->Time > 0.0f
+				? FMath::Clamp((It->CurrentTime - It->Delay) / It->Time, 0.0f, 1.0f)
+				: 1.0f;
+			bTransitionEnd = Alpha >= 1.0f;
 
 			if (It->InterpolationCurve.IsEmpty())
 			{
 				It->CurrentValue = FMath::Lerp(It->FromValue, It->ToValue, Alpha);
+				RelativeValue = Alpha;
 			}
 			else
 			{
-				It->CurrentValue = FMath::Lerp(It->FromValue, It->ToValue, It->InterpolationCurve.Eval(Alpha));
+				RelativeValue = It->InterpolationCurve.Eval(Alpha);
+				It->CurrentValue = FMath::Lerp(It->FromValue, It->ToValue, RelativeValue);
 			}
 		}
 
 		It->SetWidgetPropertyValue(It->CurrentValue, bTransitionEnd);
+		if (It->OnUpdate.IsBound())
+		{
+			It->OnUpdate.Execute(MakeAnimationUpdateResult(It->Widget.Get(), bFirstFrame, bTransitionEnd, It->CurrentValue, RelativeValue));
+		}
 
 		if (bTransitionEnd)
 		{
@@ -484,12 +477,14 @@ void UWidgetTransitionSubsystem::Tick(float DeltaTime)
 				if (It->bYoYo)
 				{
 					Swap(It->FromValue, It->ToValue);
-					if (It->bSpring && It->SpringFloat.IsValid())
-					{
-						It->SpringFloat->Start(It->FromValue, It->ToValue);
-					}
 				}
 
+				if (It->bSpring && It->SpringFloat.IsValid())
+				{
+					It->SpringFloat->Start(It->FromValue, It->ToValue);
+				}
+
+				It->bFirstFrameDispatched = false;
 				It->CurrentTime = It->Delay;
 			}
 			else
