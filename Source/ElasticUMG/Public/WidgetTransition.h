@@ -3,17 +3,15 @@
 #include "CoreMinimal.h"
 #include "Components/SlateWrapperTypes.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
-#include "Kismet/BlueprintAsyncActionBase.h"
+#include "SpringFloat.h"
 
 #include "WidgetTransition.generated.h"
 
-class FSpringFloat;
-class FWidgetTransitionHandleImpl;
 class UWidgetTransitionSubsystem;
 class UWidgetTransitionFunctionLibrary;
 class UWidget;
 
-DECLARE_DYNAMIC_DELEGATE_OneParam(FOnWidgetTransitionUpdate, float, NewValue);
+DECLARE_DYNAMIC_DELEGATE_TwoParams(FOnWidgetTransitionUpdate, float, NewValue, float, ElapsedTime);
 
 DECLARE_DYNAMIC_DELEGATE_OneParam(FOnWidgetTransitionComplete, float, CompleteValue);
 
@@ -33,45 +31,6 @@ enum class EWidgetProperty : uint8
 	Opacity,
 	PivotX,
 	PivotY,
-
-	Custom UMETA(Hidden)
-};
-
-USTRUCT(BlueprintType)
-struct ELASTICUMG_API FWidgetTransitionHandle
-{
-	GENERATED_BODY()
-
-	FWidgetTransitionHandle()
-	{
-	}
-
-	explicit FWidgetTransitionHandle(const TSharedPtr<FWidgetTransitionHandleImpl>& PropertyImpl);
-
-	TSharedPtr<FWidgetTransitionHandleImpl> GetHandleImpl() const;
-
-	friend uint32 GetTypeHash(const FWidgetTransitionHandle& TransitionProperty)
-	{
-		return GetTypeHash(TransitionProperty.GetHandleImpl());
-	}
-
-	bool operator==(const FWidgetTransitionHandle& Other) const
-	{
-		return GetHandleImpl() == Other.GetHandleImpl();
-	}
-
-protected:
-	mutable TSharedPtr<FWidgetTransitionHandleImpl> TransitionHandleImpl = nullptr;
-};
-
-template<>
-struct TStructOpsTypeTraits<FWidgetTransitionHandle>
-	: public TStructOpsTypeTraitsBase2<FWidgetTransitionHandle>
-{
-	enum
-	{
-		WithIdenticalViaEquality = true
-	};
 };
 
 USTRUCT(BlueprintType)
@@ -87,6 +46,7 @@ struct ELASTICUMG_API FWidgetTransition
 		, bToVisibility(false)
 		, bRemoveFromParent(false)
 		, bSpring(false)
+		, bYoYo(false)
 		, bStartDispatched(false)
 	{
 	}
@@ -97,11 +57,19 @@ protected:
 
 	TWeakObjectPtr<UWidget> Widget = nullptr;
 	EWidgetProperty WidgetProperty = EWidgetProperty::TranslationX;
-	TWeakPtr<FWidgetTransitionHandleImpl> TransitionHandle = nullptr;
 	TSharedPtr<FSpringFloat> SpringFloat = nullptr;
+
+	// Делегаты привязываются через BindOnUpdate / BindOnComplete / BindOnStart
+	FOnWidgetTransitionUpdate OnUpdate;
+	FOnWidgetTransitionComplete OnComplete;
+	FOnWidgetTransitionStart OnStart;
 
 	float ToValue = 0.0f;
 	float FromValue = 0.0f;
+
+	// Исходные From/To — нужны для YoYo
+	float OriginalFromValue = 0.0f;
+	float OriginalToValue = 0.0f;
 
 	float Delay = 0.0f;
 	float Time = 0.0f;
@@ -110,6 +78,10 @@ protected:
 
 	float CurrentValue = 0.0f;
 	float CurrentTime = 0.0f;
+
+	// -1 = бесконечно, 0 = не повторять, N = повторить ещё N раз
+	int32 RepeatCount = 0;
+	int32 CurrentRepeatCount = 0;
 
 	ESlateVisibility FromVisibility = ESlateVisibility::SelfHitTestInvisible;
 	ESlateVisibility ToVisibility = ESlateVisibility::SelfHitTestInvisible;
@@ -121,6 +93,7 @@ protected:
 	uint8 bToVisibility : 1;
 	uint8 bRemoveFromParent : 1;
 	uint8 bSpring : 1;
+	uint8 bYoYo : 1;
 	uint8 bStartDispatched : 1;
 
 public:
@@ -129,6 +102,8 @@ public:
 	float GetWidgetPropertyValue() const;
 	float GetRemainingTime() const;
 	bool Equal(const FWidgetTransition& Trs) const;
+
+	FORCEINLINE float GetElapsedTime() const { return FMath::Max(CurrentTime - Delay, 0.0f); }
 };
 
 UCLASS()
@@ -137,20 +112,11 @@ class ELASTICUMG_API UWidgetTransitionFunctionLibrary : public UBlueprintFunctio
 	GENERATED_BODY()
 
 public:
-	UFUNCTION(BlueprintCallable, Category = "WidgetTransition", meta = (WorldContext = "WorldContextObject", AdvancedDisplay = "OnUpdate, OnComplete, OnStart"))
-	static FWidgetTransitionHandle AddWidgetTransition(const UObject* WorldContextObject, UWidget* UserWidget, FWidgetTransition Transition, FOnWidgetTransitionUpdate OnUpdate, FOnWidgetTransitionComplete OnComplete, FOnWidgetTransitionStart OnStart);
+	UFUNCTION(BlueprintCallable, Category = "WidgetTransition", meta = (WorldContext = "WorldContextObject"))
+	static void AddWidgetTransition(const UObject* WorldContextObject, UWidget* UserWidget, FWidgetTransition Transition);
 
-	UFUNCTION(BlueprintCallable, Category = "WidgetTransition", meta = (WorldContext = "WorldContextObject", AdvancedDisplay = "OnUpdate, OnComplete, OnStart"))
-	static TArray<FWidgetTransitionHandle> AddWidgetTransitionArray(const UObject* WorldContextObject, UWidget* UserWidget, const TArray<FWidgetTransition>& TransitionArray, FOnWidgetTransitionUpdate OnUpdate, FOnWidgetTransitionComplete OnComplete, FOnWidgetTransitionStart OnStart);
-
-	UFUNCTION(BlueprintCallable, Category = "WidgetTransition")
-	static void SetWidgetTransitionUpdateDelegate(FWidgetTransitionHandle Handle, FOnWidgetTransitionUpdate OnUpdate);
-
-	UFUNCTION(BlueprintCallable, Category = "WidgetTransition")
-	static void SetWidgetTransitionCompleteDelegate(FWidgetTransitionHandle Handle, FOnWidgetTransitionComplete OnComplete);
-
-	UFUNCTION(BlueprintCallable, Category = "WidgetTransition")
-	static void SetWidgetTransitionStartDelegate(FWidgetTransitionHandle Handle, FOnWidgetTransitionStart OnStart);
+	UFUNCTION(BlueprintCallable, Category = "WidgetTransition", meta = (WorldContext = "WorldContextObject"))
+	static void AddWidgetTransitionArray(const UObject* WorldContextObject, UWidget* UserWidget, const TArray<FWidgetTransition>& TransitionArray);
 
 	UFUNCTION(BlueprintCallable, Category = "WidgetTransition", meta = (WorldContext = "WorldContextObject"))
 	static void ClearAllWidgetTransitions(const UObject* WorldContextObject, UWidget* UserWidget);
@@ -179,11 +145,34 @@ public:
 	UFUNCTION(BlueprintPure, Category = "WidgetTransition", meta = (AdvancedDisplay = "bFromVisibility"))
 	static FWidgetTransition FromVisibility(const FWidgetTransition& Transition, const ESlateVisibility FromVisibility = ESlateVisibility::HitTestInvisible, const bool bFromVisibility = true);
 
-	UFUNCTION(BlueprintPure, Category="WidgetTransition", meta = (AdvancedDisplay = "SpringFactor, DampingFactor, MaxVelocity, CompleteTolerance, bElastic"))
+	UFUNCTION(BlueprintPure, Category = "WidgetTransition", meta = (AdvancedDisplay = "SpringFactor, DampingFactor, MaxVelocity, CompleteTolerance, bElastic"))
 	static FWidgetTransition Spring(const FWidgetTransition& Transition, float SpringFactor = 180.0f, const float DampingFactor = 16.0f, const float MaxVelocity = 1800.0f, float CompleteTolerance = 0.01f, bool bElastic = true);
 
-	UFUNCTION(BlueprintPure, meta=(DisplayName="Equal (WidgetTransitionHandle)", CompactNodeTitle="==", BlueprintThreadSafe), Category="WidgetTransition")
-	static bool EqualEqual_WidgetTransitionHandle(const FWidgetTransitionHandle& A, const FWidgetTransitionHandle& B);
+	/**
+	 * Повторяет анимацию указанное количество раз.
+	 * RepeatCount = -1 — бесконечно, RepeatCount = N — ещё N раз после первого проигрывания.
+	 */
+	UFUNCTION(BlueprintPure, Category = "WidgetTransition")
+	static FWidgetTransition Repeat(const FWidgetTransition& Transition, int32 RepeatCount = -1);
+
+	/**
+	 * YoYo — каждый нечётный повтор проигрывается в обратном направлении (пинг-понг).
+	 * Работает совместно с Repeat.
+	 */
+	UFUNCTION(BlueprintPure, Category = "WidgetTransition", meta = (AdvancedDisplay = "bYoYo"))
+	static FWidgetTransition YoYo(const FWidgetTransition& Transition, bool bYoYo = true);
+
+	/** Привязывает BlueprintPure функцию к событию обновления значения (Value, ElapsedTime). */
+	UFUNCTION(BlueprintPure, Category = "WidgetTransition")
+	static FWidgetTransition BindOnUpdate(const FWidgetTransition& Transition, FOnWidgetTransitionUpdate OnUpdate);
+
+	/** Привязывает BlueprintPure функцию к событию завершения анимации. */
+	UFUNCTION(BlueprintPure, Category = "WidgetTransition")
+	static FWidgetTransition BindOnComplete(const FWidgetTransition& Transition, FOnWidgetTransitionComplete OnComplete);
+
+	/** Привязывает BlueprintPure функцию к событию старта анимации. */
+	UFUNCTION(BlueprintPure, Category = "WidgetTransition")
+	static FWidgetTransition BindOnStart(const FWidgetTransition& Transition, FOnWidgetTransitionStart OnStart);
 };
 
 UCLASS()
@@ -202,23 +191,4 @@ public:
 protected:
 	friend UWidgetTransitionFunctionLibrary;
 	TSparseArray<FWidgetTransition> WidgetTransitions;
-};
-
-class ELASTICUMG_API FWidgetTransitionHandleImpl final
-{
-public:
-	void SetStartValueDelegate(const FOnWidgetTransitionStart& Delegate);
-	void SetChangeValueDelegate(const FOnWidgetTransitionUpdate& Delegate);
-	void SetCompleteValueDelegate(const FOnWidgetTransitionComplete& Delegate);
-
-	FOnWidgetTransitionStart OnValueStart;
-	FOnWidgetTransitionUpdate OnValueUpdate;
-	FOnWidgetTransitionComplete OnValueComplete;
-
-protected:
-	friend FWidgetTransition;
-
-	void DispatchUpdateValue(const float CurrentValue) const;
-	void DispatchCompleteValue(const float CurrentValue) const;
-	void DispatchStartValue(const float CurrentValue) const;
 };
