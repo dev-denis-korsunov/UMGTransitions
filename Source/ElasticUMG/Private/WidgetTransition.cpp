@@ -5,9 +5,30 @@
 
 #include "Blueprint/UserWidget.h"
 
+float FWidgetTransition::EvaluateTransitionValue() const
+{
+	if (bSpring && SpringFloat.IsValid())
+	{
+		return SpringFloat->GetValue();
+	}
+
+	if (Time <= 0.0f)
+	{
+		return ToValue;
+	}
+
+	const float Alpha = FMath::Clamp((CurrentTime - Delay) / Time, 0.0f, 1.0f);
+	if (InterpolationCurve.IsEmpty())
+	{
+		return FMath::Lerp(FromValue, ToValue, Alpha);
+	}
+
+	return FMath::Lerp(FromValue, ToValue, InterpolationCurve.Eval(Alpha));
+}
+
 void FWidgetTransition::SetWidgetPropertyValue(const float Value, const bool bLastFrame) const
 {
-	if (!Widget.IsValid())
+	if (!Widget.IsValid() || WidgetProperty == EWidgetProperty::Custom)
 	{
 		return;
 	}
@@ -97,28 +118,21 @@ void FWidgetTransition::SetWidgetPropertyValue(const float Value, const bool bLa
 
 	if (OnUpdate.IsBound())
 	{
-		OnUpdate.Execute(Value, GetElapsedTime());
+		FAnimationUpdateResult UpdateResult;
+		UpdateResult.Widget = Widget.Get();
+		UpdateResult.Value = Value;
+		UpdateResult.RelativeValue = GetElapsedTime();
+		OnUpdate.Execute(UpdateResult);
 	}
 
-	if (bLastFrame && OnComplete.IsBound())
-	{
-		OnComplete.Execute(Value);
-	}
-}
-
-void FWidgetTransition::DispatchStartEvent() const
-{
-	if (OnStart.IsBound())
-	{
-		OnStart.Execute(CurrentValue);
-	}
+	// No OnComplete delegate execution since we're removing it
 }
 
 float FWidgetTransition::GetWidgetPropertyValue() const
 {
 	float PropertyValue = 0.0f;
 
-	if (!Widget.IsValid())
+	if (!Widget.IsValid() || WidgetProperty == EWidgetProperty::Custom)
 	{
 		return PropertyValue;
 	}
@@ -139,6 +153,11 @@ float FWidgetTransition::GetWidgetPropertyValue() const
 	PropertyValue = WidgetProperty == EWidgetProperty::PivotY ? widgetPivot.Y : PropertyValue;
 
 	return PropertyValue;
+}
+
+bool FWidgetTransition::HasWidgetPropertyAccess() const
+{
+	return WidgetProperty != EWidgetProperty::Custom;
 }
 
 float FWidgetTransition::GetRemainingTime() const
@@ -176,18 +195,22 @@ void UWidgetTransitionFunctionLibrary::AddWidgetTransition(const UObject* WorldC
 
 	Transition.Widget = UserWidget;
 
-	// "custom from" value behavior
-	if (Transition.bFrom)
+	// Widget property access is skipped for custom transitions.
+	if (Transition.HasWidgetPropertyAccess())
 	{
-		const bool bSetPropertyAfterDelay = Transition.bChangeFromPropertyAfterDelay && Transition.Delay > 0.0f;
-		if (!bSetPropertyAfterDelay && !Transition.bPipe)
+		// "custom from" value behavior
+		if (Transition.bFrom)
 		{
-			Transition.SetWidgetPropertyValue(Transition.FromValue);
+			const bool bSetPropertyAfterDelay = Transition.bChangeFromPropertyAfterDelay && Transition.Delay > 0.0f;
+			if (!bSetPropertyAfterDelay && !Transition.bPipe)
+			{
+				Transition.SetWidgetPropertyValue(Transition.FromValue);
+			}
 		}
-	}
-	else
-	{
-		Transition.FromValue = Transition.GetWidgetPropertyValue();
+		else
+		{
+			Transition.FromValue = Transition.GetWidgetPropertyValue();
+		}
 	}
 
 	if (Transition.bPipe)
@@ -226,7 +249,7 @@ void UWidgetTransitionFunctionLibrary::AddWidgetTransition(const UObject* WorldC
 		}
 	}
 
-	if (Transition.Widget.IsValid() && Transition.bFromVisibility)
+	if (Transition.HasWidgetPropertyAccess() && Transition.Widget.IsValid() && Transition.bFromVisibility)
 	{
 		Transition.Widget->SetVisibility(Transition.FromVisibility);
 	}
@@ -390,19 +413,7 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::BindOnUpdate(const FWidgetTr
 	return NewTransition;
 }
 
-FWidgetTransition UWidgetTransitionFunctionLibrary::BindOnComplete(const FWidgetTransition& Transition, FOnWidgetTransitionComplete OnComplete)
-{
-	auto NewTransition = Transition;
-	NewTransition.OnComplete = OnComplete;
-	return NewTransition;
-}
 
-FWidgetTransition UWidgetTransitionFunctionLibrary::BindOnStart(const FWidgetTransition& Transition, FOnWidgetTransitionStart OnStart)
-{
-	auto NewTransition = Transition;
-	NewTransition.OnStart = OnStart;
-	return NewTransition;
-}
 
 ETickableTickType UWidgetTransitionSubsystem::GetTickableTickType() const
 {
@@ -433,12 +444,6 @@ void UWidgetTransitionSubsystem::Tick(float DeltaTime)
 			continue;
 		}
 
-		if (!It->bStartDispatched)
-		{
-			It->bStartDispatched = true;
-			It->DispatchStartEvent();
-		}
-
 		/**
 		 * This code handles the transition of a widget's property value either through a spring effect or linear/curve-based interpolation.
 		 *
@@ -453,26 +458,19 @@ void UWidgetTransitionSubsystem::Tick(float DeltaTime)
 		if (It->bSpring && It->SpringFloat.IsValid())
 		{
 			It->SpringFloat->Tick(DeltaTime);
-			It->CurrentValue = It->SpringFloat->GetValue();
-
+			It->CurrentValue = It->EvaluateTransitionValue();
 			bTransitionEnd = It->SpringFloat->IsCompleted();
 		}
 		else
 		{
-			const float Alpha = FMath::Clamp((It->CurrentTime - It->Delay) / It->Time, 0.0f, 1.0f);
-			bTransitionEnd = Alpha == 1.0f;
-
-			if (It->InterpolationCurve.IsEmpty())
-			{
-				It->CurrentValue = FMath::Lerp(It->FromValue, It->ToValue, Alpha);
-			}
-			else
-			{
-				It->CurrentValue = FMath::Lerp(It->FromValue, It->ToValue, It->InterpolationCurve.Eval(Alpha));
-			}
+			It->CurrentValue = It->EvaluateTransitionValue();
+			bTransitionEnd = It->Time <= 0.0f || It->CurrentTime >= (It->Delay + It->Time);
 		}
 
-		It->SetWidgetPropertyValue(It->CurrentValue, bTransitionEnd);
+		if (It->HasWidgetPropertyAccess())
+		{
+			It->SetWidgetPropertyValue(It->CurrentValue, bTransitionEnd);
+		}
 
 		if (bTransitionEnd)
 		{

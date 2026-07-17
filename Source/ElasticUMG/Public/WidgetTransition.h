@@ -43,6 +43,7 @@ DECLARE_DYNAMIC_DELEGATE_OneParam(FOnWidgetTransitionUpdate, FAnimationUpdateRes
 UENUM(BlueprintType)
 enum class EWidgetProperty : uint8
 {
+	Custom,
 	TranslationX,
 	TranslationY,
 	ScaleX,
@@ -70,7 +71,6 @@ struct ELASTICUMG_API FWidgetTransition
 		, bRemoveFromParent(false)
 		, bSpring(false)
 		, bYoYo(false)
-		, bFirstFrameDispatched(false)
 	{
 	}
 
@@ -115,13 +115,14 @@ protected:
 	uint8 bRemoveFromParent : 1;
 	uint8 bSpring : 1;
 	uint8 bYoYo : 1;
-	uint8 bFirstFrameDispatched : 1;
 
 public:
+	float EvaluateTransitionValue() const;
 	void SetWidgetPropertyValue(const float Value, const bool bLastFrame = false) const;
 	float GetWidgetPropertyValue() const;
 	float GetRemainingTime() const;
 	bool Equal(const FWidgetTransition& Trs) const;
+	bool HasWidgetPropertyAccess() const;
 
 	FORCEINLINE float GetElapsedTime() const { return FMath::Max(CurrentTime - Delay, 0.0f); }
 };
