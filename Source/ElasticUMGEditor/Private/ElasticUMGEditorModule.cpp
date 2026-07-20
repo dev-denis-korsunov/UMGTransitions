@@ -87,15 +87,20 @@ namespace ElasticUMGEditor
 	static UWidget* GetDesignerWidget(const UEdGraphPin* PropertyPathPin);
 	static UClass* GetWidgetClass(const UEdGraphPin* PropertyPathPin);
 
-	static bool IsBindableTypedProperty(const FProperty* Property)
+	static bool IsBindableProperty(const FProperty* Property, EWidgetTransitionValueType ValueType)
 	{
 		const FStructProperty* StructProperty = CastField<FStructProperty>(Property);
-		return IsBindableFloatProperty(Property)
-			|| Property->IsA<FBoolProperty>()
-			|| (StructProperty && (StructProperty->Struct == TBaseStructure<FVector2D>::Get() || StructProperty->Struct == TBaseStructure<FLinearColor>::Get()));
+		switch (ValueType)
+		{
+		case EWidgetTransitionValueType::Float: return IsBindableFloatProperty(Property);
+		case EWidgetTransitionValueType::Bool: return Property && Property->IsA<FBoolProperty>();
+		case EWidgetTransitionValueType::Vector2D: return StructProperty && StructProperty->Struct == TBaseStructure<FVector2D>::Get();
+		case EWidgetTransitionValueType::LinearColor: return StructProperty && StructProperty->Struct == TBaseStructure<FLinearColor>::Get();
+		default: return false;
+		}
 	}
 
-	static void AddFloatProperties(const UStruct* Struct, const FString& Prefix, int32 Depth, int32& InOutSortOrder, TArray<FWidgetPropertyPath>& OutPropertyPaths, bool bIncludeTypedProperties)
+	static void AddBindableProperties(const UStruct* Struct, const FString& Prefix, int32 Depth, int32& InOutSortOrder, TArray<FWidgetPropertyPath>& OutPropertyPaths, EWidgetTransitionValueType ValueType)
 	{
 		if (!Struct || Depth > 8)
 		{
@@ -106,18 +111,18 @@ namespace ElasticUMGEditor
 		{
 			const FProperty* Property = *It;
 			const FString PropertyPath = Prefix + Property->GetName();
-			if (IsBindableFloatProperty(Property) || (bIncludeTypedProperties && IsBindableTypedProperty(Property)))
+			if (IsBindableProperty(Property, ValueType))
 			{
 				OutPropertyPaths.Add(FWidgetPropertyPath{ PropertyPath, InOutSortOrder++ });
 			}
 			else if (const FStructProperty* StructProperty = CastField<FStructProperty>(Property))
 			{
-				AddFloatProperties(StructProperty->Struct, PropertyPath + TEXT("."), Depth + 1, InOutSortOrder, OutPropertyPaths, bIncludeTypedProperties);
+				AddBindableProperties(StructProperty->Struct, PropertyPath + TEXT("."), Depth + 1, InOutSortOrder, OutPropertyPaths, ValueType);
 			}
 		}
 	}
 
-	static void AddFloatProperties(UClass* Class, const FString& Prefix, TArray<FWidgetPropertyPath>& OutPropertyPaths, bool bIncludeTypedProperties)
+	static void AddBindableProperties(UClass* Class, const FString& Prefix, TArray<FWidgetPropertyPath>& OutPropertyPaths, EWidgetTransitionValueType ValueType)
 	{
 		TArray<UClass*> ClassHierarchy;
 		for (UClass* CurrentClass = Class; CurrentClass && CurrentClass != UObject::StaticClass(); CurrentClass = CurrentClass->GetSuperClass())
@@ -128,60 +133,8 @@ namespace ElasticUMGEditor
 		int32 SortOrder = 0;
 		for (UClass* CurrentClass : ClassHierarchy)
 		{
-			AddFloatProperties(CurrentClass, Prefix, 0, SortOrder, OutPropertyPaths, bIncludeTypedProperties);
+			AddBindableProperties(CurrentClass, Prefix, 0, SortOrder, OutPropertyPaths, ValueType);
 		}
-	}
-
-	static EWidgetTransitionValueType GetPropertyValueType(const UEdGraphPin* PropertyPathPin, const FString& PropertyPath)
-	{
-		const UWidget* DesignerWidget = GetDesignerWidget(PropertyPathPin);
-		const UStruct* CurrentStruct = GetWidgetClass(PropertyPathPin);
-		FString RelativePath = PropertyPath;
-		if (PropertyPath.StartsWith(TEXT("Slot.")))
-		{
-			CurrentStruct = DesignerWidget && DesignerWidget->Slot ? DesignerWidget->Slot->GetClass() : nullptr;
-			RelativePath = PropertyPath.RightChop(5);
-		}
-
-		TArray<FString> Segments;
-		RelativePath.ParseIntoArray(Segments, TEXT("."), true);
-		for (int32 Index = 0; CurrentStruct && Index < Segments.Num(); ++Index)
-		{
-			const FProperty* Property = FindFProperty<FProperty>(CurrentStruct, *Segments[Index]);
-			if (!Property)
-			{
-				break;
-			}
-
-			if (Index + 1 < Segments.Num())
-			{
-				const FStructProperty* StructProperty = CastField<FStructProperty>(Property);
-				CurrentStruct = StructProperty ? StructProperty->Struct : nullptr;
-				continue;
-			}
-
-			if (IsBindableFloatProperty(Property))
-			{
-				return EWidgetTransitionValueType::Float;
-			}
-			if (Property->IsA<FBoolProperty>())
-			{
-				return EWidgetTransitionValueType::Bool;
-			}
-			if (const FStructProperty* StructProperty = CastField<FStructProperty>(Property))
-			{
-				if (StructProperty->Struct == TBaseStructure<FVector2D>::Get())
-				{
-					return EWidgetTransitionValueType::Vector2D;
-				}
-				if (StructProperty->Struct == TBaseStructure<FLinearColor>::Get())
-				{
-					return EWidgetTransitionValueType::LinearColor;
-				}
-			}
-		}
-
-		return EWidgetTransitionValueType::Float;
 	}
 
 	static int32 GetPropertySortOrder(const FWidgetPropertyPath& Property)
@@ -269,12 +222,17 @@ namespace ElasticUMGEditor
 		{
 			Options.Reset();
 			TArray<FWidgetPropertyPath> PropertyPaths;
-			const bool bIncludeTypedProperties = IsTypedTransitionNode(GraphPinObj);
-			AddFloatProperties(ElasticUMGEditor::GetWidgetClass(GraphPinObj), FString(), PropertyPaths, bIncludeTypedProperties);
+			const UK2Node_WidgetTransition* TransitionNode = Cast<UK2Node_WidgetTransition>(GraphPinObj->GetOwningNode());
+			if (!TransitionNode)
+			{
+				return;
+			}
+			const EWidgetTransitionValueType ValueType = TransitionNode->GetValueType();
+			AddBindableProperties(ElasticUMGEditor::GetWidgetClass(GraphPinObj), FString(), PropertyPaths, ValueType);
 
 			if (UWidget* DesignerWidget = GetDesignerWidget(GraphPinObj); DesignerWidget && DesignerWidget->Slot)
 			{
-				AddFloatProperties(DesignerWidget->Slot->GetClass(), TEXT("Slot."), PropertyPaths, bIncludeTypedProperties);
+				AddBindableProperties(DesignerWidget->Slot->GetClass(), TEXT("Slot."), PropertyPaths, ValueType);
 			}
 
 			TMap<FString, FWidgetPropertyPickerGroup> GroupedPaths;
@@ -340,10 +298,6 @@ namespace ElasticUMGEditor
 			const FScopedTransaction Transaction(NSLOCTEXT("ElasticUMG", "SetWidgetPropertyPath", "Set Widget Property Path"));
 			GraphPinObj->Modify();
 			GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, Option->PropertyPath);
-			if (UK2Node_WidgetTransition* TransitionNode = Cast<UK2Node_WidgetTransition>(GraphPinObj->GetOwningNode()))
-			{
-				TransitionNode->SetValueType(GetPropertyValueType(GraphPinObj, Option->PropertyPath));
-			}
 		}
 
 		FText GetCurrentValue() const
@@ -451,11 +405,7 @@ namespace ElasticUMGEditor
 			const bool bIsTypedTransitionNode = IsTypedTransitionNode(Pin);
 			const UK2Node_CallFunction* CallNode = Pin ? Cast<UK2Node_CallFunction>(Pin->GetOwningNode()) : nullptr;
 			const UFunction* Function = CallNode ? CallNode->GetTargetFunction() : nullptr;
-			const bool bIsWidgetPropertyBinding = Function
-				&& Function->GetOuterUClass() == UWidgetTransitionFunctionLibrary::StaticClass()
-				&& Function->GetFName() == GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, BindWidgetProperty);
-
-			if ((bIsWidgetPropertyBinding || bIsTypedTransitionNode) && Pin->PinName == TEXT("WidgetProperty"))
+			if (bIsTypedTransitionNode && Pin->PinName == TEXT("WidgetProperty"))
 			{
 				return SNew(SWidgetPropertyPathGraphPin, Pin);
 			}
