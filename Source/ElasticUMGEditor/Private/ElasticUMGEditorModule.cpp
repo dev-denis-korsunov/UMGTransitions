@@ -451,11 +451,11 @@ namespace ElasticUMGEditor
 			const bool bIsTypedTransitionNode = IsTypedTransitionNode(Pin);
 			const UK2Node_CallFunction* CallNode = Pin ? Cast<UK2Node_CallFunction>(Pin->GetOwningNode()) : nullptr;
 			const UFunction* Function = CallNode ? CallNode->GetTargetFunction() : nullptr;
-			const bool bIsCreateWidgetTransition = Function
+			const bool bIsWidgetPropertyBinding = Function
 				&& Function->GetOuterUClass() == UWidgetTransitionFunctionLibrary::StaticClass()
-				&& Function->GetFName() == GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateWidgetTransition);
+				&& Function->GetFName() == GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, BindWidgetProperty);
 
-			if ((bIsCreateWidgetTransition || bIsTypedTransitionNode) && Pin->PinName == TEXT("WidgetProperty"))
+			if ((bIsWidgetPropertyBinding || bIsTypedTransitionNode) && Pin->PinName == TEXT("WidgetProperty"))
 			{
 				return SNew(SWidgetPropertyPathGraphPin, Pin);
 			}

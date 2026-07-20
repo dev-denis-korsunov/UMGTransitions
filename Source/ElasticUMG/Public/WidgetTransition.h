@@ -183,7 +183,10 @@ public:
 	static void ClearAllWidgetTransitions(const UObject* WorldContextObject, UWidget* UserWidget);
 
 	UFUNCTION(BlueprintPure, Category = "WidgetTransition", meta = (AdvancedDisplay = "Delay, Interpolation"))
-	static FWidgetTransition CreateWidgetTransition(UWidget* Widget, const FString& WidgetProperty, float TargetValue = 0.0f, float Time = 0.0f, float Delay = 0.0f, UCurveFloat* Interpolation = nullptr);
+	static FWidgetTransition CreateWidgetTransition(float TargetValue = 0.0f, float Time = 0.0f, float Delay = 0.0f, UCurveFloat* Interpolation = nullptr);
+
+	UFUNCTION(BlueprintPure, Category = "WidgetTransition")
+	static FWidgetTransition BindWidgetProperty(const FWidgetTransition& Transition, UWidget* Widget, const FString& WidgetProperty);
 
 	UFUNCTION(BlueprintCallable, Category = "WidgetTransition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true"))
 	static void StartTypedWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, const FWidgetTransitionValue& TargetValue, float Time = 0.0f, float Delay = 0.0f);

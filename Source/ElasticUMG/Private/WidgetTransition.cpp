@@ -410,12 +410,10 @@ void UWidgetTransitionFunctionLibrary::ClearAllWidgetTransitions(const UObject* 
 	}
 }
 
-FWidgetTransition UWidgetTransitionFunctionLibrary::CreateWidgetTransition(UWidget* Widget, const FString& WidgetProperty, float TargetValue, float Time, float Delay, UCurveFloat* Interpolation)
+FWidgetTransition UWidgetTransitionFunctionLibrary::CreateWidgetTransition(float TargetValue, float Time, float Delay, UCurveFloat* Interpolation)
 {
 	FWidgetTransition newTransition;
 
-	newTransition.Widget = Widget;
-	newTransition.WidgetProperty = WidgetProperty;
 	newTransition.ToValue = TargetValue;
 	newTransition.Time = Time;
 	newTransition.Delay = Delay;
@@ -424,9 +422,18 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::CreateWidgetTransition(UWidg
 	return newTransition;
 }
 
+FWidgetTransition UWidgetTransitionFunctionLibrary::BindWidgetProperty(const FWidgetTransition& Transition, UWidget* Widget, const FString& WidgetProperty)
+{
+	FWidgetTransition NewTransition = Transition;
+	NewTransition.Widget = Widget;
+	NewTransition.WidgetProperty = WidgetProperty;
+	NewTransition.PropertyBinding.Invalidate();
+	return NewTransition;
+}
+
 void UWidgetTransitionFunctionLibrary::StartTypedWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, const FWidgetTransitionValue& TargetValue, float Time, float Delay)
 {
-	FWidgetTransition Transition = CreateWidgetTransition(Widget, WidgetProperty, 0.0f, Time, Delay);
+	FWidgetTransition Transition = BindWidgetProperty(CreateWidgetTransition(0.0f, Time, Delay), Widget, WidgetProperty);
 	Transition.bUsesTypedValue = true;
 	Transition.TypedToValue = TargetValue;
 	AddWidgetTransition(WorldContextObject, Transition);
