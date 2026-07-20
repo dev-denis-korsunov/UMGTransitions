@@ -21,36 +21,76 @@ namespace ElasticUMGEditor
 		bool bIsHeader = false;
 	};
 
+	struct FWidgetPropertyPath
+	{
+		FString Path;
+		int32 SortOrder = 0;
+	};
+
+	struct FWidgetPropertyPickerGroup
+	{
+		int32 SortOrder = MAX_int32;
+		TArray<FWidgetPropertyPath> Properties;
+	};
+
 	static bool IsBindableFloatProperty(const FProperty* Property)
 	{
 		return Property && (Property->IsA<FFloatProperty>() || Property->IsA<FDoubleProperty>());
 	}
 
-	static void AddFloatProperties(const UStruct* Struct, const FString& Prefix, int32 Depth, TArray<FString>& OutPropertyPaths)
+	static void AddFloatProperties(const UStruct* Struct, const FString& Prefix, int32 Depth, int32& InOutSortOrder, TArray<FWidgetPropertyPath>& OutPropertyPaths)
 	{
 		if (!Struct || Depth > 8)
 		{
 			return;
 		}
 
-		for (TFieldIterator<FProperty> It(Struct, EFieldIterationFlags::IncludeSuper); It; ++It)
+		for (TFieldIterator<FProperty> It(Struct, EFieldIterationFlags::None); It; ++It)
 		{
 			const FProperty* Property = *It;
 			const FString PropertyPath = Prefix + Property->GetName();
 			if (IsBindableFloatProperty(Property))
 			{
-				OutPropertyPaths.Add(PropertyPath);
+				OutPropertyPaths.Add(FWidgetPropertyPath{ PropertyPath, InOutSortOrder++ });
 			}
 			else if (const FStructProperty* StructProperty = CastField<FStructProperty>(Property))
 			{
-				AddFloatProperties(StructProperty->Struct, PropertyPath + TEXT("."), Depth + 1, OutPropertyPaths);
+				AddFloatProperties(StructProperty->Struct, PropertyPath + TEXT("."), Depth + 1, InOutSortOrder, OutPropertyPaths);
 			}
 		}
 	}
 
-	static void AddFloatProperties(UClass* Class, const FString& Prefix, TArray<FString>& OutPropertyPaths)
+	static void AddFloatProperties(UClass* Class, const FString& Prefix, TArray<FWidgetPropertyPath>& OutPropertyPaths)
 	{
-		AddFloatProperties(Class, Prefix, 0, OutPropertyPaths);
+		TArray<UClass*> ClassHierarchy;
+		for (UClass* CurrentClass = Class; CurrentClass && CurrentClass != UObject::StaticClass(); CurrentClass = CurrentClass->GetSuperClass())
+		{
+			ClassHierarchy.Insert(CurrentClass, 0);
+		}
+
+		int32 SortOrder = 0;
+		for (UClass* CurrentClass : ClassHierarchy)
+		{
+			AddFloatProperties(CurrentClass, Prefix, 0, SortOrder, OutPropertyPaths);
+		}
+	}
+
+	static int32 GetPropertySortOrder(const FWidgetPropertyPath& Property)
+	{
+		if (Property.Path.StartsWith(TEXT("RenderTransform.")))
+		{
+			return 0;
+		}
+		if (Property.Path == TEXT("RenderOpacity"))
+		{
+			return 1;
+		}
+		if (Property.Path.StartsWith(TEXT("RenderTransformPivot.")))
+		{
+			return 2;
+		}
+
+		return 100 + Property.SortOrder;
 	}
 
 	static UEdGraphPin* GetWidgetSourcePin(const UEdGraphPin* PropertyPathPin)
@@ -119,7 +159,7 @@ namespace ElasticUMGEditor
 		void RefreshOptions()
 		{
 			Options.Reset();
-			TArray<FString> PropertyPaths;
+			TArray<FWidgetPropertyPath> PropertyPaths;
 			AddFloatProperties(ElasticUMGEditor::GetWidgetClass(GraphPinObj), FString(), PropertyPaths);
 
 			if (UWidget* DesignerWidget = GetDesignerWidget(GraphPinObj); DesignerWidget && DesignerWidget->Slot)
@@ -127,12 +167,12 @@ namespace ElasticUMGEditor
 				AddFloatProperties(DesignerWidget->Slot->GetClass(), TEXT("Slot."), PropertyPaths);
 			}
 
-			TMap<FString, TArray<FString>> GroupedPaths;
-			for (const FString& PropertyPath : PropertyPaths)
+			TMap<FString, FWidgetPropertyPickerGroup> GroupedPaths;
+			for (const FWidgetPropertyPath& Property : PropertyPaths)
 			{
 				FString Group;
-				FString PropertyLabel = PropertyPath;
-				if (PropertyPath.Split(TEXT("."), &Group, &PropertyLabel))
+				FString PropertyLabel = Property.Path;
+				if (Property.Path.Split(TEXT("."), &Group, &PropertyLabel))
 				{
 					// Keep the path relative to the group in the picker, but store the full path.
 				}
@@ -141,22 +181,33 @@ namespace ElasticUMGEditor
 					Group = TEXT("Widget");
 				}
 
-				GroupedPaths.FindOrAdd(Group).Add(PropertyPath);
+				FWidgetPropertyPickerGroup& GroupedProperties = GroupedPaths.FindOrAdd(Group);
+				const int32 SortOrder = GetPropertySortOrder(Property);
+				GroupedProperties.SortOrder = FMath::Min(GroupedProperties.SortOrder, SortOrder);
+				GroupedProperties.Properties.Add(FWidgetPropertyPath{ Property.Path, SortOrder });
 			}
 
 			TArray<FString> GroupNames;
 			GroupedPaths.GetKeys(GroupNames);
-			GroupNames.Sort();
+			GroupNames.Sort([&GroupedPaths](const FString& Left, const FString& Right)
+			{
+				const int32 LeftOrder = GroupedPaths.FindChecked(Left).SortOrder;
+				const int32 RightOrder = GroupedPaths.FindChecked(Right).SortOrder;
+				return LeftOrder == RightOrder ? Left < Right : LeftOrder < RightOrder;
+			});
 			for (const FString& Group : GroupNames)
 			{
 				const FString GroupLabel = FName::NameToDisplayString(Group, false);
 				Options.Add(MakeShared<FWidgetPropertyPickerOption>(FWidgetPropertyPickerOption{ GroupLabel, FString(), true }));
-				TArray<FString>& GroupPaths = GroupedPaths.FindChecked(Group);
-				GroupPaths.Sort();
-				for (const FString& PropertyPath : GroupPaths)
+				TArray<FWidgetPropertyPath>& GroupPaths = GroupedPaths.FindChecked(Group).Properties;
+				GroupPaths.Sort([](const FWidgetPropertyPath& Left, const FWidgetPropertyPath& Right)
 				{
-					const FString PropertyLabel = PropertyPath.RightChop(Group == TEXT("Widget") ? 0 : Group.Len() + 1);
-					Options.Add(MakeShared<FWidgetPropertyPickerOption>(FWidgetPropertyPickerOption{ PropertyLabel, PropertyPath, false }));
+					return Left.SortOrder == Right.SortOrder ? Left.Path < Right.Path : Left.SortOrder < Right.SortOrder;
+				});
+				for (const FWidgetPropertyPath& Property : GroupPaths)
+				{
+					const FString PropertyLabel = Property.Path.RightChop(Group == TEXT("Widget") ? 0 : Group.Len() + 1);
+					Options.Add(MakeShared<FWidgetPropertyPickerOption>(FWidgetPropertyPickerOption{ PropertyLabel, Property.Path, false }));
 				}
 			}
 		}
@@ -197,11 +248,11 @@ namespace ElasticUMGEditor
 		{
 			const UK2Node_CallFunction* CallNode = Pin ? Cast<UK2Node_CallFunction>(Pin->GetOwningNode()) : nullptr;
 			const UFunction* Function = CallNode ? CallNode->GetTargetFunction() : nullptr;
-			const bool bIsWidgetPropertyBinding = Function
+			const bool bIsCreateWidgetTransition = Function
 				&& Function->GetOuterUClass() == UWidgetTransitionFunctionLibrary::StaticClass()
-				&& Function->GetFName() == GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, BindWidgetProperty);
+				&& Function->GetFName() == GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateWidgetTransition);
 
-			if (bIsWidgetPropertyBinding && Pin->PinName == TEXT("InPropertyPath"))
+			if (bIsCreateWidgetTransition && Pin->PinName == TEXT("WidgetProperty"))
 			{
 				return SNew(SWidgetPropertyPathGraphPin, Pin);
 			}

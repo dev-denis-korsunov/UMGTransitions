@@ -12,45 +12,17 @@ class UWidgetTransitionSubsystem;
 class UWidgetTransitionFunctionLibrary;
 class UWidget;
 
-USTRUCT(BlueprintType)
-struct ELASTICUMG_API FWidgetPropertyBindingSpec
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widget Transition Binding")
-	FString PropertyPath;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widget Transition Binding")
-	bool bAllowSlotBinding = true;
-};
-
-USTRUCT(BlueprintType)
-struct ELASTICUMG_API FWidgetBindablePropertyInfo
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Widget Transition Binding")
-	FName PropertyName;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Widget Transition Binding")
-	FString PropertyPath;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Widget Transition Binding")
-	bool bIsSlotProperty = false;
-};
-
 USTRUCT()
 struct ELASTICUMG_API FResolvedWidgetPropertyBinding
 {
 	GENERATED_BODY()
 
 	TWeakObjectPtr<UWidget> Widget;
-	FWidgetPropertyBindingSpec Spec;
 	FDynamicPropertyPath CachedPropertyPath;
 	bool bResolved = false;
 	bool bUsesDouble = false;
 
-	bool Resolve(UWidget* InWidget, const FWidgetPropertyBindingSpec& InSpec);
+	bool Resolve(UWidget* InWidget, const FString& InPropertyPath);
 	void Invalidate();
 	bool ApplyFloat(float Value) const;
 	bool ReadFloat(float& OutValue) const;
@@ -85,23 +57,6 @@ struct ELASTICUMG_API FAnimationUpdateResult
 
 DECLARE_DYNAMIC_DELEGATE_OneParam(FOnWidgetTransitionUpdate, FAnimationUpdateResult, UpdateResult);
 
-UENUM(BlueprintType)
-enum class EWidgetProperty : uint8
-{
-	Custom,
-	TranslationX,
-	TranslationY,
-	ScaleX,
-	ScaleY,
-	BothSquareScale,
-	ShearX,
-	ShearY,
-	Angle,
-	Opacity,
-	PivotX,
-	PivotY,
-};
-
 USTRUCT(BlueprintType)
 struct ELASTICUMG_API FWidgetTransition
 {
@@ -124,9 +79,8 @@ protected:
 	friend UWidgetTransitionSubsystem;
 
 	TWeakObjectPtr<UWidget> Widget = nullptr;
-	EWidgetProperty WidgetProperty = EWidgetProperty::TranslationX;
 	TSharedPtr<FSpringFloat> SpringFloat = nullptr;
-	FWidgetPropertyBindingSpec PropertyBindingSpec;
+	FString WidgetProperty;
 	FResolvedWidgetPropertyBinding PropertyBinding;
 
 	// Делегат привязывается через BindOnUpdate
@@ -181,16 +135,16 @@ class ELASTICUMG_API UWidgetTransitionFunctionLibrary : public UBlueprintFunctio
 
 public:
 	UFUNCTION(BlueprintCallable, Category = "WidgetTransition", meta = (WorldContext = "WorldContextObject"))
-	static void AddWidgetTransition(const UObject* WorldContextObject, UWidget* UserWidget, FWidgetTransition Transition);
+	static void AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition);
 
 	UFUNCTION(BlueprintCallable, Category = "WidgetTransition", meta = (WorldContext = "WorldContextObject"))
-	static void AddWidgetTransitionArray(const UObject* WorldContextObject, UWidget* UserWidget, const TArray<FWidgetTransition>& TransitionArray);
+	static void AddWidgetTransitionArray(const UObject* WorldContextObject, const TArray<FWidgetTransition>& TransitionArray);
 
 	UFUNCTION(BlueprintCallable, Category = "WidgetTransition", meta = (WorldContext = "WorldContextObject"))
 	static void ClearAllWidgetTransitions(const UObject* WorldContextObject, UWidget* UserWidget);
 
 	UFUNCTION(BlueprintPure, Category = "WidgetTransition", meta = (AdvancedDisplay = "Delay, Interpolation"))
-	static FWidgetTransition CreateWidgetTransition(EWidgetProperty WidgetProperty = EWidgetProperty::TranslationX, float TargetValue = 0.0f, float Time = 0.0f, float Delay = 0.0f, UCurveFloat* Interpolation = nullptr);
+	static FWidgetTransition CreateWidgetTransition(UWidget* Widget, const FString& WidgetProperty, float TargetValue = 0.0f, float Time = 0.0f, float Delay = 0.0f, UCurveFloat* Interpolation = nullptr);
 
 	UFUNCTION(BlueprintPure, Category = "WidgetTransition", meta = (AdvancedDisplay = "bFrom, bChangePropertyAfterDelay"))
 	static FWidgetTransition From(const FWidgetTransition& Transition, bool bFrom = true, float FromValue = 0.0f, bool bChangePropertyAfterDelay = false);
@@ -234,19 +188,6 @@ public:
 	UFUNCTION(BlueprintPure, Category = "WidgetTransition")
 	static FWidgetTransition BindOnUpdate(const FWidgetTransition& Transition, FOnWidgetTransitionUpdate OnUpdate);
 
-	/** Тестовый режим: анимирует float-свойство по строковому пути через reflection. */
-	UFUNCTION(BlueprintPure, Category = "WidgetTransition")
-	static FWidgetTransition BindPropertyPath(const FWidgetTransition& Transition, const FString& InPropertyPath);
-
-	/**
-	 * Привязывает float-свойство виджета. В Blueprint graph параметр пути получает picker
-	 * на основании типа подключенного Widget; для прямой designer-переменной также видны Slot-свойства.
-	 */
-	UFUNCTION(BlueprintPure, Category = "WidgetTransition")
-	static FWidgetTransition BindWidgetProperty(const FWidgetTransition& Transition, UWidget* Widget, const FString& InPropertyPath);
-
-	UFUNCTION(BlueprintPure, Category = "WidgetTransition")
-	static TArray<FWidgetBindablePropertyInfo> GetBindableWidgetProperties(UWidget* Widget);
 };
 
 UCLASS()
