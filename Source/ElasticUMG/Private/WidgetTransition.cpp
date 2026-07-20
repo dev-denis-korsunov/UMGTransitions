@@ -7,7 +7,7 @@
 
 #include "Blueprint/UserWidget.h"
 
-bool FResolvedWidgetPropertyBinding::Resolve(UWidget* InWidget, const FString& InPropertyPath)
+bool FWidgetTransitionPropertyBinding::Resolve(UWidget* InWidget, const FString& InPropertyPath)
 {
 	Widget = InWidget;
 	CachedPropertyPath = FDynamicPropertyPath(InPropertyPath);
@@ -18,8 +18,28 @@ bool FResolvedWidgetPropertyBinding::Resolve(UWidget* InWidget, const FString& I
 	if (bResolved && CachedPropertyPath.Resolve(Widget.Get()))
 	{
 		const FProperty* LeafProperty = CastField<FProperty>(CachedPropertyPath.GetLastSegment().GetField().ToField());
+		const FStructProperty* StructProperty = CastField<FStructProperty>(LeafProperty);
 		bUsesDouble = LeafProperty && LeafProperty->IsA<FDoubleProperty>();
-		bResolved = LeafProperty && (LeafProperty->IsA<FFloatProperty>() || bUsesDouble);
+		if (LeafProperty && (LeafProperty->IsA<FFloatProperty>() || bUsesDouble))
+		{
+			ValueType = EWidgetTransitionValueType::Float;
+		}
+		else if (StructProperty && StructProperty->Struct == TBaseStructure<FVector2D>::Get())
+		{
+			ValueType = EWidgetTransitionValueType::Vector2D;
+		}
+		else if (StructProperty && StructProperty->Struct == TBaseStructure<FLinearColor>::Get())
+		{
+			ValueType = EWidgetTransitionValueType::LinearColor;
+		}
+		else if (LeafProperty && LeafProperty->IsA<FBoolProperty>())
+		{
+			ValueType = EWidgetTransitionValueType::Bool;
+		}
+		else
+		{
+			bResolved = false;
+		}
 	}
 	else
 	{
@@ -28,15 +48,16 @@ bool FResolvedWidgetPropertyBinding::Resolve(UWidget* InWidget, const FString& I
 	return bResolved;
 }
 
-void FResolvedWidgetPropertyBinding::Invalidate()
+void FWidgetTransitionPropertyBinding::Invalidate()
 {
 	Widget.Reset();
 	CachedPropertyPath = FDynamicPropertyPath();
 	bResolved = false;
 	bUsesDouble = false;
+	ValueType = EWidgetTransitionValueType::Float;
 }
 
-bool FResolvedWidgetPropertyBinding::ApplyFloat(float Value) const
+bool FWidgetTransitionPropertyBinding::ApplyFloat(float Value) const
 {
 	if (!bResolved || !Widget.IsValid() || !CachedPropertyPath.IsValid())
 	{
@@ -48,7 +69,7 @@ bool FResolvedWidgetPropertyBinding::ApplyFloat(float Value) const
 		: PropertyPathHelpers::SetPropertyValue(Widget.Get(), CachedPropertyPath, Value);
 }
 
-bool FResolvedWidgetPropertyBinding::ReadFloat(float& OutValue) const
+bool FWidgetTransitionPropertyBinding::ReadFloat(float& OutValue) const
 {
 	if (!bResolved || !Widget.IsValid() || !CachedPropertyPath.IsValid())
 	{
@@ -68,6 +89,41 @@ bool FResolvedWidgetPropertyBinding::ReadFloat(float& OutValue) const
 	}
 
 	return PropertyPathHelpers::GetPropertyValue(Widget.Get(), CachedPropertyPath, OutValue);
+}
+
+bool FWidgetTransitionPropertyBinding::ApplyValue(const FWidgetTransitionValue& Value) const
+{
+	if (!bResolved || !Widget.IsValid() || Value.Type != ValueType)
+	{
+		return false;
+	}
+
+	switch (ValueType)
+	{
+	case EWidgetTransitionValueType::Float: return ApplyFloat(Value.FloatValue);
+	case EWidgetTransitionValueType::Vector2D: return PropertyPathHelpers::SetPropertyValue(Widget.Get(), CachedPropertyPath, Value.Vector2DValue);
+	case EWidgetTransitionValueType::LinearColor: return PropertyPathHelpers::SetPropertyValue(Widget.Get(), CachedPropertyPath, Value.LinearColorValue);
+	case EWidgetTransitionValueType::Bool: return PropertyPathHelpers::SetPropertyValue(Widget.Get(), CachedPropertyPath, Value.BoolValue);
+	default: return false;
+	}
+}
+
+bool FWidgetTransitionPropertyBinding::ReadValue(FWidgetTransitionValue& OutValue) const
+{
+	if (!bResolved || !Widget.IsValid())
+	{
+		return false;
+	}
+
+	OutValue.Type = ValueType;
+	switch (ValueType)
+	{
+	case EWidgetTransitionValueType::Float: return ReadFloat(OutValue.FloatValue);
+	case EWidgetTransitionValueType::Vector2D: return PropertyPathHelpers::GetPropertyValue(Widget.Get(), CachedPropertyPath, OutValue.Vector2DValue);
+	case EWidgetTransitionValueType::LinearColor: return PropertyPathHelpers::GetPropertyValue(Widget.Get(), CachedPropertyPath, OutValue.LinearColorValue);
+	case EWidgetTransitionValueType::Bool: return PropertyPathHelpers::GetPropertyValue(Widget.Get(), CachedPropertyPath, OutValue.BoolValue);
+	default: return false;
+	}
 }
 
 float FWidgetTransition::EvaluateTransitionValue() const
@@ -144,6 +200,60 @@ float FWidgetTransition::GetWidgetPropertyValue() const
 	return PropertyValue;
 }
 
+FWidgetTransitionValue FWidgetTransition::EvaluateTypedTransitionValue(bool bTransitionEnd) const
+{
+	FWidgetTransitionValue Result = TypedToValue;
+	if (TypedToValue.Type == EWidgetTransitionValueType::Bool)
+	{
+		Result.BoolValue = bTransitionEnd ? TypedToValue.BoolValue : TypedFromValue.BoolValue;
+		return Result;
+	}
+
+	const float Alpha = Time <= 0.0f ? 1.0f : FMath::Clamp((CurrentTime - Delay) / Time, 0.0f, 1.0f);
+	const float InterpolatedAlpha = InterpolationCurve.IsEmpty() ? Alpha : InterpolationCurve.Eval(Alpha);
+	switch (TypedToValue.Type)
+	{
+	case EWidgetTransitionValueType::Float:
+		Result.FloatValue = FMath::Lerp(TypedFromValue.FloatValue, TypedToValue.FloatValue, InterpolatedAlpha);
+		break;
+	case EWidgetTransitionValueType::Vector2D:
+		Result.Vector2DValue = FMath::Lerp(TypedFromValue.Vector2DValue, TypedToValue.Vector2DValue, InterpolatedAlpha);
+		break;
+	case EWidgetTransitionValueType::LinearColor:
+		Result.LinearColorValue = FMath::Lerp(TypedFromValue.LinearColorValue, TypedToValue.LinearColorValue, InterpolatedAlpha);
+		break;
+	default:
+		break;
+	}
+	return Result;
+}
+
+void FWidgetTransition::SetWidgetPropertyValue(const FWidgetTransitionValue& Value, bool bLastFrame) const
+{
+	if (!Widget.IsValid())
+	{
+		return;
+	}
+
+	if (PropertyBinding.bResolved && bLastFrame && bToVisibility)
+	{
+		Widget->SetVisibility(ToVisibility);
+	}
+	if (PropertyBinding.bResolved && bLastFrame && bRemoveFromParent)
+	{
+		Widget->RemoveFromParent();
+	}
+	if (PropertyBinding.bResolved)
+	{
+		PropertyBinding.ApplyValue(Value);
+	}
+}
+
+bool FWidgetTransition::GetWidgetPropertyValue(FWidgetTransitionValue& OutValue) const
+{
+	return PropertyBinding.ReadValue(OutValue);
+}
+
 bool FWidgetTransition::HasWidgetPropertyAccess() const
 {
 	return PropertyBinding.bResolved;
@@ -193,8 +303,12 @@ void UWidgetTransitionFunctionLibrary::AddWidgetTransition(const UObject* WorldC
 	// An empty WidgetProperty keeps the transition in custom delegate mode.
 	if (Transition.HasWidgetPropertyAccess())
 	{
+		if (Transition.bUsesTypedValue)
+		{
+			Transition.GetWidgetPropertyValue(Transition.TypedFromValue);
+		}
 		// "custom from" value behavior
-		if (Transition.bFrom)
+		else if (Transition.bFrom)
 		{
 			const bool bSetPropertyAfterDelay = Transition.bChangeFromPropertyAfterDelay && Transition.Delay > 0.0f;
 			if (!bSetPropertyAfterDelay && !Transition.bPipe)
@@ -308,6 +422,46 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::CreateWidgetTransition(UWidg
 	newTransition.InterpolationCurve = IsValid(Interpolation) ? Interpolation->FloatCurve : FRichCurve();
 
 	return newTransition;
+}
+
+void UWidgetTransitionFunctionLibrary::StartTypedWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, const FWidgetTransitionValue& TargetValue, float Time, float Delay)
+{
+	FWidgetTransition Transition = CreateWidgetTransition(Widget, WidgetProperty, 0.0f, Time, Delay);
+	Transition.bUsesTypedValue = true;
+	Transition.TypedToValue = TargetValue;
+	AddWidgetTransition(WorldContextObject, Transition);
+}
+
+void UWidgetTransitionFunctionLibrary::StartFloatWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, float TargetValue, float Time, float Delay)
+{
+	FWidgetTransitionValue Value;
+	Value.Type = EWidgetTransitionValueType::Float;
+	Value.FloatValue = TargetValue;
+	StartTypedWidgetTransition(WorldContextObject, Widget, WidgetProperty, Value, Time, Delay);
+}
+
+void UWidgetTransitionFunctionLibrary::StartVector2DWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, FVector2D TargetValue, float Time, float Delay)
+{
+	FWidgetTransitionValue Value;
+	Value.Type = EWidgetTransitionValueType::Vector2D;
+	Value.Vector2DValue = TargetValue;
+	StartTypedWidgetTransition(WorldContextObject, Widget, WidgetProperty, Value, Time, Delay);
+}
+
+void UWidgetTransitionFunctionLibrary::StartLinearColorWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, FLinearColor TargetValue, float Time, float Delay)
+{
+	FWidgetTransitionValue Value;
+	Value.Type = EWidgetTransitionValueType::LinearColor;
+	Value.LinearColorValue = TargetValue;
+	StartTypedWidgetTransition(WorldContextObject, Widget, WidgetProperty, Value, Time, Delay);
+}
+
+void UWidgetTransitionFunctionLibrary::StartBoolWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, bool TargetValue, float Time, float Delay)
+{
+	FWidgetTransitionValue Value;
+	Value.Type = EWidgetTransitionValueType::Bool;
+	Value.BoolValue = TargetValue;
+	StartTypedWidgetTransition(WorldContextObject, Widget, WidgetProperty, Value, Time, Delay);
 }
 
 FWidgetTransition UWidgetTransitionFunctionLibrary::From(const FWidgetTransition& Transition, bool bFrom, float FromValue, bool bChangePropertyAfterDelay)
@@ -461,7 +615,14 @@ void UWidgetTransitionSubsystem::Tick(float DeltaTime)
 			bTransitionEnd = It->Time <= 0.0f || It->CurrentTime >= (It->Delay + It->Time);
 		}
 
-		It->SetWidgetPropertyValue(It->CurrentValue, bTransitionEnd);
+		if (It->bUsesTypedValue)
+		{
+			It->SetWidgetPropertyValue(It->EvaluateTypedTransitionValue(bTransitionEnd), bTransitionEnd);
+		}
+		else
+		{
+			It->SetWidgetPropertyValue(It->CurrentValue, bTransitionEnd);
+		}
 
 		if (bTransitionEnd)
 		{

@@ -12,8 +12,38 @@ class UWidgetTransitionSubsystem;
 class UWidgetTransitionFunctionLibrary;
 class UWidget;
 
+UENUM(BlueprintType)
+enum class EWidgetTransitionValueType : uint8
+{
+	Float,
+	Vector2D,
+	LinearColor,
+	Bool,
+};
+
+USTRUCT(BlueprintType)
+struct ELASTICUMG_API FWidgetTransitionValue
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widget Transition")
+	EWidgetTransitionValueType Type = EWidgetTransitionValueType::Float;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widget Transition")
+	float FloatValue = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widget Transition")
+	FVector2D Vector2DValue = FVector2D::ZeroVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widget Transition")
+	FLinearColor LinearColorValue = FLinearColor::White;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widget Transition")
+	bool BoolValue = false;
+};
+
 USTRUCT()
-struct ELASTICUMG_API FResolvedWidgetPropertyBinding
+struct ELASTICUMG_API FWidgetTransitionPropertyBinding
 {
 	GENERATED_BODY()
 
@@ -21,11 +51,14 @@ struct ELASTICUMG_API FResolvedWidgetPropertyBinding
 	FDynamicPropertyPath CachedPropertyPath;
 	bool bResolved = false;
 	bool bUsesDouble = false;
+	EWidgetTransitionValueType ValueType = EWidgetTransitionValueType::Float;
 
 	bool Resolve(UWidget* InWidget, const FString& InPropertyPath);
 	void Invalidate();
 	bool ApplyFloat(float Value) const;
 	bool ReadFloat(float& OutValue) const;
+	bool ApplyValue(const FWidgetTransitionValue& Value) const;
+	bool ReadValue(FWidgetTransitionValue& OutValue) const;
 };
 
 USTRUCT(BlueprintType)
@@ -81,7 +114,10 @@ protected:
 	TWeakObjectPtr<UWidget> Widget = nullptr;
 	TSharedPtr<FSpringFloat> SpringFloat = nullptr;
 	FString WidgetProperty;
-	FResolvedWidgetPropertyBinding PropertyBinding;
+	FWidgetTransitionPropertyBinding PropertyBinding;
+	bool bUsesTypedValue = false;
+	FWidgetTransitionValue TypedFromValue;
+	FWidgetTransitionValue TypedToValue;
 
 	// Делегат привязывается через BindOnUpdate
 	FOnWidgetTransitionUpdate OnUpdate;
@@ -124,6 +160,9 @@ public:
 	float GetRemainingTime() const;
 	bool Equal(const FWidgetTransition& Trs) const;
 	bool HasWidgetPropertyAccess() const;
+	FWidgetTransitionValue EvaluateTypedTransitionValue(bool bTransitionEnd) const;
+	void SetWidgetPropertyValue(const FWidgetTransitionValue& Value, bool bLastFrame = false) const;
+	bool GetWidgetPropertyValue(FWidgetTransitionValue& OutValue) const;
 
 	FORCEINLINE float GetElapsedTime() const { return FMath::Max(CurrentTime - Delay, 0.0f); }
 };
@@ -145,6 +184,22 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "WidgetTransition", meta = (AdvancedDisplay = "Delay, Interpolation"))
 	static FWidgetTransition CreateWidgetTransition(UWidget* Widget, const FString& WidgetProperty, float TargetValue = 0.0f, float Time = 0.0f, float Delay = 0.0f, UCurveFloat* Interpolation = nullptr);
+
+	UFUNCTION(BlueprintCallable, Category = "WidgetTransition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true"))
+	static void StartTypedWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, const FWidgetTransitionValue& TargetValue, float Time = 0.0f, float Delay = 0.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "WidgetTransition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true"))
+	static void StartFloatWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, float TargetValue, float Time = 0.0f, float Delay = 0.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "WidgetTransition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true"))
+	static void StartVector2DWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, FVector2D TargetValue, float Time = 0.0f, float Delay = 0.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "WidgetTransition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true"))
+	static void StartLinearColorWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, FLinearColor TargetValue, float Time = 0.0f, float Delay = 0.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "WidgetTransition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true"))
+	static void StartBoolWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, bool TargetValue, float Time = 0.0f, float Delay = 0.0f);
+
 
 	UFUNCTION(BlueprintPure, Category = "WidgetTransition", meta = (AdvancedDisplay = "bFrom, bChangePropertyAfterDelay"))
 	static FWidgetTransition From(const FWidgetTransition& Transition, bool bFrom = true, float FromValue = 0.0f, bool bChangePropertyAfterDelay = false);
