@@ -14,12 +14,19 @@
 
 namespace ElasticUMGEditor
 {
+	struct FWidgetPropertyPickerOption
+	{
+		FString Label;
+		FString PropertyPath;
+		bool bIsHeader = false;
+	};
+
 	static bool IsBindableFloatProperty(const FProperty* Property)
 	{
-		return Property && Property->IsA<FFloatProperty>();
+		return Property && (Property->IsA<FFloatProperty>() || Property->IsA<FDoubleProperty>());
 	}
 
-	static void AddFloatProperties(const UStruct* Struct, const FString& Prefix, int32 Depth, TArray<TSharedPtr<FString>>& OutOptions)
+	static void AddFloatProperties(const UStruct* Struct, const FString& Prefix, int32 Depth, TArray<FString>& OutPropertyPaths)
 	{
 		if (!Struct || Depth > 8)
 		{
@@ -32,18 +39,18 @@ namespace ElasticUMGEditor
 			const FString PropertyPath = Prefix + Property->GetName();
 			if (IsBindableFloatProperty(Property))
 			{
-				OutOptions.Add(MakeShared<FString>(PropertyPath));
+				OutPropertyPaths.Add(PropertyPath);
 			}
 			else if (const FStructProperty* StructProperty = CastField<FStructProperty>(Property))
 			{
-				AddFloatProperties(StructProperty->Struct, PropertyPath + TEXT("."), Depth + 1, OutOptions);
+				AddFloatProperties(StructProperty->Struct, PropertyPath + TEXT("."), Depth + 1, OutPropertyPaths);
 			}
 		}
 	}
 
-	static void AddFloatProperties(UClass* Class, const FString& Prefix, TArray<TSharedPtr<FString>>& OutOptions)
+	static void AddFloatProperties(UClass* Class, const FString& Prefix, TArray<FString>& OutPropertyPaths)
 	{
-		AddFloatProperties(Class, Prefix, 0, OutOptions);
+		AddFloatProperties(Class, Prefix, 0, OutPropertyPaths);
 	}
 
 	static UEdGraphPin* GetWidgetSourcePin(const UEdGraphPin* PropertyPathPin)
@@ -94,7 +101,7 @@ namespace ElasticUMGEditor
 		virtual TSharedRef<SWidget> GetDefaultValueWidget() override
 		{
 			RefreshOptions();
-			return SNew(SComboBox<TSharedPtr<FString>>)
+			return SNew(SComboBox<TSharedPtr<FWidgetPropertyPickerOption>>)
 				.OptionsSource(&Options)
 				.OnComboBoxOpening(this, &SWidgetPropertyPathGraphPin::RefreshOptions)
 				.OnGenerateWidget(this, &SWidgetPropertyPathGraphPin::MakeOptionWidget)
@@ -112,36 +119,66 @@ namespace ElasticUMGEditor
 		void RefreshOptions()
 		{
 			Options.Reset();
-			AddFloatProperties(ElasticUMGEditor::GetWidgetClass(GraphPinObj), FString(), Options);
+			TArray<FString> PropertyPaths;
+			AddFloatProperties(ElasticUMGEditor::GetWidgetClass(GraphPinObj), FString(), PropertyPaths);
 
 			if (UWidget* DesignerWidget = GetDesignerWidget(GraphPinObj); DesignerWidget && DesignerWidget->Slot)
 			{
-				AddFloatProperties(DesignerWidget->Slot->GetClass(), TEXT("Slot."), Options);
+				AddFloatProperties(DesignerWidget->Slot->GetClass(), TEXT("Slot."), PropertyPaths);
 			}
 
-			Options.Sort([](const TSharedPtr<FString>& Left, const TSharedPtr<FString>& Right)
+			TMap<FString, TArray<FString>> GroupedPaths;
+			for (const FString& PropertyPath : PropertyPaths)
 			{
-				return *Left < *Right;
-			});
+				FString Group;
+				FString PropertyLabel = PropertyPath;
+				if (PropertyPath.Split(TEXT("."), &Group, &PropertyLabel))
+				{
+					// Keep the path relative to the group in the picker, but store the full path.
+				}
+				else
+				{
+					Group = TEXT("Widget");
+				}
+
+				GroupedPaths.FindOrAdd(Group).Add(PropertyPath);
+			}
+
+			TArray<FString> GroupNames;
+			GroupedPaths.GetKeys(GroupNames);
+			GroupNames.Sort();
+			for (const FString& Group : GroupNames)
+			{
+				const FString GroupLabel = FName::NameToDisplayString(Group, false);
+				Options.Add(MakeShared<FWidgetPropertyPickerOption>(FWidgetPropertyPickerOption{ GroupLabel, FString(), true }));
+				TArray<FString>& GroupPaths = GroupedPaths.FindChecked(Group);
+				GroupPaths.Sort();
+				for (const FString& PropertyPath : GroupPaths)
+				{
+					const FString PropertyLabel = PropertyPath.RightChop(Group == TEXT("Widget") ? 0 : Group.Len() + 1);
+					Options.Add(MakeShared<FWidgetPropertyPickerOption>(FWidgetPropertyPickerOption{ PropertyLabel, PropertyPath, false }));
+				}
+			}
 		}
 
-		TSharedRef<SWidget> MakeOptionWidget(TSharedPtr<FString> Option) const
+		TSharedRef<SWidget> MakeOptionWidget(TSharedPtr<FWidgetPropertyPickerOption> Option) const
 		{
 			return SNew(STextBlock)
-				.Text(FText::FromString(Option.IsValid() ? *Option : FString()))
-				.Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"));
+				.Text(FText::FromString(Option.IsValid() ? Option->Label : FString()))
+				.Margin(Option.IsValid() && !Option->bIsHeader ? FMargin(12.0f, 0.0f, 0.0f, 0.0f) : FMargin(0.0f))
+				.Font(FAppStyle::GetFontStyle(Option.IsValid() && Option->bIsHeader ? "PropertyWindow.BoldFont" : "PropertyWindow.NormalFont"));
 		}
 
-		void SelectOption(TSharedPtr<FString> Option, ESelectInfo::Type)
+		void SelectOption(TSharedPtr<FWidgetPropertyPickerOption> Option, ESelectInfo::Type)
 		{
-			if (!Option.IsValid() || GraphPinObj->GetDefaultAsString() == *Option)
+			if (!Option.IsValid() || Option->bIsHeader || GraphPinObj->GetDefaultAsString() == Option->PropertyPath)
 			{
 				return;
 			}
 
 			const FScopedTransaction Transaction(NSLOCTEXT("ElasticUMG", "SetWidgetPropertyPath", "Set Widget Property Path"));
 			GraphPinObj->Modify();
-			GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, *Option);
+			GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, Option->PropertyPath);
 		}
 
 		FText GetCurrentValue() const
@@ -150,7 +187,7 @@ namespace ElasticUMGEditor
 			return Value.IsEmpty() ? NSLOCTEXT("ElasticUMG", "SelectWidgetProperty", "Select widget property") : FText::FromString(Value);
 		}
 
-		TArray<TSharedPtr<FString>> Options;
+		TArray<TSharedPtr<FWidgetPropertyPickerOption>> Options;
 	};
 
 	class FWidgetPropertyPathPinFactory final : public FGraphPanelPinFactory

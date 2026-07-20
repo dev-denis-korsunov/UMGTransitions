@@ -48,6 +48,7 @@ struct ELASTICUMG_API FResolvedWidgetPropertyBinding
 	FWidgetPropertyBindingSpec Spec;
 	FDynamicPropertyPath CachedPropertyPath;
 	bool bResolved = false;
+	bool bUsesDouble = false;
 
 	bool Resolve(UWidget* InWidget, const FWidgetPropertyBindingSpec& InSpec);
 	void Invalidate();

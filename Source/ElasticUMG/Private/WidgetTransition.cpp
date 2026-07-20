@@ -16,6 +16,18 @@ bool FResolvedWidgetPropertyBinding::Resolve(UWidget* InWidget, const FWidgetPro
 	bResolved = Widget.IsValid()
 		&& CachedPropertyPath.IsValid()
 		&& (Spec.bAllowSlotBinding || !Spec.PropertyPath.StartsWith(TEXT("Slot.")));
+	bUsesDouble = false;
+
+	if (bResolved && CachedPropertyPath.Resolve(Widget.Get()))
+	{
+		const FProperty* LeafProperty = CastField<FProperty>(CachedPropertyPath.GetLastSegment().GetField().ToField());
+		bUsesDouble = LeafProperty && LeafProperty->IsA<FDoubleProperty>();
+		bResolved = LeafProperty && (LeafProperty->IsA<FFloatProperty>() || bUsesDouble);
+	}
+	else
+	{
+		bResolved = false;
+	}
 	return bResolved;
 }
 
@@ -25,6 +37,7 @@ void FResolvedWidgetPropertyBinding::Invalidate()
 	Spec = FWidgetPropertyBindingSpec();
 	CachedPropertyPath = FDynamicPropertyPath();
 	bResolved = false;
+	bUsesDouble = false;
 }
 
 bool FResolvedWidgetPropertyBinding::ApplyFloat(float Value) const
@@ -34,7 +47,9 @@ bool FResolvedWidgetPropertyBinding::ApplyFloat(float Value) const
 		return false;
 	}
 
-	return PropertyPathHelpers::SetPropertyValue(Widget.Get(), CachedPropertyPath, Value);
+	return bUsesDouble
+		? PropertyPathHelpers::SetPropertyValue(Widget.Get(), CachedPropertyPath, static_cast<double>(Value))
+		: PropertyPathHelpers::SetPropertyValue(Widget.Get(), CachedPropertyPath, Value);
 }
 
 bool FResolvedWidgetPropertyBinding::ReadFloat(float& OutValue) const
@@ -44,12 +59,24 @@ bool FResolvedWidgetPropertyBinding::ReadFloat(float& OutValue) const
 		return false;
 	}
 
+	if (bUsesDouble)
+	{
+		double DoubleValue = 0.0;
+		if (!PropertyPathHelpers::GetPropertyValue(Widget.Get(), CachedPropertyPath, DoubleValue))
+		{
+			return false;
+		}
+
+		OutValue = static_cast<float>(DoubleValue);
+		return true;
+	}
+
 	return PropertyPathHelpers::GetPropertyValue(Widget.Get(), CachedPropertyPath, OutValue);
 }
 
 static bool IsBindableFloatProperty(const FProperty* Property)
 {
-	return Property && Property->IsA<FFloatProperty>();
+	return Property && (Property->IsA<FFloatProperty>() || Property->IsA<FDoubleProperty>());
 }
 
 static void AddBindablePropertiesFromStruct(const UStruct* InStruct, const FString& Prefix, bool bIsSlotProperty, int32 Depth, TArray<FWidgetBindablePropertyInfo>& OutProperties)
