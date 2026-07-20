@@ -2,8 +2,86 @@
 
 #include "SpringFloat.h"
 #include "Engine/Engine.h"
+#include "Components/PanelSlot.h"
+#include "UObject/UnrealType.h"
+#include "PropertyPathHelpers.h"
 
 #include "Blueprint/UserWidget.h"
+
+bool FResolvedWidgetPropertyBinding::Resolve(UWidget* InWidget, const FWidgetPropertyBindingSpec& InSpec)
+{
+	Widget = InWidget;
+	Spec = InSpec;
+	CachedPropertyPath = FDynamicPropertyPath(InSpec.PropertyPath);
+	bResolved = Widget.IsValid()
+		&& CachedPropertyPath.IsValid()
+		&& (Spec.bAllowSlotBinding || !Spec.PropertyPath.StartsWith(TEXT("Slot.")));
+	return bResolved;
+}
+
+void FResolvedWidgetPropertyBinding::Invalidate()
+{
+	Widget.Reset();
+	Spec = FWidgetPropertyBindingSpec();
+	CachedPropertyPath = FDynamicPropertyPath();
+	bResolved = false;
+}
+
+bool FResolvedWidgetPropertyBinding::ApplyFloat(float Value) const
+{
+	if (!bResolved || !Widget.IsValid() || !CachedPropertyPath.IsValid())
+	{
+		return false;
+	}
+
+	return PropertyPathHelpers::SetPropertyValue(Widget.Get(), CachedPropertyPath, Value);
+}
+
+bool FResolvedWidgetPropertyBinding::ReadFloat(float& OutValue) const
+{
+	if (!bResolved || !Widget.IsValid() || !CachedPropertyPath.IsValid())
+	{
+		return false;
+	}
+
+	return PropertyPathHelpers::GetPropertyValue(Widget.Get(), CachedPropertyPath, OutValue);
+}
+
+static bool IsBindableFloatProperty(const FProperty* Property)
+{
+	return Property && Property->IsA<FFloatProperty>();
+}
+
+static void AddBindablePropertiesFromStruct(const UStruct* InStruct, const FString& Prefix, bool bIsSlotProperty, int32 Depth, TArray<FWidgetBindablePropertyInfo>& OutProperties)
+{
+	if (!InStruct || Depth > 8)
+	{
+		return;
+	}
+
+	for (TFieldIterator<FProperty> It(InStruct, EFieldIterationFlags::IncludeSuper); It; ++It)
+	{
+		const FProperty* Property = *It;
+		const FString PropertyPath = Prefix.IsEmpty() ? Property->GetName() : Prefix + TEXT(".") + Property->GetName();
+		if (IsBindableFloatProperty(Property))
+		{
+			FWidgetBindablePropertyInfo Info;
+			Info.PropertyName = Property->GetFName();
+			Info.PropertyPath = PropertyPath;
+			Info.bIsSlotProperty = bIsSlotProperty;
+			OutProperties.Add(Info);
+		}
+		else if (const FStructProperty* StructProperty = CastField<FStructProperty>(Property))
+		{
+			AddBindablePropertiesFromStruct(StructProperty->Struct, PropertyPath, bIsSlotProperty, Depth + 1, OutProperties);
+		}
+	}
+}
+
+static void AddBindablePropertiesFromClass(UClass* InClass, const FString& Prefix, bool bIsSlotProperty, TArray<FWidgetBindablePropertyInfo>& OutProperties)
+{
+	AddBindablePropertiesFromStruct(InClass, Prefix, bIsSlotProperty, 0, OutProperties);
+}
 
 float FWidgetTransition::EvaluateTransitionValue() const
 {
@@ -28,92 +106,100 @@ float FWidgetTransition::EvaluateTransitionValue() const
 
 void FWidgetTransition::SetWidgetPropertyValue(const float Value, const bool bLastFrame) const
 {
-	if (!Widget.IsValid() || WidgetProperty == EWidgetProperty::Custom)
+	if (!Widget.IsValid())
 	{
 		return;
 	}
 
-	if (bLastFrame && bToVisibility)
+	const bool bCanModifyWidget = PropertyBinding.bResolved || WidgetProperty != EWidgetProperty::Custom;
+	if (bCanModifyWidget && bLastFrame && bToVisibility)
 	{
 		Widget->SetVisibility(ToVisibility);
 	}
 
-	if (bLastFrame && bRemoveFromParent)
+	if (bCanModifyWidget && bLastFrame && bRemoveFromParent)
 	{
 		Widget->RemoveFromParent();
 	}
 
-	FWidgetTransform widgetTransform = Widget->GetRenderTransform();
-	FVector2D widgetPivot = Widget->GetRenderTransformPivot();
+	if (PropertyBinding.bResolved)
+	{
+		PropertyBinding.ApplyFloat(Value);
+	}
+	else if (WidgetProperty != EWidgetProperty::Custom)
+	{
+		FWidgetTransform widgetTransform = Widget->GetRenderTransform();
+		FVector2D widgetPivot = Widget->GetRenderTransformPivot();
 
-	switch (WidgetProperty)
-	{
-	case EWidgetProperty::TranslationX:
-	{
-		widgetTransform.Translation.X = Value;
-		Widget->SetRenderTransform(widgetTransform);
-		break;
-	}
-	case EWidgetProperty::TranslationY:
-	{
-		widgetTransform.Translation.Y = Value;
-		Widget->SetRenderTransform(widgetTransform);
-		break;
-	}
-	case EWidgetProperty::ScaleX:
-	{
-		widgetTransform.Scale.X = Value;
-		Widget->SetRenderTransform(widgetTransform);
-		break;
-	}
-	case EWidgetProperty::ScaleY:
-	{
-		widgetTransform.Scale.Y = Value;
-		Widget->SetRenderTransform(widgetTransform);
-		break;
-	}
-	case EWidgetProperty::BothSquareScale:
-	{
-		widgetTransform.Scale.X = Value;
-		widgetTransform.Scale.Y = Value;
-		Widget->SetRenderTransform(widgetTransform);
-		break;
-	}
-	case EWidgetProperty::ShearX:
-	{
-		widgetTransform.Shear.X = Value;
-		Widget->SetRenderTransform(widgetTransform);
-		break;
-	}
-	case EWidgetProperty::ShearY:
-	{
-		widgetTransform.Shear.Y = Value;
-		Widget->SetRenderTransform(widgetTransform);
-		break;
-	}
-	case EWidgetProperty::Angle:
-	{
-		Widget->SetRenderTransformAngle(Value);
-		break;
-	}
-	case EWidgetProperty::Opacity:
-	{
-		Widget->SetRenderOpacity(Value);
-		break;
-	}
-	case EWidgetProperty::PivotX:
-	{
-		widgetPivot.X = Value;
-		Widget->SetRenderTransformPivot(widgetPivot);
-		break;
-	}
-	case EWidgetProperty::PivotY:
-	{
-		widgetPivot.Y = Value;
-		Widget->SetRenderTransformPivot(widgetPivot);
-		break;
-	}
-	default: break;
+		switch (WidgetProperty)
+		{
+		case EWidgetProperty::TranslationX:
+		{
+			widgetTransform.Translation.X = Value;
+			Widget->SetRenderTransform(widgetTransform);
+			break;
+		}
+		case EWidgetProperty::TranslationY:
+		{
+			widgetTransform.Translation.Y = Value;
+			Widget->SetRenderTransform(widgetTransform);
+			break;
+		}
+		case EWidgetProperty::ScaleX:
+		{
+			widgetTransform.Scale.X = Value;
+			Widget->SetRenderTransform(widgetTransform);
+			break;
+		}
+		case EWidgetProperty::ScaleY:
+		{
+			widgetTransform.Scale.Y = Value;
+			Widget->SetRenderTransform(widgetTransform);
+			break;
+		}
+		case EWidgetProperty::BothSquareScale:
+		{
+			widgetTransform.Scale.X = Value;
+			widgetTransform.Scale.Y = Value;
+			Widget->SetRenderTransform(widgetTransform);
+			break;
+		}
+		case EWidgetProperty::ShearX:
+		{
+			widgetTransform.Shear.X = Value;
+			Widget->SetRenderTransform(widgetTransform);
+			break;
+		}
+		case EWidgetProperty::ShearY:
+		{
+			widgetTransform.Shear.Y = Value;
+			Widget->SetRenderTransform(widgetTransform);
+			break;
+		}
+		case EWidgetProperty::Angle:
+		{
+			Widget->SetRenderTransformAngle(Value);
+			break;
+		}
+		case EWidgetProperty::Opacity:
+		{
+			Widget->SetRenderOpacity(Value);
+			break;
+		}
+		case EWidgetProperty::PivotX:
+		{
+			widgetPivot.X = Value;
+			Widget->SetRenderTransformPivot(widgetPivot);
+			break;
+		}
+		case EWidgetProperty::PivotY:
+		{
+			widgetPivot.Y = Value;
+			Widget->SetRenderTransformPivot(widgetPivot);
+			break;
+		}
+		default: break;
+		}
 	}
 
 	if (OnUpdate.IsBound())
@@ -132,7 +218,18 @@ float FWidgetTransition::GetWidgetPropertyValue() const
 {
 	float PropertyValue = 0.0f;
 
-	if (!Widget.IsValid() || WidgetProperty == EWidgetProperty::Custom)
+	if (!Widget.IsValid())
+	{
+		return PropertyValue;
+	}
+
+	if (PropertyBinding.bResolved)
+	{
+		PropertyBinding.ReadFloat(PropertyValue);
+		return PropertyValue;
+	}
+
+	if (WidgetProperty == EWidgetProperty::Custom)
 	{
 		return PropertyValue;
 	}
@@ -157,7 +254,7 @@ float FWidgetTransition::GetWidgetPropertyValue() const
 
 bool FWidgetTransition::HasWidgetPropertyAccess() const
 {
-	return WidgetProperty != EWidgetProperty::Custom;
+	return PropertyBinding.bResolved || WidgetProperty != EWidgetProperty::Custom;
 }
 
 float FWidgetTransition::GetRemainingTime() const
@@ -171,7 +268,8 @@ float FWidgetTransition::GetRemainingTime() const
 bool FWidgetTransition::Equal(const FWidgetTransition& Trs) const
 {
 	return Trs.Widget.Get() == Widget.Get()
-		&& Trs.WidgetProperty == WidgetProperty;
+		&& Trs.WidgetProperty == WidgetProperty
+		&& Trs.PropertyBindingSpec.PropertyPath == PropertyBindingSpec.PropertyPath;
 }
 
 void UWidgetTransitionFunctionLibrary::AddWidgetTransition(const UObject* WorldContextObject, UWidget* UserWidget, FWidgetTransition Transition)
@@ -194,8 +292,13 @@ void UWidgetTransitionFunctionLibrary::AddWidgetTransition(const UObject* WorldC
 	}
 
 	Transition.Widget = UserWidget;
+	Transition.PropertyBinding.Invalidate();
+	if (!Transition.PropertyBindingSpec.PropertyPath.IsEmpty())
+	{
+		Transition.PropertyBinding.Resolve(UserWidget, Transition.PropertyBindingSpec);
+	}
 
-	// Widget property access is skipped for custom transitions.
+	// A resolved property binding takes precedence over the enum property.
 	if (Transition.HasWidgetPropertyAccess())
 	{
 		// "custom from" value behavior
@@ -413,6 +516,37 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::BindOnUpdate(const FWidgetTr
 	return NewTransition;
 }
 
+FWidgetTransition UWidgetTransitionFunctionLibrary::BindPropertyPath(const FWidgetTransition& Transition, const FString& InPropertyPath)
+{
+	auto NewTransition = Transition;
+	NewTransition.PropertyBindingSpec.PropertyPath = InPropertyPath;
+	return NewTransition;
+}
+
+FWidgetTransition UWidgetTransitionFunctionLibrary::BindWidgetProperty(const FWidgetTransition& Transition, UWidget* /*Widget*/, const FString& InPropertyPath)
+{
+	return BindPropertyPath(Transition, InPropertyPath);
+}
+
+TArray<FWidgetBindablePropertyInfo> UWidgetTransitionFunctionLibrary::GetBindableWidgetProperties(UWidget* Widget)
+{
+	TArray<FWidgetBindablePropertyInfo> Result;
+
+	if (!IsValid(Widget))
+	{
+		return Result;
+	}
+
+	AddBindablePropertiesFromClass(Widget->GetClass(), TEXT(""), false, Result);
+
+	if (Widget->Slot)
+	{
+		AddBindablePropertiesFromClass(Widget->Slot->GetClass(), TEXT("Slot"), true, Result);
+	}
+
+	return Result;
+}
+
 
 
 ETickableTickType UWidgetTransitionSubsystem::GetTickableTickType() const
@@ -467,10 +601,7 @@ void UWidgetTransitionSubsystem::Tick(float DeltaTime)
 			bTransitionEnd = It->Time <= 0.0f || It->CurrentTime >= (It->Delay + It->Time);
 		}
 
-		if (It->HasWidgetPropertyAccess())
-		{
-			It->SetWidgetPropertyValue(It->CurrentValue, bTransitionEnd);
-		}
+		It->SetWidgetPropertyValue(It->CurrentValue, bTransitionEnd);
 
 		if (bTransitionEnd)
 		{

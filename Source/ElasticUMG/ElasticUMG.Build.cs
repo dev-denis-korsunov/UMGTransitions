@@ -37,6 +37,7 @@ public class ElasticUMG : ModuleRules
 			{
 				"CoreUObject",
 				"Engine",
+				"PropertyPath",
 				"Slate",
 				"SlateCore",
 				"UMG",

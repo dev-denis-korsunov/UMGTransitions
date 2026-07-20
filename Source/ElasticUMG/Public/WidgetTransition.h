@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/SlateWrapperTypes.h"
+#include "Binding/DynamicPropertyPath.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "SpringFloat.h"
 
@@ -10,6 +11,49 @@
 class UWidgetTransitionSubsystem;
 class UWidgetTransitionFunctionLibrary;
 class UWidget;
+
+USTRUCT(BlueprintType)
+struct ELASTICUMG_API FWidgetPropertyBindingSpec
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widget Transition Binding")
+	FString PropertyPath;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widget Transition Binding")
+	bool bAllowSlotBinding = true;
+};
+
+USTRUCT(BlueprintType)
+struct ELASTICUMG_API FWidgetBindablePropertyInfo
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Widget Transition Binding")
+	FName PropertyName;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Widget Transition Binding")
+	FString PropertyPath;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Widget Transition Binding")
+	bool bIsSlotProperty = false;
+};
+
+USTRUCT()
+struct ELASTICUMG_API FResolvedWidgetPropertyBinding
+{
+	GENERATED_BODY()
+
+	TWeakObjectPtr<UWidget> Widget;
+	FWidgetPropertyBindingSpec Spec;
+	FDynamicPropertyPath CachedPropertyPath;
+	bool bResolved = false;
+
+	bool Resolve(UWidget* InWidget, const FWidgetPropertyBindingSpec& InSpec);
+	void Invalidate();
+	bool ApplyFloat(float Value) const;
+	bool ReadFloat(float& OutValue) const;
+};
 
 USTRUCT(BlueprintType)
 struct ELASTICUMG_API FAnimationUpdateResult
@@ -81,6 +125,8 @@ protected:
 	TWeakObjectPtr<UWidget> Widget = nullptr;
 	EWidgetProperty WidgetProperty = EWidgetProperty::TranslationX;
 	TSharedPtr<FSpringFloat> SpringFloat = nullptr;
+	FWidgetPropertyBindingSpec PropertyBindingSpec;
+	FResolvedWidgetPropertyBinding PropertyBinding;
 
 	// Делегат привязывается через BindOnUpdate
 	FOnWidgetTransitionUpdate OnUpdate;
@@ -186,6 +232,20 @@ public:
 	/** Привязывает BlueprintPure функцию к событию обновления значения. */
 	UFUNCTION(BlueprintPure, Category = "WidgetTransition")
 	static FWidgetTransition BindOnUpdate(const FWidgetTransition& Transition, FOnWidgetTransitionUpdate OnUpdate);
+
+	/** Тестовый режим: анимирует float-свойство по строковому пути через reflection. */
+	UFUNCTION(BlueprintPure, Category = "WidgetTransition")
+	static FWidgetTransition BindPropertyPath(const FWidgetTransition& Transition, const FString& InPropertyPath);
+
+	/**
+	 * Привязывает float-свойство виджета. В Blueprint graph параметр пути получает picker
+	 * на основании типа подключенного Widget; для прямой designer-переменной также видны Slot-свойства.
+	 */
+	UFUNCTION(BlueprintPure, Category = "WidgetTransition")
+	static FWidgetTransition BindWidgetProperty(const FWidgetTransition& Transition, UWidget* Widget, const FString& InPropertyPath);
+
+	UFUNCTION(BlueprintPure, Category = "WidgetTransition")
+	static TArray<FWidgetBindablePropertyInfo> GetBindableWidgetProperties(UWidget* Widget);
 };
 
 UCLASS()

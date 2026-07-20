@@ -18,6 +18,11 @@
 			"Name": "ElasticUMG",
 			"Type": "Runtime",
 			"LoadingPhase": "PreDefault"
+		},
+		{
+			"Name": "ElasticUMGEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
 		}
 	]
 }
