@@ -1,4 +1,4 @@
-#include "SpringFloat.h"
+#include "Spring.h"
 
 FSpringFloat::FSpringFloat(const float SpringFactor, const float DampingFactor, const float MaxVelocity, const float CompleteTolerance)
 	: SpringFactor(SpringFactor)
@@ -60,4 +60,36 @@ void FSpringFloat::Tick(float DeltaTime)
 	{
 		CurrentValue = TargetValue;
 	}
+}
+
+FSpringVector2D::FSpringVector2D(float InSpringFactor, float InDampingFactor, float InMaxVelocity, float InCompleteTolerance)
+	: SpringFactor(InSpringFactor)
+	, DampingFactor(InDampingFactor)
+	, MaxVelocity(InMaxVelocity)
+	, CompleteTolerance(InCompleteTolerance)
+	, bStarted(false)
+	, bCompleted(false)
+{
+}
+
+void FSpringVector2D::Start(FVector2D InStartValue, FVector2D InTargetValue)
+{
+	CurrentValue = InStartValue;
+	TargetValue = InTargetValue;
+	Velocity = FVector2D::ZeroVector;
+	bStarted = true;
+	bCompleted = false;
+}
+
+void FSpringVector2D::Tick(float DeltaTime)
+{
+	if (!bStarted || bCompleted) return;
+	DeltaTime = FMath::Min(DeltaTime, 1.0f / 20.0f);
+	const FVector2D ResultForce = (TargetValue - CurrentValue) * SpringFactor - Velocity * DampingFactor;
+	Velocity += ResultForce * DeltaTime;
+	const float VelocitySize = Velocity.Size();
+	if (VelocitySize > MaxVelocity && VelocitySize > UE_SMALL_NUMBER) Velocity *= MaxVelocity / VelocitySize;
+	CurrentValue += Velocity * DeltaTime;
+	bCompleted = ResultForce.SizeSquared() <= FMath::Square(CompleteTolerance) && Velocity.SizeSquared() <= FMath::Square(CompleteTolerance);
+	if (bCompleted) CurrentValue = TargetValue;
 }

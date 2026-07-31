@@ -28,6 +28,9 @@ class ELASTICUMG_API UWidgetTransitionSettings final : public UDeveloperSettings
 public:
 	UWidgetTransitionSettings();
 
+	UPROPERTY(EditAnywhere, Config, Category = "Preview", meta = (ClampMin = "0.1", UIMin = "0.1"))
+	float PreviewDuration = 1.5f;
+
 	UPROPERTY(EditAnywhere, Config, Category = "Easing", meta = (TitleProperty = "Name"))
 	TArray<FWidgetTransitionEasing> EasingFunctions;
 

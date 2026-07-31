@@ -16,6 +16,8 @@
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Images/SImage.h"
+#include "Widgets/SLeafWidget.h"
+#include "Rendering/DrawElements.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -302,6 +304,49 @@ namespace ElasticUMGEditor
 		TArray<TSharedPtr<FWidgetPropertyPickerOption>> Options;
 	};
 
+	class SWidgetTransitionEasingPreview final : public SLeafWidget
+	{
+	public:
+		SLATE_BEGIN_ARGS(SWidgetTransitionEasingPreview) {}
+			SLATE_ARGUMENT(FName, EasingName)
+		SLATE_END_ARGS()
+
+		void Construct(const FArguments& InArgs)
+		{
+			EasingName = InArgs._EasingName;
+			StartTime = FPlatformTime::Seconds();
+			RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateSP(this, &SWidgetTransitionEasingPreview::AdvancePreview));
+		}
+
+		virtual FVector2D ComputeDesiredSize(float) const override { return FVector2D(180.0f, 40.0f); }
+
+		virtual int32 OnPaint(const FPaintArgs&, const FGeometry& AllottedGeometry, const FSlateRect&, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle&, bool) const override
+		{
+			const FVector2D Size = AllottedGeometry.GetLocalSize();
+			const UWidgetTransitionSettings* Settings = GetDefault<UWidgetTransitionSettings>();
+			const float Duration = FMath::Max(Settings->PreviewDuration, 0.1f);
+			const float Progress = FMath::Fmod(static_cast<float>(FPlatformTime::Seconds() - StartTime), Duration) / Duration;
+			const float EasedProgress = Settings->EvaluateEasing(EasingName, Progress);
+			const float Radius = 6.0f;
+			const float Left = Radius + 4.0f;
+			const float Right = FMath::Max(Left, Size.X - Radius - 4.0f);
+			const FVector2D Center(FMath::Lerp(Left, Right, EasedProgress), Size.Y * 0.5f);
+			FSlateDrawElement::MakeLines(OutDrawElements, LayerId, AllottedGeometry.ToPaintGeometry(), TArray<FVector2D>{ FVector2D(Left, Center.Y), FVector2D(Right, Center.Y) }, ESlateDrawEffect::None, FLinearColor(0.35f, 0.35f, 0.35f), true, 1.0f);
+			FSlateDrawElement::MakeBox(OutDrawElements, LayerId + 1, AllottedGeometry.ToPaintGeometry(Center - FVector2D(Radius), FVector2D(Radius * 2.0f)), FAppStyle::GetBrush("Icons.Circle"), ESlateDrawEffect::None, FLinearColor(0.45f, 0.75f, 1.0f));
+			return LayerId + 1;
+		}
+
+	private:
+		EActiveTimerReturnType AdvancePreview(double, float)
+		{
+			Invalidate(EInvalidateWidgetReason::Paint);
+			return EActiveTimerReturnType::Continue;
+		}
+
+		FName EasingName;
+		double StartTime = 0.0;
+	};
+
 	class SWidgetTransitionEasingGraphPin final : public SGraphPin
 	{
 	public:
@@ -349,6 +394,22 @@ namespace ElasticUMGEditor
 					[
 						SNew(SImage).Image(FAppStyle::GetBrush("Icons.Settings"))
 					]
+				]
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(FMargin(2.0f, 0.0f, 0.0f, 0.0f))
+				[
+					SNew(SImage)
+					.Image(FAppStyle::GetBrush("Icons.Play"))
+					.ToolTip(SNew(SToolTip)
+						[
+							SNew(SBorder)
+							.BorderImage(FAppStyle::GetBrush("Menu.Background"))
+							.Padding(FMargin(8.0f))
+							[
+								SNew(SWidgetTransitionEasingPreview).EasingName(FName(*GraphPinObj->GetDefaultAsString()))
+							]
+						])
 				];
 		}
 
@@ -427,6 +488,19 @@ namespace ElasticUMGEditor
 					SNew(STextBlock).Text(NSLOCTEXT("ElasticUMG", "EasingOptionLabel", "Es"))
 				]
 			];
+			Buttons->AddSlot().AutoWidth()
+			[
+				SNew(SCheckBox)
+				.Style(FAppStyle::Get(), "ToggleButtonCheckbox")
+				.Cursor(EMouseCursor::Hand)
+				.ToolTipText(NSLOCTEXT("ElasticUMG", "RemoveFromParentOption", "Remove From Parent after the final transition"))
+				.IsChecked(this, &SWidgetTransitionOptionalPins::GetOptionState, EWidgetTransitionOptionalPin::RemoveFromParent)
+				.OnCheckStateChanged(this, &SWidgetTransitionOptionalPins::SetOptionState, EWidgetTransitionOptionalPin::RemoveFromParent)
+				.Padding(FMargin(4.0f, 5.0f))
+				[
+					SNew(STextBlock).Text(NSLOCTEXT("ElasticUMG", "RemoveFromParentOptionLabel", "Rm"))
+				]
+			];
 			ChildSlot [ Buttons ];
 		}
 
@@ -442,7 +516,6 @@ namespace ElasticUMGEditor
 				{ EWidgetTransitionOptionalPin::Delay, TEXT("Dl"), TEXT("Delay: wait before starting the transition") },
 				{ EWidgetTransitionOptionalPin::Repeat, TEXT("Rp"), TEXT("Repeat Count: number of additional repeats; -1 repeats forever") },
 				{ EWidgetTransitionOptionalPin::YoYo, TEXT("Yo"), TEXT("Yo Yo: reverse From and To on every repeat") },
-				{ EWidgetTransitionOptionalPin::RemoveFromParent, TEXT("Rm"), TEXT("Remove From Parent after the final transition") },
 				{ EWidgetTransitionOptionalPin::Spring, TEXT("Sp"), TEXT("Spring: use spring motion instead of linear interpolation") },
 				{ EWidgetTransitionOptionalPin::OnUpdate, TEXT("Up"), TEXT("On Update: expose the per-frame update delegate") },
 			};

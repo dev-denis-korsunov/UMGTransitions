@@ -131,10 +131,8 @@ static void StartSprings(FWidgetTransition& Transition)
 	{
 		const FVector2D& From = Transition.FromValue.Get<FVector2D>();
 		const FVector2D& To = Transition.ToValue.Get<FVector2D>();
-		Transition.VectorXSpring = MakeShared<FSpringFloat>(Transition.SpringFactor, Transition.DampingFactor, Transition.MaxVelocity, Transition.CompleteTolerance);
-		Transition.VectorYSpring = MakeShared<FSpringFloat>(Transition.SpringFactor, Transition.DampingFactor, Transition.MaxVelocity, Transition.CompleteTolerance);
-		Transition.VectorXSpring->Start(From.X, To.X);
-		Transition.VectorYSpring->Start(From.Y, To.Y);
+		Transition.VectorSpring = MakeShared<FSpringVector2D>(Transition.SpringFactor, Transition.DampingFactor, Transition.MaxVelocity, Transition.CompleteTolerance);
+		Transition.VectorSpring->Start(From, To);
 	}
 }
 
@@ -179,12 +177,11 @@ static void TickTransitions(TSparseArray<FWidgetTransition>& Transitions, float 
 		else if (It->PropertyBinding.ValueType == EWidgetTransitionValueType::Vector2D)
 		{
 			FVector2D Value = FMath::Lerp(It->FromValue.Get<FVector2D>(), It->ToValue.Get<FVector2D>(), EasedAlpha);
-			if (It->bUseSpring && It->VectorXSpring.IsValid() && It->VectorYSpring.IsValid())
+			if (It->bUseSpring && It->VectorSpring.IsValid())
 			{
-				It->VectorXSpring->Tick(DeltaTime);
-				It->VectorYSpring->Tick(DeltaTime);
-				Value = FVector2D(It->VectorXSpring->GetValue(), It->VectorYSpring->GetValue());
-				bEnd = It->VectorXSpring->IsCompleted() && It->VectorYSpring->IsCompleted();
+				It->VectorSpring->Tick(DeltaTime);
+				Value = It->VectorSpring->GetValue();
+				bEnd = It->VectorSpring->IsCompleted();
 			}
 			It->PropertyBinding.Apply(MakeTransitionValue(Value));
 			It->VectorOnUpdate.ExecuteIfBound(It->Widget.Get(), Value, Alpha);

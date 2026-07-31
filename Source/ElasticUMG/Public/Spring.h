@@ -53,3 +53,27 @@ private:
 	uint8 bStarted : 1;
 	uint8 bCompleted : 1;
 };
+
+/** A single physical spring for a 2D value. Velocity and its cap are shared by both axes. */
+class ELASTICUMG_API FSpringVector2D
+{
+public:
+	FSpringVector2D(float SpringFactor, float DampingFactor, float MaxVelocity, float CompleteTolerance = 0.01f);
+
+	void Tick(float DeltaTime);
+	void Start(FVector2D InStartValue, FVector2D InTargetValue);
+
+	FORCEINLINE const FVector2D& GetValue() const { return CurrentValue; }
+	FORCEINLINE bool IsCompleted() const { return bCompleted; }
+
+private:
+	const float SpringFactor = 200.0f;
+	const float DampingFactor = 16.0f;
+	const float MaxVelocity = 1600.0f;
+	const float CompleteTolerance;
+	FVector2D TargetValue = FVector2D::ZeroVector;
+	FVector2D CurrentValue = FVector2D::ZeroVector;
+	FVector2D Velocity = FVector2D::ZeroVector;
+	uint8 bStarted : 1;
+	uint8 bCompleted : 1;
+};

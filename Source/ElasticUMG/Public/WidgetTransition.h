@@ -4,7 +4,7 @@
 #include "Binding/DynamicPropertyPath.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "Misc/TVariant.h"
-#include "SpringFloat.h"
+#include "Spring.h"
 #include "Subsystems/WorldSubsystem.h"
 
 #include "WidgetTransition.generated.h"
@@ -67,8 +67,7 @@ struct FWidgetTransition
 	float MaxVelocity = 1600.0f;
 	float CompleteTolerance = 0.01f;
 	TSharedPtr<FSpringFloat> FloatSpring;
-	TSharedPtr<FSpringFloat> VectorXSpring;
-	TSharedPtr<FSpringFloat> VectorYSpring;
+	TSharedPtr<FSpringVector2D> VectorSpring;
 	FOnFloatWidgetTransitionUpdate FloatOnUpdate;
 	FOnBoolWidgetTransitionUpdate BoolOnUpdate;
 	FOnVectorWidgetTransitionUpdate VectorOnUpdate;
