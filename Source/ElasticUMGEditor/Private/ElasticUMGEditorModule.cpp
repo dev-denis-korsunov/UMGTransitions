@@ -12,6 +12,7 @@
 #include "ScopedTransaction.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Input/SCheckBox.h"
+#include "Widgets/Images/SImage.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -21,8 +22,8 @@ namespace ElasticUMGEditor
 	{
 		FString Label;
 		FString PropertyPath;
+		FLinearColor TypeColor = FLinearColor::White;
 		bool bIsHeader = false;
-		int32 Depth = 0;
 	};
 
 	static bool IsBindableFloatProperty(const FProperty* Property)
@@ -44,6 +45,15 @@ namespace ElasticUMGEditor
 		return IsBindableFloatProperty(Property)
 			|| (Property && Property->IsA<FBoolProperty>())
 			|| (StructProperty && (StructProperty->Struct == TBaseStructure<FVector2D>::Get() || StructProperty->Struct == TBaseStructure<FLinearColor>::Get()));
+	}
+
+	static FLinearColor GetPropertyTypeColor(const FProperty* Property)
+	{
+		FEdGraphPinType PinType;
+		const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+		return Property && Schema && Schema->ConvertPropertyToPinType(Property, PinType)
+			? Schema->GetPinTypeColor(PinType)
+			: FLinearColor::White;
 	}
 
 	static bool HasTransitionBindableDescendant(const UStruct* Struct, int32 Depth)
@@ -68,24 +78,25 @@ namespace ElasticUMGEditor
 		{
 			const FProperty* Property = *It;
 			const FString PropertyPath = Prefix + Property->GetName();
-			const bool bIsBindable = IsTransitionBindableProperty(Property);
-			const FStructProperty* StructProperty = CastField<FStructProperty>(Property);
-			const bool bHasBindableChildren = StructProperty && HasTransitionBindableDescendant(StructProperty->Struct, Depth + 1);
-			const FString DisplayName = FName::NameToDisplayString(Property->GetFName().ToString(), false);
-
-			// A supported struct (e.g. Scale: FVector2D) remains selectable, and its
-			// components are shown directly below it.
-			if (bIsBindable)
+			FString DisplayName = Property->GetName();
+			if (Property->IsA<FBoolProperty>() && DisplayName.Len() > 1 && DisplayName[0] == TEXT('b') && FChar::IsUpper(DisplayName[1]))
 			{
-				OutOptions.Add(MakeShared<FWidgetPropertyPickerOption>(FWidgetPropertyPickerOption{ DisplayName, PropertyPath, false, Depth }));
+				DisplayName.RightChopInline(1);
 			}
-			if (bHasBindableChildren)
+			if (IsTransitionBindableProperty(Property))
 			{
-				if (!bIsBindable)
+				OutOptions.Add(MakeShared<FWidgetPropertyPickerOption>(FWidgetPropertyPickerOption{ Prefix + DisplayName, PropertyPath, GetPropertyTypeColor(Property), false }));
+			}
+			if (const FStructProperty* StructProperty = CastField<FStructProperty>(Property))
+			{
+				if (HasTransitionBindableDescendant(StructProperty->Struct, Depth + 1))
 				{
-					OutOptions.Add(MakeShared<FWidgetPropertyPickerOption>(FWidgetPropertyPickerOption{ DisplayName, FString(), true, Depth }));
+					if (!IsTransitionBindableProperty(Property))
+					{
+						OutOptions.Add(MakeShared<FWidgetPropertyPickerOption>(FWidgetPropertyPickerOption{ Prefix + DisplayName, FString(), FLinearColor::White, true }));
+					}
+					AddBindableProperties(StructProperty->Struct, PropertyPath + TEXT("."), Depth + 1, OutOptions);
 				}
-				AddBindableProperties(StructProperty->Struct, PropertyPath + TEXT("."), Depth + 1, OutOptions);
 			}
 		}
 	}
@@ -223,18 +234,44 @@ namespace ElasticUMGEditor
 			AddBindableProperties(WidgetClass, FString(), 0, Options);
 			if (SlotClass)
 			{
-				Options.Add(MakeShared<FWidgetPropertyPickerOption>(FWidgetPropertyPickerOption{ TEXT("Slot"), FString(), true, 0 }));
-				AddBindableProperties(SlotClass, TEXT("Slot."), 1, Options);
+				Options.Add(MakeShared<FWidgetPropertyPickerOption>(FWidgetPropertyPickerOption{ TEXT("Slot"), FString(), FLinearColor::White, true }));
+				AddBindableProperties(SlotClass, TEXT("Slot."), 0, Options);
 			}
 			CachedOptions.Add(CacheKey, Options);
 		}
 
 		TSharedRef<SWidget> MakeOptionWidget(TSharedPtr<FWidgetPropertyPickerOption> Option) const
 		{
-			return SNew(STextBlock)
-				.Text(FText::FromString(Option.IsValid() ? Option->Label : FString()))
-				.Margin(Option.IsValid() ? FMargin(12.0f * Option->Depth, 0.0f, 0.0f, 0.0f) : FMargin(0.0f))
-				.Font(FAppStyle::GetFontStyle(Option.IsValid() && Option->bIsHeader ? "PropertyWindow.BoldFont" : "PropertyWindow.NormalFont"));
+			if (!Option.IsValid() || Option->bIsHeader)
+			{
+				return SNew(SBorder)
+					.BorderImage(FAppStyle::GetBrush("NoBorder"))
+					.Cursor(EMouseCursor::Default)
+					.OnMouseButtonDown_Lambda([](const FGeometry&, const FPointerEvent&) { return FReply::Handled(); })
+					[
+						SNew(STextBlock)
+						.Text(FText::FromString(Option.IsValid() ? Option->Label : FString()))
+						.Font(FAppStyle::GetFontStyle("PropertyWindow.BoldFont"))
+					];
+			}
+			return SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot()
+				.FillWidth(1.0f)
+				.VAlign(VAlign_Center)
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(Option.IsValid() ? Option->Label : FString()))
+					.Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+				]
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(FMargin(8.0f, 0.0f, 2.0f, 0.0f))
+				[
+					SNew(SImage)
+					.Image(FAppStyle::GetBrush("Kismet.VariableList.TypeIcon"))
+					.ColorAndOpacity(Option.IsValid() ? Option->TypeColor : FLinearColor::White)
+				];
 		}
 
 		void SelectOption(TSharedPtr<FWidgetPropertyPickerOption> Option, ESelectInfo::Type)
@@ -283,7 +320,7 @@ namespace ElasticUMGEditor
 					.ToolTipText(FText::FromString(Option.Tooltip))
 					.IsChecked(this, &SWidgetTransitionOptionalPins::GetOptionState, Option.Pin)
 					.OnCheckStateChanged(this, &SWidgetTransitionOptionalPins::SetOptionState, Option.Pin)
-					.Padding(FMargin(5.0f))
+					.Padding(FMargin(4.0f, 5.0f))
 					[
 						SNew(STextBlock).Text(FText::FromString(Option.Label))
 					]
