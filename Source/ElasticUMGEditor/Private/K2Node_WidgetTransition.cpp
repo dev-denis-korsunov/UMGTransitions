@@ -11,10 +11,21 @@ namespace WidgetTransitionNode
 {
 	static const FName WidgetPinName(TEXT("Widget"));
 	static const FName WidgetPropertyPinName(TEXT("WidgetProperty"));
-	static const FName TargetValuePinName(TEXT("TargetValue"));
+	static const FName FromValuePinName(TEXT("FromValue"));
+	static const FName ToValuePinName(TEXT("ToValue"));
 	static const FName TimePinName(TEXT("Time"));
 	static const FName DelayPinName(TEXT("Delay"));
+	static const FName RepeatCountPinName(TEXT("RepeatCount"));
+	static const FName YoYoPinName(TEXT("bYoYo"));
+	static const FName RemoveFromParentPinName(TEXT("bRemoveFromParent"));
+	static const FName UseSpringPinName(TEXT("bUseSpring"));
+	static const FName SpringFactorPinName(TEXT("SpringFactor"));
+	static const FName DampingFactorPinName(TEXT("DampingFactor"));
+	static const FName MaxVelocityPinName(TEXT("MaxVelocity"));
+	static const FName CompleteTolerancePinName(TEXT("CompleteTolerance"));
+	static const FName OnUpdatePinName(TEXT("OnUpdate"));
 	static const FName WorldContextPinName(TEXT("WorldContextObject"));
+	static const FName UseFromPinName(TEXT("bUseFrom"));
 
 	static FName GetFunctionName(EWidgetTransitionValueType ValueType)
 	{
@@ -22,30 +33,33 @@ namespace WidgetTransitionNode
 		{
 		case EWidgetTransitionValueType::Bool: return GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateBoolWidgetTransition);
 		case EWidgetTransitionValueType::Vector2D: return GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateVectorWidgetTransition);
-		case EWidgetTransitionValueType::LinearColor: return GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateColorWidgetTransition);
 		default: return GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateFloatWidgetTransition);
 		}
 	}
 
-	static FText GetTitle(EWidgetTransitionValueType ValueType)
+	static void CreateValuePin(UK2Node_WidgetTransition* Node, EEdGraphPinDirection Direction, FName Name, const UEdGraphSchema_K2* Schema)
 	{
-		switch (ValueType)
+		if (!Node->IsValueTypeResolved()) { Node->CreatePin(Direction, Schema->PC_Wildcard, Name); return; }
+		switch (Node->GetValueType())
 		{
-		case EWidgetTransitionValueType::Bool: return NSLOCTEXT("ElasticUMG", "CreateBoolWidgetTransition", "Create Bool Widget Transition");
-		case EWidgetTransitionValueType::Vector2D: return NSLOCTEXT("ElasticUMG", "CreateVectorWidgetTransition", "Create Vector Widget Transition");
-		case EWidgetTransitionValueType::LinearColor: return NSLOCTEXT("ElasticUMG", "CreateColorWidgetTransition", "Create Color Widget Transition");
-		default: return NSLOCTEXT("ElasticUMG", "CreateFloatWidgetTransition", "Create Float Widget Transition");
+		case EWidgetTransitionValueType::Bool: Node->CreatePin(Direction, Schema->PC_Boolean, Name); break;
+		case EWidgetTransitionValueType::Vector2D: Node->CreatePin(Direction, Schema->PC_Struct, TBaseStructure<FVector2D>::Get(), Name); break;
+		default: Node->CreatePin(Direction, Schema->PC_Real, Schema->PC_Float, Name); break;
 		}
 	}
 
-	template <typename TNode>
-	void RegisterNodeAction(const TNode* Node, FBlueprintActionDatabaseRegistrar& ActionRegistrar)
+	static void CreateFunctionParameterPin(UK2Node_WidgetTransition* Node, FName ParameterName, const UEdGraphSchema_K2* Schema)
 	{
-		UClass* ActionKey = Node->GetClass();
-		if (ActionRegistrar.IsOpenForRegistration(ActionKey))
-		{
-			ActionRegistrar.AddBlueprintAction(ActionKey, UBlueprintNodeSpawner::Create(ActionKey));
-		}
+		if (!Node->IsValueTypeResolved()) return;
+		UFunction* Function = UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(GetFunctionName(Node->GetValueType()));
+		const FProperty* Parameter = Function ? FindFProperty<FProperty>(Function, ParameterName) : nullptr;
+		FEdGraphPinType PinType;
+		if (Parameter && Schema->ConvertPropertyToPinType(Parameter, PinType)) Node->CreatePin(EGPD_Input, PinType, ParameterName);
+	}
+
+	static bool IsInfiniteRepeat(const UEdGraphPin* Pin)
+	{
+		return Pin && Pin->LinkedTo.IsEmpty() && Pin->DefaultValue == TEXT("-1");
 	}
 }
 
@@ -55,47 +69,96 @@ void UK2Node_WidgetTransition::AllocateDefaultPins()
 	CreatePin(EGPD_Input, Schema->PC_Exec, UEdGraphSchema_K2::PN_Execute);
 	CreatePin(EGPD_Output, Schema->PC_Exec, UEdGraphSchema_K2::PN_Then);
 	UEdGraphPin* WorldContextPin = CreatePin(EGPD_Input, Schema->PC_Object, UObject::StaticClass(), WidgetTransitionNode::WorldContextPinName);
-	WorldContextPin->DefaultValue = TEXT("self");
-	WorldContextPin->bHidden = true;
+	WorldContextPin->DefaultValue = TEXT("self"); WorldContextPin->bHidden = true;
 	CreatePin(EGPD_Input, Schema->PC_Object, UWidget::StaticClass(), WidgetTransitionNode::WidgetPinName);
 	CreatePin(EGPD_Input, Schema->PC_String, WidgetTransitionNode::WidgetPropertyPinName);
-
-	switch (GetValueType())
-	{
-	case EWidgetTransitionValueType::Bool: CreatePin(EGPD_Input, Schema->PC_Boolean, WidgetTransitionNode::TargetValuePinName); break;
-	case EWidgetTransitionValueType::Vector2D: CreatePin(EGPD_Input, Schema->PC_Struct, TBaseStructure<FVector2D>::Get(), WidgetTransitionNode::TargetValuePinName); break;
-	case EWidgetTransitionValueType::LinearColor: CreatePin(EGPD_Input, Schema->PC_Struct, TBaseStructure<FLinearColor>::Get(), WidgetTransitionNode::TargetValuePinName); break;
-	default: CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::TargetValuePinName); break;
-	}
+	WidgetTransitionNode::CreateValuePin(this, EGPD_Input, WidgetTransitionNode::FromValuePinName, Schema);
+	FindPinChecked(WidgetTransitionNode::FromValuePinName)->bAdvancedView = true;
+	WidgetTransitionNode::CreateValuePin(this, EGPD_Input, WidgetTransitionNode::ToValuePinName, Schema);
 	UEdGraphPin* TimePin = CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::TimePinName);
 	TimePin->DefaultValue = TEXT("0.0");
 	UEdGraphPin* DelayPin = CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::DelayPinName);
 	DelayPin->DefaultValue = TEXT("0.0");
+	UEdGraphPin* RepeatPin = CreatePin(EGPD_Input, Schema->PC_Int, WidgetTransitionNode::RepeatCountPinName);
+	RepeatPin->DefaultValue = TEXT("0");
+	CreatePin(EGPD_Input, Schema->PC_Boolean, WidgetTransitionNode::YoYoPinName)->DefaultValue = TEXT("false");
+	if (!bRepeatCountIsInfinite) CreatePin(EGPD_Input, Schema->PC_Boolean, WidgetTransitionNode::RemoveFromParentPinName)->DefaultValue = TEXT("false");
+	if (bValueTypeResolved && ValueType != EWidgetTransitionValueType::Bool)
+	{
+		CreatePin(EGPD_Input, Schema->PC_Boolean, WidgetTransitionNode::UseSpringPinName)->DefaultValue = TEXT("false");
+		CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::SpringFactorPinName)->DefaultValue = TEXT("200.0");
+		CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::DampingFactorPinName)->DefaultValue = TEXT("16.0");
+		CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::MaxVelocityPinName)->DefaultValue = TEXT("1600.0");
+		CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::CompleteTolerancePinName)->DefaultValue = TEXT("0.01");
+	}
+	WidgetTransitionNode::CreateFunctionParameterPin(this, WidgetTransitionNode::OnUpdatePinName, Schema);
 }
 
-FText UK2Node_WidgetTransition::GetNodeTitle(ENodeTitleType::Type) const { return WidgetTransitionNode::GetTitle(GetValueType()); }
-FText UK2Node_WidgetTransition::GetTooltipText() const { return NSLOCTEXT("ElasticUMG", "WidgetTransitionNodeTooltip", "Animates the selected property of the input widget."); }
+FText UK2Node_WidgetTransition::GetNodeTitle(ENodeTitleType::Type) const { return NSLOCTEXT("ElasticUMG", "CreateWidgetTransition", "Create Widget Transition"); }
+FText UK2Node_WidgetTransition::GetTooltipText() const { return NSLOCTEXT("ElasticUMG", "WidgetTransitionNodeTooltip", "Animates a selected property of the input widget. From is optional; when omitted, the current property value is used."); }
 FText UK2Node_WidgetTransition::GetMenuCategory() const { return NSLOCTEXT("ElasticUMG", "WidgetTransitionNodeCategory", "Widget Transition"); }
+
+void UK2Node_WidgetTransition::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+{
+	UClass* ActionKey = GetClass();
+	if (ActionRegistrar.IsOpenForRegistration(ActionKey)) ActionRegistrar.AddBlueprintAction(ActionKey, UBlueprintNodeSpawner::Create(ActionKey));
+}
 
 void UK2Node_WidgetTransition::ExpandNode(FKismetCompilerContext& CompilerContext, UEdGraph* SourceGraph)
 {
 	Super::ExpandNode(CompilerContext, SourceGraph);
-	UFunction* Function = UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(WidgetTransitionNode::GetFunctionName(GetValueType()));
+	if (!bValueTypeResolved)
+	{
+		CompilerContext.MessageLog.Error(*NSLOCTEXT("ElasticUMG", "UnresolvedWidgetTransitionType", "@@ requires a Widget Property to resolve its wildcard value type.").ToString(), this);
+		BreakAllNodeLinks();
+		return;
+	}
+	UFunction* Function = UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(WidgetTransitionNode::GetFunctionName(ValueType));
 	if (!Function) { CompilerContext.MessageLog.Error(*NSLOCTEXT("ElasticUMG", "MissingWidgetTransitionFunction", "@@ could not find its transition function.").ToString(), this); BreakAllNodeLinks(); return; }
 	UK2Node_CallFunction* CallNode = CompilerContext.SpawnIntermediateNode<UK2Node_CallFunction>(this, SourceGraph);
-	CallNode->SetFromFunction(Function);
-	CallNode->AllocateDefaultPins();
+	CallNode->SetFromFunction(Function); CallNode->AllocateDefaultPins();
+	const UEdGraphPin* FromPin = FindPinChecked(WidgetTransitionNode::FromValuePinName);
+	const bool bUseFrom = !FromPin->LinkedTo.IsEmpty() || !FromPin->DefaultValue.IsEmpty();
 	const auto MoveLinks = [&CompilerContext, this, CallNode](FName PinName)
 	{
 		if (UEdGraphPin* SourcePin = FindPin(PinName)) if (UEdGraphPin* DestinationPin = CallNode->FindPin(PinName)) CompilerContext.MovePinLinksToIntermediate(*SourcePin, *DestinationPin);
 	};
 	MoveLinks(UEdGraphSchema_K2::PN_Execute); MoveLinks(UEdGraphSchema_K2::PN_Then); MoveLinks(WidgetTransitionNode::WorldContextPinName);
-	MoveLinks(WidgetTransitionNode::WidgetPinName); MoveLinks(WidgetTransitionNode::WidgetPropertyPinName); MoveLinks(WidgetTransitionNode::TargetValuePinName);
-	MoveLinks(WidgetTransitionNode::TimePinName); MoveLinks(WidgetTransitionNode::DelayPinName);
+	MoveLinks(WidgetTransitionNode::WidgetPinName); MoveLinks(WidgetTransitionNode::WidgetPropertyPinName); MoveLinks(WidgetTransitionNode::FromValuePinName);
+	MoveLinks(WidgetTransitionNode::ToValuePinName); MoveLinks(WidgetTransitionNode::TimePinName); MoveLinks(WidgetTransitionNode::DelayPinName);
+	MoveLinks(WidgetTransitionNode::RepeatCountPinName); MoveLinks(WidgetTransitionNode::YoYoPinName); MoveLinks(WidgetTransitionNode::RemoveFromParentPinName);
+	MoveLinks(WidgetTransitionNode::UseSpringPinName); MoveLinks(WidgetTransitionNode::SpringFactorPinName); MoveLinks(WidgetTransitionNode::DampingFactorPinName); MoveLinks(WidgetTransitionNode::MaxVelocityPinName); MoveLinks(WidgetTransitionNode::CompleteTolerancePinName); MoveLinks(WidgetTransitionNode::OnUpdatePinName);
+	CallNode->FindPinChecked(WidgetTransitionNode::UseFromPinName)->DefaultValue = bUseFrom ? TEXT("true") : TEXT("false");
 	BreakAllNodeLinks();
 }
 
-void UK2Node_CreateFloatWidgetTransition::GetMenuActions(FBlueprintActionDatabaseRegistrar& Registrar) const { WidgetTransitionNode::RegisterNodeAction(this, Registrar); }
-void UK2Node_CreateBoolWidgetTransition::GetMenuActions(FBlueprintActionDatabaseRegistrar& Registrar) const { WidgetTransitionNode::RegisterNodeAction(this, Registrar); }
-void UK2Node_CreateVectorWidgetTransition::GetMenuActions(FBlueprintActionDatabaseRegistrar& Registrar) const { WidgetTransitionNode::RegisterNodeAction(this, Registrar); }
-void UK2Node_CreateColorWidgetTransition::GetMenuActions(FBlueprintActionDatabaseRegistrar& Registrar) const { WidgetTransitionNode::RegisterNodeAction(this, Registrar); }
+void UK2Node_WidgetTransition::PinDefaultValueChanged(UEdGraphPin* Pin)
+{
+	Super::PinDefaultValueChanged(Pin);
+	if (Pin && Pin->PinName == WidgetTransitionNode::RepeatCountPinName)
+	{
+		const bool bNewInfinite = WidgetTransitionNode::IsInfiniteRepeat(Pin);
+		if (bRepeatCountIsInfinite != bNewInfinite) { Modify(); bRepeatCountIsInfinite = bNewInfinite; ReconstructNode(); }
+	}
+}
+
+void UK2Node_WidgetTransition::NotifyPinConnectionListChanged(UEdGraphPin* Pin)
+{
+	Super::NotifyPinConnectionListChanged(Pin);
+	if (Pin && Pin->PinName == WidgetTransitionNode::RepeatCountPinName)
+	{
+		const bool bNewInfinite = WidgetTransitionNode::IsInfiniteRepeat(Pin);
+		if (bRepeatCountIsInfinite != bNewInfinite) { Modify(); bRepeatCountIsInfinite = bNewInfinite; ReconstructNode(); }
+	}
+}
+
+void UK2Node_WidgetTransition::SetValueType(EWidgetTransitionValueType InValueType)
+{
+	if (!bValueTypeResolved || ValueType != InValueType)
+	{
+		Modify();
+		ValueType = InValueType;
+		bValueTypeResolved = true;
+		ReconstructNode();
+	}
+}

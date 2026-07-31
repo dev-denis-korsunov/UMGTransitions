@@ -14,8 +14,9 @@ void FSpringFloat::Start(float InStartValue, float InTargetValue)
 {
 	CurrentValue = InStartValue;
 	TargetValue = InTargetValue;
-
+	Velocity = 0.0f;
 	bStarted = true;
+	bCompleted = false;
 }
 
 void FSpringFloat::Tick(float DeltaTime)

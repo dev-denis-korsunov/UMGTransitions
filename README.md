@@ -53,11 +53,8 @@
 ## 🛠️ Основные ноды в Блупринтах
 
 ### Создание анимации:
-*   `Create Float Widget Transition`
-*   `Create Bool Widget Transition`
-*   `Create Vector Widget Transition`
-*   `Create Color Widget Transition`
+*   `Create Widget Transition` — один узел с wildcard-пинами `From Value` и `To Value`.
 
-Каждый узел принимает виджет и `Widget Property`. Picker показывает только свойства, совместимые с типом узла, у подключённого виджета и его слота: например, `RenderOpacity` для Float, `RenderTransform.Translation` для Vector и `ColorAndOpacity` для Color.
+Узел принимает виджет и `Widget Property`. После выбора свойства wildcard-пины получают его тип: Float, Bool или Vector2D. `From Value` находится в Advanced и необязателен: если его не подключать, переход начинается с текущего значения свойства. Picker рекурсивно отражает свойства подключённого виджета и его слота: например, показывает как `RenderTransform.Scale`, так и отдельные компоненты `RenderTransform.Scale.X` и `.Y`.
 
 Переходы хранятся в отдельных типизированных контейнерах сабсистемы. Дополнительные builder-ноды (`YoYo`, `Repeat`, `From`, `Pipe`, `Spring`, `Curve`, `BindOnUpdate`) не используются: все параметры запуска задаются непосредственно в узле создания.

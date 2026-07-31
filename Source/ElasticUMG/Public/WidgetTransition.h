@@ -3,11 +3,17 @@
 #include "CoreMinimal.h"
 #include "Binding/DynamicPropertyPath.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
+#include "Misc/TVariant.h"
+#include "SpringFloat.h"
 #include "Subsystems/WorldSubsystem.h"
 
 #include "WidgetTransition.generated.h"
 
 class UWidget;
+
+DECLARE_DYNAMIC_DELEGATE_ThreeParams(FOnFloatWidgetTransitionUpdate, UWidget*, Widget, float, Value, float, Alpha);
+DECLARE_DYNAMIC_DELEGATE_ThreeParams(FOnBoolWidgetTransitionUpdate, UWidget*, Widget, bool, Value, float, Alpha);
+DECLARE_DYNAMIC_DELEGATE_ThreeParams(FOnVectorWidgetTransitionUpdate, UWidget*, Widget, FVector2D, Value, float, Alpha);
 
 UENUM()
 enum class EWidgetTransitionValueType : uint8
@@ -15,8 +21,10 @@ enum class EWidgetTransitionValueType : uint8
 	Float,
 	Bool,
 	Vector2D,
-	LinearColor,
 };
+
+/** The two endpoints of a transition always use the same alternative. */
+using FTransitionValue = TVariant<float, FVector2D, bool>;
 
 USTRUCT()
 struct ELASTICUMG_API FWidgetTransitionPropertyBinding
@@ -31,35 +39,36 @@ struct ELASTICUMG_API FWidgetTransitionPropertyBinding
 
 	bool Resolve(UWidget* InWidget, const FString& InPropertyPath);
 	void Invalidate();
-	bool Apply(float Value) const;
-	bool Apply(bool Value) const;
-	bool Apply(const FVector2D& Value) const;
-	bool Apply(const FLinearColor& Value) const;
-	bool Read(float& OutValue) const;
-	bool Read(bool& OutValue) const;
-	bool Read(FVector2D& OutValue) const;
-	bool Read(FLinearColor& OutValue) const;
+	bool Apply(const FTransitionValue& Value) const;
+	bool Read(FTransitionValue& OutValue) const;
 };
 
-/** Common runtime representation used by each strongly typed transition storage. */
-template <typename TValue>
-struct TWidgetTransition
+/** Runtime transition with compact tagged From/To values. */
+struct FWidgetTransition
 {
 	TWeakObjectPtr<UWidget> Widget;
 	FString WidgetProperty;
 	FWidgetTransitionPropertyBinding PropertyBinding;
-	TValue FromValue{};
-	TValue ToValue{};
+	FTransitionValue FromValue;
+	FTransitionValue ToValue;
 	float Time = 0.0f;
 	float Delay = 0.0f;
 	float CurrentTime = 0.0f;
-};
-
-/** A separate typed transition container. The subsystem owns one instance per supported value type. */
-template <typename TValue>
-struct TWidgetTransitionStorage
-{
-	TSparseArray<TWidgetTransition<TValue>> Transitions;
+	int32 RepeatCount = 0;
+	int32 CompletedRepeats = 0;
+	bool bYoYo = false;
+	bool bRemoveFromParent = false;
+	bool bUseSpring = false;
+	float SpringFactor = 200.0f;
+	float DampingFactor = 16.0f;
+	float MaxVelocity = 1600.0f;
+	float CompleteTolerance = 0.01f;
+	TSharedPtr<FSpringFloat> FloatSpring;
+	TSharedPtr<FSpringFloat> VectorXSpring;
+	TSharedPtr<FSpringFloat> VectorYSpring;
+	FOnFloatWidgetTransitionUpdate FloatOnUpdate;
+	FOnBoolWidgetTransitionUpdate BoolOnUpdate;
+	FOnVectorWidgetTransitionUpdate VectorOnUpdate;
 };
 
 UCLASS()
@@ -68,17 +77,17 @@ class ELASTICUMG_API UWidgetTransitionFunctionLibrary final : public UBlueprintF
 	GENERATED_BODY()
 
 public:
-	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject"))
-	static void CreateFloatWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, float TargetValue, float Time = 0.0f, float Delay = 0.0f);
+	/** Internal typed entry point used only when the universal node is compiled. */
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true"))
+	static void CreateFloatWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, float ToValue, FOnFloatWidgetTransitionUpdate OnUpdate, float Time = 0.0f, float Delay = 0.0f, int32 RepeatCount = 0, bool bYoYo = false, bool bRemoveFromParent = false, bool bUseSpring = false, float SpringFactor = 200.0f, float DampingFactor = 16.0f, float MaxVelocity = 1600.0f, float CompleteTolerance = 0.01f, bool bUseFrom = false, float FromValue = 0.0f);
 
-	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject"))
-	static void CreateBoolWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, bool TargetValue, float Time = 0.0f, float Delay = 0.0f);
+	/** Internal typed entry point used only when the universal node is compiled. */
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true"))
+	static void CreateBoolWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, bool ToValue, FOnBoolWidgetTransitionUpdate OnUpdate, float Time = 0.0f, float Delay = 0.0f, int32 RepeatCount = 0, bool bYoYo = false, bool bRemoveFromParent = false, bool bUseFrom = false, bool FromValue = false);
 
-	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject"))
-	static void CreateVectorWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, FVector2D TargetValue, float Time = 0.0f, float Delay = 0.0f);
-
-	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject"))
-	static void CreateColorWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, FLinearColor TargetValue, float Time = 0.0f, float Delay = 0.0f);
+	/** Internal typed entry point used only when the universal node is compiled. */
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true"))
+	static void CreateVectorWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, FVector2D ToValue, FOnVectorWidgetTransitionUpdate OnUpdate, float Time = 0.0f, float Delay = 0.0f, int32 RepeatCount = 0, bool bYoYo = false, bool bRemoveFromParent = false, bool bUseSpring = false, float SpringFactor = 200.0f, float DampingFactor = 16.0f, float MaxVelocity = 1600.0f, float CompleteTolerance = 0.01f, bool bUseFrom = false, FVector2D FromValue = FVector2D::ZeroVector);
 
 	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject"))
 	static void ClearAllWidgetTransitions(const UObject* WorldContextObject, UWidget* Widget);
@@ -95,8 +104,5 @@ public:
 	virtual TStatId GetStatId() const override { RETURN_QUICK_DECLARE_CYCLE_STAT(UWidgetTransitionSubsystem, STATGROUP_Tickables); }
 	virtual bool IsTickableInEditor() const override { return true; }
 
-	TWidgetTransitionStorage<float> FloatTransitions;
-	TWidgetTransitionStorage<bool> BoolTransitions;
-	TWidgetTransitionStorage<FVector2D> VectorTransitions;
-	TWidgetTransitionStorage<FLinearColor> ColorTransitions;
+	TSparseArray<FWidgetTransition> Transitions;
 };
