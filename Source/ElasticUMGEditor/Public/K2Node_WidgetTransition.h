@@ -59,10 +59,10 @@ private:
 	bool bValueTypeResolved = false;
 
 	UPROPERTY()
-	EWidgetTransitionValueType PropertyValueType = EWidgetTransitionValueType::Float;
+	EWidgetTransitionValueType ManualValueType = EWidgetTransitionValueType::Float;
 
 	UPROPERTY()
-	bool bHasPropertyValueType = false;
+	bool bValuePinsDisabled = true;
 
 	UPROPERTY()
 	bool bRepeatCountIsInfinite = false;

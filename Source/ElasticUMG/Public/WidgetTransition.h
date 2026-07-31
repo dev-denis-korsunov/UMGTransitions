@@ -53,7 +53,7 @@ struct FWidgetTransition
 	FWidgetTransitionPropertyBinding PropertyBinding;
 	FTransitionValue FromValue;
 	FTransitionValue ToValue;
-	float Time = 0.0f;
+	float Time = 0.2f;
 	float Delay = 0.0f;
 	float CurrentTime = 0.0f;
 	int32 RepeatCount = 0;
@@ -82,19 +82,19 @@ class ELASTICUMG_API UWidgetTransitionFunctionLibrary final : public UBlueprintF
 public:
 	/** Internal typed entry point used only when the universal node is compiled. */
 	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true"))
-	static void CreateFloatWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, float ToValue, FOnFloatWidgetTransitionUpdate OnUpdate, float Time = 0.0f, float Delay = 0.0f, int32 RepeatCount = 0, bool bYoYo = false, bool bRemoveFromParent = false, bool bUseSpring = false, float SpringFactor = 200.0f, float DampingFactor = 16.0f, float MaxVelocity = 1600.0f, float CompleteTolerance = 0.01f, bool bUseFrom = false, float FromValue = 0.0f);
+	static void CreateFloatWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, float ToValue, FOnFloatWidgetTransitionUpdate OnUpdate, float Time = 0.2f, float Delay = 0.0f, int32 RepeatCount = 0, bool bYoYo = false, bool bRemoveFromParent = false, bool bUseSpring = false, float SpringFactor = 200.0f, float DampingFactor = 16.0f, float MaxVelocity = 1600.0f, float CompleteTolerance = 0.01f, bool bUseFrom = false, float FromValue = 0.0f);
 
 	/** Internal typed entry point used only when the universal node is compiled. */
 	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true"))
-	static void CreateBoolWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, bool ToValue, FOnBoolWidgetTransitionUpdate OnUpdate, float Time = 0.0f, float Delay = 0.0f, int32 RepeatCount = 0, bool bYoYo = false, bool bRemoveFromParent = false, bool bUseFrom = false, bool FromValue = false);
+	static void CreateBoolWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, bool ToValue, FOnBoolWidgetTransitionUpdate OnUpdate, float Time = 0.2f, float Delay = 0.0f, int32 RepeatCount = 0, bool bYoYo = false, bool bRemoveFromParent = false, bool bUseFrom = false, bool FromValue = false);
 
 	/** Internal typed entry point used only when the universal node is compiled. */
 	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true"))
-	static void CreateVectorWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, FVector2D ToValue, FOnVectorWidgetTransitionUpdate OnUpdate, float Time = 0.0f, float Delay = 0.0f, int32 RepeatCount = 0, bool bYoYo = false, bool bRemoveFromParent = false, bool bUseSpring = false, float SpringFactor = 200.0f, float DampingFactor = 16.0f, float MaxVelocity = 1600.0f, float CompleteTolerance = 0.01f, bool bUseFrom = false, FVector2D FromValue = FVector2D::ZeroVector);
+	static void CreateVectorWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, FVector2D ToValue, FOnVectorWidgetTransitionUpdate OnUpdate, float Time = 0.2f, float Delay = 0.0f, int32 RepeatCount = 0, bool bYoYo = false, bool bRemoveFromParent = false, bool bUseSpring = false, float SpringFactor = 200.0f, float DampingFactor = 16.0f, float MaxVelocity = 1600.0f, float CompleteTolerance = 0.01f, bool bUseFrom = false, FVector2D FromValue = FVector2D::ZeroVector);
 
 	/** Internal typed entry point used only when the universal node is compiled. */
 	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true"))
-	static void CreateColorWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, FLinearColor ToValue, FOnColorWidgetTransitionUpdate OnUpdate, float Time = 0.0f, float Delay = 0.0f, int32 RepeatCount = 0, bool bYoYo = false, bool bRemoveFromParent = false, bool bUseFrom = false, FLinearColor FromValue = FLinearColor::White);
+	static void CreateColorWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, FLinearColor ToValue, FOnColorWidgetTransitionUpdate OnUpdate, float Time = 0.2f, float Delay = 0.0f, int32 RepeatCount = 0, bool bYoYo = false, bool bRemoveFromParent = false, bool bUseFrom = false, FLinearColor FromValue = FLinearColor::White);
 
 	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject"))
 	static void ClearAllWidgetTransitions(const UObject* WorldContextObject, UWidget* Widget);

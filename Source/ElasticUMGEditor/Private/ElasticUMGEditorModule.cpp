@@ -1,21 +1,17 @@
 #include "EdGraphUtilities.h"
-#include "K2Node_CallFunction.h"
 #include "K2Node_WidgetTransition.h"
 #include "K2Node_VariableGet.h"
 #include "EdGraphSchema_K2.h"
-#include "KismetPins/SGraphPinNum.h"
 #include "KismetPins/SGraphPinString.h"
 #include "KismetNodes/SGraphNodeK2Default.h"
 #include "Styling/AppStyle.h"
 #include "WidgetBlueprint.h"
-#include "WidgetTransition.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/PanelSlot.h"
 #include "EdGraph/EdGraphPin.h"
 #include "ScopedTransaction.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Input/SCheckBox.h"
-#include "Widgets/Input/SNumericEntryBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -28,43 +24,6 @@ namespace ElasticUMGEditor
 		bool bIsHeader = false;
 		int32 Depth = 0;
 	};
-
-	struct FTransitionFloatSliderConfig
-	{
-		float MinSliderValue;
-		float MaxSliderValue;
-		float Delta;
-	};
-
-	static TOptional<FTransitionFloatSliderConfig> GetTransitionFloatSliderConfig(FName PinName)
-	{
-		if (PinName == TEXT("Time") || PinName == TEXT("Delay"))
-		{
-			return FTransitionFloatSliderConfig{ 0.0f, 2.0f, 0.05f };
-		}
-		if (PinName == TEXT("TargetValue") || PinName == TEXT("FromValue"))
-		{
-			return FTransitionFloatSliderConfig{ -100.0f, 100.0f, 0.1f };
-		}
-		if (PinName == TEXT("SpringFactor"))
-		{
-			return FTransitionFloatSliderConfig{ 0.0f, 500.0f, 1.0f };
-		}
-		if (PinName == TEXT("DampingFactor"))
-		{
-			return FTransitionFloatSliderConfig{ 0.0f, 100.0f, 0.1f };
-		}
-		if (PinName == TEXT("MaxVelocity"))
-		{
-			return FTransitionFloatSliderConfig{ 0.0f, 5000.0f, 10.0f };
-		}
-		if (PinName == TEXT("CompleteTolerance"))
-		{
-			return FTransitionFloatSliderConfig{ 0.0001f, 1.0f, 0.001f };
-		}
-
-		return {};
-	}
 
 	static bool IsBindableFloatProperty(const FProperty* Property)
 	{
@@ -303,94 +262,6 @@ namespace ElasticUMGEditor
 		TArray<TSharedPtr<FWidgetPropertyPickerOption>> Options;
 	};
 
-	class SWidgetTransitionFloatGraphPin final : public SGraphPin
-	{
-	public:
-		SLATE_BEGIN_ARGS(SWidgetTransitionFloatGraphPin) {}
-		SLATE_END_ARGS()
-
-		void Construct(const FArguments& InArgs, UEdGraphPin* InGraphPinObj, FTransitionFloatSliderConfig InConfig)
-		{
-			Config = InConfig;
-			SGraphPin::Construct(SGraphPin::FArguments(), InGraphPinObj);
-		}
-
-	protected:
-		virtual TSharedRef<SWidget> GetDefaultValueWidget() override
-		{
-			return SNew(SBox)
-				.MinDesiredWidth(94.0f)
-				.MaxDesiredWidth(400.0f)
-				[
-					SNew(SNumericEntryBox<float>)
-					.EditableTextBoxStyle(FAppStyle::Get(), "Graph.EditableTextBox")
-					.BorderForegroundColor(FSlateColor::UseForeground())
-					.Visibility(this, &SGraphPin::GetDefaultValueVisibility)
-					.IsEnabled(this, &SGraphPin::GetDefaultValueIsEditable)
-					.Value(this, &SWidgetTransitionFloatGraphPin::GetValue)
-					.AllowSpin(true)
-					.MinSliderValue(Config.MinSliderValue)
-					.MaxSliderValue(Config.MaxSliderValue)
-					.Delta(Config.Delta)
-					.OnBeginSliderMovement(this, &SWidgetTransitionFloatGraphPin::BeginSliderTransaction)
-					.OnValueChanged(this, &SWidgetTransitionFloatGraphPin::SetSliderValue)
-					.OnEndSliderMovement(this, &SWidgetTransitionFloatGraphPin::EndSliderTransaction)
-					.OnValueCommitted(this, &SWidgetTransitionFloatGraphPin::CommitValue)
-				];
-		}
-
-	private:
-		TOptional<float> GetValue() const
-		{
-			float Value = 0.0f;
-			LexFromString(Value, *GraphPinObj->GetDefaultAsString());
-			return Value;
-		}
-
-		void SetDefaultValue(float Value)
-		{
-			if (!FMath::IsNearlyEqual(GetValue().GetValue(), Value))
-			{
-				GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, LexToString(Value));
-			}
-		}
-
-		void BeginSliderTransaction()
-		{
-			SliderTransaction = MakeUnique<FScopedTransaction>(NSLOCTEXT("ElasticUMG", "ChangeTransitionFloat", "Change Transition Value"));
-			GraphPinObj->Modify();
-		}
-
-		void SetSliderValue(float Value)
-		{
-			if (SliderTransaction.IsValid())
-			{
-				SetDefaultValue(Value);
-			}
-		}
-
-		void EndSliderTransaction(float Value)
-		{
-			SetSliderValue(Value);
-			SliderTransaction.Reset();
-		}
-
-		void CommitValue(float Value, ETextCommit::Type)
-		{
-			if (SliderTransaction.IsValid())
-			{
-				return;
-			}
-
-			const FScopedTransaction Transaction(NSLOCTEXT("ElasticUMG", "CommitTransitionFloat", "Set Transition Value"));
-			GraphPinObj->Modify();
-			SetDefaultValue(Value);
-		}
-
-		FTransitionFloatSliderConfig Config{ 0.0f, 1.0f, 0.1f };
-		TUniquePtr<FScopedTransaction> SliderTransaction;
-	};
-
 	class SWidgetTransitionOptionalPins final : public SCompoundWidget
 	{
 	public:
@@ -520,29 +391,10 @@ namespace ElasticUMGEditor
 		virtual TSharedPtr<SGraphPin> CreatePin(UEdGraphPin* Pin) const override
 		{
 			const bool bIsTypedTransitionNode = IsTypedTransitionNode(Pin);
-			const UK2Node_CallFunction* CallNode = Pin ? Cast<UK2Node_CallFunction>(Pin->GetOwningNode()) : nullptr;
-			const UFunction* Function = CallNode ? CallNode->GetTargetFunction() : nullptr;
 			if (bIsTypedTransitionNode && Pin->PinName == TEXT("WidgetProperty"))
 			{
 				return SNew(SWidgetPropertyPathGraphPin, Pin);
 			}
-			const bool bIsTransitionFunction = (Function
-				&& Function->GetOuterUClass() == UWidgetTransitionFunctionLibrary::StaticClass()
-				&& Pin->Direction == EGPD_Input
-				&& Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Real
-				&& Pin->PinType.PinSubCategory == UEdGraphSchema_K2::PC_Float)
-				|| (bIsTypedTransitionNode
-					&& Pin->Direction == EGPD_Input
-					&& Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Real
-					&& Pin->PinType.PinSubCategory == UEdGraphSchema_K2::PC_Float);
-			if (bIsTransitionFunction)
-			{
-				if (const TOptional<FTransitionFloatSliderConfig> Config = GetTransitionFloatSliderConfig(Pin->PinName))
-				{
-					return SNew(SWidgetTransitionFloatGraphPin, Pin, Config.GetValue());
-				}
-			}
-
 			return nullptr;
 		}
 	};

@@ -2,10 +2,14 @@
 
 #include "BlueprintActionDatabaseRegistrar.h"
 #include "BlueprintNodeSpawner.h"
+#include "Blueprint/WidgetTree.h"
 #include "Components/Widget.h"
 #include "EdGraphSchema_K2.h"
+#include "EdGraphUtilities.h"
 #include "K2Node_CallFunction.h"
+#include "K2Node_VariableGet.h"
 #include "KismetCompiler.h"
+#include "WidgetBlueprint.h"
 
 namespace WidgetTransitionNode
 {
@@ -65,6 +69,48 @@ namespace WidgetTransitionNode
 		return Pin && Pin->LinkedTo.IsEmpty() && Pin->DefaultValue == TEXT("-1");
 	}
 
+	static TOptional<EWidgetTransitionValueType> GetSelectedPropertyValueType(const UK2Node_WidgetTransition* Node)
+	{
+		const UEdGraphPin* PropertyPathPin = Node ? Node->FindPin(WidgetPropertyPinName) : nullptr;
+		const FString PropertyPath = PropertyPathPin ? PropertyPathPin->GetDefaultAsString() : FString();
+		const UEdGraphPin* WidgetPin = Node ? Node->FindPin(WidgetPinName) : nullptr;
+		if (PropertyPath.IsEmpty() || !WidgetPin || WidgetPin->LinkedTo.IsEmpty()) return {};
+
+		UEdGraphPin* SourcePin = FEdGraphUtilities::GetNetFromPin(WidgetPin->LinkedTo[0]);
+		UStruct* CurrentStruct = SourcePin ? Cast<UClass>(SourcePin->PinType.PinSubCategoryObject.Get()) : nullptr;
+		const UK2Node_VariableGet* VariableGet = SourcePin ? Cast<UK2Node_VariableGet>(SourcePin->GetOwningNode()) : nullptr;
+		UWidgetBlueprint* WidgetBlueprint = SourcePin && SourcePin->GetOwningNode() ? SourcePin->GetOwningNode()->GetTypedOuter<UWidgetBlueprint>() : nullptr;
+		UWidget* DesignerWidget = VariableGet && WidgetBlueprint && WidgetBlueprint->WidgetTree ? WidgetBlueprint->WidgetTree->FindWidget(VariableGet->GetVarName()) : nullptr;
+		FString RelativePath = PropertyPath;
+		if (PropertyPath.StartsWith(TEXT("Slot.")))
+		{
+			CurrentStruct = DesignerWidget && DesignerWidget->Slot ? DesignerWidget->Slot->GetClass() : nullptr;
+			RelativePath.RightChopInline(5);
+		}
+
+		TArray<FString> Segments;
+		RelativePath.ParseIntoArray(Segments, TEXT("."), true);
+		for (int32 Index = 0; CurrentStruct && Index < Segments.Num(); ++Index)
+		{
+			const FProperty* Property = FindFProperty<FProperty>(CurrentStruct, *Segments[Index]);
+			if (!Property) return {};
+			if (Index + 1 < Segments.Num())
+			{
+				const FStructProperty* StructProperty = CastField<FStructProperty>(Property);
+				CurrentStruct = StructProperty ? StructProperty->Struct : nullptr;
+				continue;
+			}
+			if (Property->IsA<FFloatProperty>() || Property->IsA<FDoubleProperty>()) return EWidgetTransitionValueType::Float;
+			if (Property->IsA<FBoolProperty>()) return EWidgetTransitionValueType::Bool;
+			if (const FStructProperty* StructProperty = CastField<FStructProperty>(Property))
+			{
+				if (StructProperty->Struct == TBaseStructure<FVector2D>::Get()) return EWidgetTransitionValueType::Vector2D;
+				if (StructProperty->Struct == TBaseStructure<FLinearColor>::Get()) return EWidgetTransitionValueType::LinearColor;
+			}
+		}
+		return {};
+	}
+
 	static bool IsDiscardableTypeSpecificPin(const UEdGraphPin* Pin)
 	{
 		if (!Pin || !Pin->bOrphanedPin || !Pin->LinkedTo.IsEmpty()) return false;
@@ -88,15 +134,30 @@ void UK2Node_WidgetTransition::AllocateDefaultPins()
 	WidgetPin->bHidden = !bShowWidgetAndProperty;
 	UEdGraphPin* WidgetPropertyPin = CreatePin(EGPD_Input, Schema->PC_String, WidgetTransitionNode::WidgetPropertyPinName);
 	WidgetPropertyPin->bHidden = !bShowWidgetAndProperty;
-	if (!bValueTypeResolved || !bShowWidgetAndProperty || !bHasPropertyValueType)
+	if (!bShowWidgetAndProperty)
 	{
 		UEdGraphPin* ValueTypePin = CreatePin(EGPD_Input, Schema->PC_Byte, StaticEnum<EWidgetTransitionValueType>(), WidgetTransitionNode::ValueTypePinName);
 		ValueTypePin->bNotConnectable = true;
-		ValueTypePin->DefaultValue = StaticEnum<EWidgetTransitionValueType>()->GetNameStringByValue(static_cast<int64>(ValueType));
+		ValueTypePin->DefaultValue = StaticEnum<EWidgetTransitionValueType>()->GetNameStringByValue(static_cast<int64>(ManualValueType));
 	}
-	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::From)) WidgetTransitionNode::CreateValuePin(this, EGPD_Input, WidgetTransitionNode::FromValuePinName, Schema);
+	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::From))
+	{
+		WidgetTransitionNode::CreateValuePin(this, EGPD_Input, WidgetTransitionNode::FromValuePinName, Schema);
+		if (bValuePinsDisabled)
+		{
+			UEdGraphPin* FromPin = FindPinChecked(WidgetTransitionNode::FromValuePinName);
+			FromPin->bNotConnectable = true;
+			FromPin->bDefaultValueIsReadOnly = true;
+		}
+	}
 	WidgetTransitionNode::CreateValuePin(this, EGPD_Input, WidgetTransitionNode::ToValuePinName, Schema);
-	CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::TimePinName)->DefaultValue = TEXT("0.0");
+	if (bValuePinsDisabled)
+	{
+		UEdGraphPin* ToPin = FindPinChecked(WidgetTransitionNode::ToValuePinName);
+		ToPin->bNotConnectable = true;
+		ToPin->bDefaultValueIsReadOnly = true;
+	}
+	CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::TimePinName)->DefaultValue = TEXT("0.2");
 	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Delay)) CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::DelayPinName)->DefaultValue = TEXT("0.0");
 	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Repeat)) CreatePin(EGPD_Input, Schema->PC_Int, WidgetTransitionNode::RepeatCountPinName)->DefaultValue = TEXT("0");
 	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Spring) && bValueTypeResolved && (ValueType == EWidgetTransitionValueType::Float || ValueType == EWidgetTransitionValueType::Vector2D))
@@ -125,6 +186,12 @@ void UK2Node_WidgetTransition::ExpandNode(FKismetCompilerContext& CompilerContex
 	if (!bValueTypeResolved)
 	{
 		CompilerContext.MessageLog.Error(*NSLOCTEXT("ElasticUMG", "UnresolvedWidgetTransitionType", "@@ requires a Widget Property to resolve its wildcard value type.").ToString(), this);
+		BreakAllNodeLinks();
+		return;
+	}
+	if (bValuePinsDisabled)
+	{
+		CompilerContext.MessageLog.Error(*NSLOCTEXT("ElasticUMG", "MissingWidgetTransitionProperty", "@@ requires a valid Widget Property while Wp is enabled.").ToString(), this);
 		BreakAllNodeLinks();
 		return;
 	}
@@ -158,6 +225,13 @@ void UK2Node_WidgetTransition::PinDefaultValueChanged(UEdGraphPin* Pin)
 		const UEnum* ValueTypeEnum = StaticEnum<EWidgetTransitionValueType>();
 		const int64 EnumValue = ValueTypeEnum ? ValueTypeEnum->GetValueByNameString(Pin->DefaultValue) : INDEX_NONE;
 		if (EnumValue != INDEX_NONE) SetValueType(static_cast<EWidgetTransitionValueType>(EnumValue));
+		return;
+	}
+	if (Pin && Pin->PinName == WidgetTransitionNode::WidgetPropertyPinName && IsOptionalPinVisible(EWidgetTransitionOptionalPin::WidgetAndProperty) && Pin->DefaultValue.IsEmpty())
+	{
+		Modify();
+		bValuePinsDisabled = true;
+		ReconstructNode();
 		return;
 	}
 	if (Pin && Pin->PinName == WidgetTransitionNode::RepeatCountPinName)
@@ -206,7 +280,9 @@ void UK2Node_WidgetTransition::SetValueType(EWidgetTransitionValueType InValueTy
 	{
 		Modify();
 		ValueType = InValueType;
+		ManualValueType = InValueType;
 		bValueTypeResolved = true;
+		bValuePinsDisabled = false;
 		ReconstructNode();
 	}
 }
@@ -219,10 +295,21 @@ void UK2Node_WidgetTransition::SetOptionalPins(int32 InOptionalPins)
 		const bool bWasShowingWidgetAndProperty = IsOptionalPinVisible(EWidgetTransitionOptionalPin::WidgetAndProperty);
 		OptionalPins = InOptionalPins;
 		const bool bIsShowingWidgetAndProperty = IsOptionalPinVisible(EWidgetTransitionOptionalPin::WidgetAndProperty);
-		if (!bWasShowingWidgetAndProperty && bIsShowingWidgetAndProperty && bHasPropertyValueType)
+		if (!bWasShowingWidgetAndProperty && bIsShowingWidgetAndProperty)
 		{
-			ValueType = PropertyValueType;
+			if (const TOptional<EWidgetTransitionValueType> PropertyType = WidgetTransitionNode::GetSelectedPropertyValueType(this))
+			{
+				ValueType = PropertyType.GetValue();
+				bValueTypeResolved = true;
+				bValuePinsDisabled = false;
+			}
+			else bValuePinsDisabled = true;
+		}
+		else if (bWasShowingWidgetAndProperty && !bIsShowingWidgetAndProperty)
+		{
+			ValueType = ManualValueType;
 			bValueTypeResolved = true;
+			bValuePinsDisabled = false;
 		}
 		ReconstructNode();
 	}
@@ -230,10 +317,9 @@ void UK2Node_WidgetTransition::SetOptionalPins(int32 InOptionalPins)
 
 void UK2Node_WidgetTransition::SetPropertyValueType(EWidgetTransitionValueType InValueType)
 {
-	const bool bTypeChanged = !bValueTypeResolved || ValueType != InValueType;
 	Modify();
-	PropertyValueType = InValueType;
-	bHasPropertyValueType = true;
-	if (bTypeChanged) SetValueType(InValueType);
-	else ReconstructNode();
+	ValueType = InValueType;
+	bValueTypeResolved = true;
+	bValuePinsDisabled = false;
+	ReconstructNode();
 }
