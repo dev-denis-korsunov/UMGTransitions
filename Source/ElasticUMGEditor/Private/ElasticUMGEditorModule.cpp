@@ -5,6 +5,7 @@
 #include "EdGraphSchema_K2.h"
 #include "KismetPins/SGraphPinNum.h"
 #include "KismetPins/SGraphPinString.h"
+#include "KismetNodes/SGraphNodeK2Default.h"
 #include "Styling/AppStyle.h"
 #include "WidgetBlueprint.h"
 #include "WidgetTransition.h"
@@ -378,76 +379,126 @@ namespace ElasticUMGEditor
 		TUniquePtr<FScopedTransaction> SliderTransaction;
 	};
 
-	class SWidgetTransitionOptionalPinsGraphPin final : public SGraphPin
+	class SWidgetTransitionOptionalPins final : public SCompoundWidget
 	{
 	public:
-		SLATE_BEGIN_ARGS(SWidgetTransitionOptionalPinsGraphPin) {}
+		SLATE_BEGIN_ARGS(SWidgetTransitionOptionalPins) {}
+			SLATE_ARGUMENT(UK2Node_WidgetTransition*, TransitionNode)
 		SLATE_END_ARGS()
 
-		void Construct(const FArguments& InArgs, UEdGraphPin* InGraphPinObj)
+		void Construct(const FArguments& InArgs)
 		{
-			SGraphPin::Construct(SGraphPin::FArguments(), InGraphPinObj);
-		}
-
-	protected:
-		virtual TSharedRef<SWidget> GetDefaultValueWidget() override
-		{
+			TransitionNode = InArgs._TransitionNode;
 			TSharedRef<SHorizontalBox> Buttons = SNew(SHorizontalBox);
 			for (const FPinOption& Option : GetOptions())
 			{
-				Buttons->AddSlot().AutoWidth().Padding(0.0f)
+				Buttons->AddSlot().AutoWidth().Padding(FMargin(0.0f, 0.0f, 2.0f, 0.0f))
 				[
 					SNew(SCheckBox)
 					.Style(FAppStyle::Get(), "ToggleButtonCheckbox")
-					.IsChecked(this, &SWidgetTransitionOptionalPinsGraphPin::GetOptionState, Option.Pin)
-					.OnCheckStateChanged(this, &SWidgetTransitionOptionalPinsGraphPin::SetOptionState, Option.Pin)
-					.Padding(FMargin(3.0f, 1.0f))
+					.ToolTipText(FText::FromString(Option.Tooltip))
+					.IsChecked(this, &SWidgetTransitionOptionalPins::GetOptionState, Option.Pin)
+					.OnCheckStateChanged(this, &SWidgetTransitionOptionalPins::SetOptionState, Option.Pin)
+					.Padding(FMargin(5.0f))
 					[
 						SNew(STextBlock).Text(FText::FromString(Option.Label))
 					]
 				];
 			}
-			return Buttons;
+			ChildSlot [ Buttons ];
 		}
 
 	private:
-		struct FPinOption { EWidgetTransitionOptionalPin Pin; const TCHAR* Label; };
+		struct FPinOption { EWidgetTransitionOptionalPin Pin; const TCHAR* Label; const TCHAR* Tooltip; };
 
 		static const TArray<FPinOption>& GetOptions()
 		{
 			static const TArray<FPinOption> Options =
 			{
-				{ EWidgetTransitionOptionalPin::From, TEXT("Fr") },
-				{ EWidgetTransitionOptionalPin::Time, TEXT("Tm") },
-				{ EWidgetTransitionOptionalPin::Delay, TEXT("Dl") },
-				{ EWidgetTransitionOptionalPin::Repeat, TEXT("Rp") },
-				{ EWidgetTransitionOptionalPin::YoYo, TEXT("Yo") },
-				{ EWidgetTransitionOptionalPin::RemoveFromParent, TEXT("Rm") },
-				{ EWidgetTransitionOptionalPin::Spring, TEXT("Sp") },
-				{ EWidgetTransitionOptionalPin::OnUpdate, TEXT("Up") },
+				{ EWidgetTransitionOptionalPin::WidgetAndProperty, TEXT("Wp"), TEXT("Widget and Property: show or hide both binding inputs") },
+				{ EWidgetTransitionOptionalPin::From, TEXT("Fr"), TEXT("From: use an explicit starting value") },
+				{ EWidgetTransitionOptionalPin::Delay, TEXT("Dl"), TEXT("Delay: wait before starting the transition") },
+				{ EWidgetTransitionOptionalPin::Repeat, TEXT("Rp"), TEXT("Repeat Count: number of additional repeats; -1 repeats forever") },
+				{ EWidgetTransitionOptionalPin::YoYo, TEXT("Yo"), TEXT("Yo Yo: reverse From and To on every repeat") },
+				{ EWidgetTransitionOptionalPin::RemoveFromParent, TEXT("Rm"), TEXT("Remove From Parent after the final transition") },
+				{ EWidgetTransitionOptionalPin::Spring, TEXT("Sp"), TEXT("Spring: use spring motion instead of linear interpolation") },
+				{ EWidgetTransitionOptionalPin::OnUpdate, TEXT("Up"), TEXT("On Update: expose the per-frame update delegate") },
 			};
 			return Options;
 		}
 
 		ECheckBoxState GetOptionState(EWidgetTransitionOptionalPin Option) const
 		{
-			if (!GraphPinObj) return ECheckBoxState::Unchecked;
-			const UK2Node_WidgetTransition* Node = Cast<UK2Node_WidgetTransition>(GraphPinObj->GetOwningNodeUnchecked());
-			return Node && Node->IsOptionalPinVisible(Option) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+			return TransitionNode.IsValid() && TransitionNode->IsOptionalPinVisible(Option) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
 		}
 
 		void SetOptionState(ECheckBoxState State, EWidgetTransitionOptionalPin Option)
 		{
-			if (!GraphPinObj) return;
-			if (UK2Node_WidgetTransition* Node = Cast<UK2Node_WidgetTransition>(GraphPinObj->GetOwningNodeUnchecked()))
+			if (TransitionNode.IsValid())
 			{
 				const FScopedTransaction Transaction(NSLOCTEXT("ElasticUMG", "ToggleTransitionOptionalPin", "Toggle Transition Optional Pin"));
+				UK2Node_WidgetTransition* Node = TransitionNode.Get();
 				const int32 NewOptionalPins = State == ECheckBoxState::Checked
 					? Node->GetOptionalPins() | static_cast<int32>(Option)
 					: Node->GetOptionalPins() & ~static_cast<int32>(Option);
 				Node->SetOptionalPins(NewOptionalPins);
 			}
 		}
+
+		TWeakObjectPtr<UK2Node_WidgetTransition> TransitionNode;
+	};
+
+	class SWidgetTransitionGraphNode final : public SGraphNodeK2Default
+	{
+	public:
+		SLATE_BEGIN_ARGS(SWidgetTransitionGraphNode) {}
+		SLATE_END_ARGS()
+
+		void Construct(const FArguments& InArgs, UK2Node_WidgetTransition* InNode)
+		{
+			TransitionNode = InNode;
+			SGraphNodeK2Default::Construct(SGraphNodeK2Default::FArguments(), InNode);
+		}
+
+	protected:
+		virtual TSharedRef<SWidget> CreateNodeContentArea() override
+		{
+			return SNew(SBorder)
+				.BorderImage(FAppStyle::GetBrush("NoBorder"))
+				.HAlign(HAlign_Fill)
+				.VAlign(VAlign_Fill)
+				.Padding(FMargin(0.0f, 3.0f))
+				[
+					SNew(SVerticalBox)
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					.HAlign(HAlign_Center)
+					.Padding(FMargin(0.0f, 0.0f, 0.0f, 2.0f))
+					[
+						SNew(SWidgetTransitionOptionalPins).TransitionNode(TransitionNode.Get())
+					]
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					[
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot()
+						.HAlign(HAlign_Left)
+						.FillWidth(1.0f)
+						[
+							SAssignNew(LeftNodeBox, SVerticalBox)
+						]
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.HAlign(HAlign_Right)
+						[
+							SAssignNew(RightNodeBox, SVerticalBox)
+						]
+					]
+				];
+		}
+
+	private:
+		TWeakObjectPtr<UK2Node_WidgetTransition> TransitionNode;
 	};
 
 	class FWidgetPropertyPathPinFactory final : public FGraphPanelPinFactory
@@ -462,11 +513,6 @@ namespace ElasticUMGEditor
 			{
 				return SNew(SWidgetPropertyPathGraphPin, Pin);
 			}
-			if (bIsTypedTransitionNode && Pin->PinName == TEXT("OptionalPins"))
-			{
-				return SNew(SWidgetTransitionOptionalPinsGraphPin, Pin);
-			}
-
 			const bool bIsTransitionFunction = (Function
 				&& Function->GetOuterUClass() == UWidgetTransitionFunctionLibrary::StaticClass()
 				&& Pin->Direction == EGPD_Input
@@ -487,6 +533,16 @@ namespace ElasticUMGEditor
 			return nullptr;
 		}
 	};
+
+	class FWidgetTransitionNodeFactory final : public FGraphPanelNodeFactory
+	{
+	public:
+		virtual TSharedPtr<SGraphNode> CreateNode(UEdGraphNode* Node) const override
+		{
+			if (UK2Node_WidgetTransition* TransitionNode = Cast<UK2Node_WidgetTransition>(Node)) return SNew(SWidgetTransitionGraphNode, TransitionNode);
+			return nullptr;
+		}
+	};
 }
 
 class FElasticUMGEditorModule final : public IModuleInterface
@@ -496,6 +552,8 @@ public:
 	{
 		PinFactory = MakeShared<ElasticUMGEditor::FWidgetPropertyPathPinFactory>();
 		FEdGraphUtilities::RegisterVisualPinFactory(PinFactory);
+		NodeFactory = MakeShared<ElasticUMGEditor::FWidgetTransitionNodeFactory>();
+		FEdGraphUtilities::RegisterVisualNodeFactory(NodeFactory);
 	}
 
 	virtual void ShutdownModule() override
@@ -505,10 +563,16 @@ public:
 			FEdGraphUtilities::UnregisterVisualPinFactory(PinFactory);
 			PinFactory.Reset();
 		}
+		if (NodeFactory.IsValid())
+		{
+			FEdGraphUtilities::UnregisterVisualNodeFactory(NodeFactory);
+			NodeFactory.Reset();
+		}
 	}
 
 private:
 	TSharedPtr<FGraphPanelPinFactory> PinFactory;
+	TSharedPtr<FGraphPanelNodeFactory> NodeFactory;
 };
 
 IMPLEMENT_MODULE(FElasticUMGEditorModule, ElasticUMGEditor)

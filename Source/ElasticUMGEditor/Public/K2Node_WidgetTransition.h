@@ -15,7 +15,8 @@ UENUM(meta = (Bitflags, UseEnumValuesAsMaskValuesInEditor = "true"))
 enum class EWidgetTransitionOptionalPin : uint8
 {
 	From = 1 << 0,
-	Time = 1 << 1,
+	/** Uses the bit formerly reserved for Time, keeping saved node masks compatible. */
+	WidgetAndProperty = 1 << 1,
 	Delay = 1 << 2,
 	Repeat = 1 << 3,
 	YoYo = 1 << 4,
@@ -61,5 +62,5 @@ private:
 
 	/** Select the optional inputs displayed on this node. */
 	UPROPERTY(EditAnywhere, Category = "Widget Transition", meta = (Bitmask, BitmaskEnum = "/Script/ElasticUMGEditor.EWidgetTransitionOptionalPin"))
-	int32 OptionalPins = static_cast<int32>(EWidgetTransitionOptionalPin::Time) | static_cast<int32>(EWidgetTransitionOptionalPin::Delay);
+	int32 OptionalPins = static_cast<int32>(EWidgetTransitionOptionalPin::WidgetAndProperty) | static_cast<int32>(EWidgetTransitionOptionalPin::Delay);
 };

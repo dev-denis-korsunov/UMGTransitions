@@ -24,7 +24,6 @@ namespace WidgetTransitionNode
 	static const FName MaxVelocityPinName(TEXT("MaxVelocity"));
 	static const FName CompleteTolerancePinName(TEXT("CompleteTolerance"));
 	static const FName OnUpdatePinName(TEXT("OnUpdate"));
-	static const FName OptionalPinsPinName(TEXT("OptionalPins"));
 	static const FName WorldContextPinName(TEXT("WorldContextObject"));
 	static const FName UseFromPinName(TEXT("bUseFrom"));
 
@@ -83,25 +82,18 @@ void UK2Node_WidgetTransition::AllocateDefaultPins()
 	CreatePin(EGPD_Output, Schema->PC_Exec, UEdGraphSchema_K2::PN_Then);
 	UEdGraphPin* WorldContextPin = CreatePin(EGPD_Input, Schema->PC_Object, UObject::StaticClass(), WidgetTransitionNode::WorldContextPinName);
 	WorldContextPin->DefaultValue = TEXT("self"); WorldContextPin->bHidden = true;
-	CreatePin(EGPD_Input, Schema->PC_Object, UWidget::StaticClass(), WidgetTransitionNode::WidgetPinName);
-	CreatePin(EGPD_Input, Schema->PC_String, WidgetTransitionNode::WidgetPropertyPinName);
-	UEdGraphPin* OptionalPinsPin = CreatePin(EGPD_Input, Schema->PC_Int, WidgetTransitionNode::OptionalPinsPinName);
-	OptionalPinsPin->bNotConnectable = true;
-	OptionalPinsPin->PinFriendlyName = NSLOCTEXT("ElasticUMG", "OptionalPinsFriendlyName", "Optional Pins");
-	OptionalPinsPin->DefaultValue = LexToString(OptionalPins);
-	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::From))
-	{
-		WidgetTransitionNode::CreateValuePin(this, EGPD_Input, WidgetTransitionNode::FromValuePinName, Schema);
-	}
+	const bool bShowWidgetAndProperty = IsOptionalPinVisible(EWidgetTransitionOptionalPin::WidgetAndProperty);
+	UEdGraphPin* WidgetPin = CreatePin(EGPD_Input, Schema->PC_Object, UWidget::StaticClass(), WidgetTransitionNode::WidgetPinName);
+	WidgetPin->bHidden = !bShowWidgetAndProperty;
+	UEdGraphPin* WidgetPropertyPin = CreatePin(EGPD_Input, Schema->PC_String, WidgetTransitionNode::WidgetPropertyPinName);
+	WidgetPropertyPin->bHidden = !bShowWidgetAndProperty;
 	WidgetTransitionNode::CreateValuePin(this, EGPD_Input, WidgetTransitionNode::ToValuePinName, Schema);
-	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Time)) CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::TimePinName)->DefaultValue = TEXT("0.0");
+	CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::TimePinName)->DefaultValue = TEXT("0.0");
+	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::From)) WidgetTransitionNode::CreateValuePin(this, EGPD_Input, WidgetTransitionNode::FromValuePinName, Schema);
 	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Delay)) CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::DelayPinName)->DefaultValue = TEXT("0.0");
 	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Repeat)) CreatePin(EGPD_Input, Schema->PC_Int, WidgetTransitionNode::RepeatCountPinName)->DefaultValue = TEXT("0");
-	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::YoYo)) CreatePin(EGPD_Input, Schema->PC_Boolean, WidgetTransitionNode::YoYoPinName)->DefaultValue = TEXT("false");
-	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::RemoveFromParent) && !bRepeatCountIsInfinite) CreatePin(EGPD_Input, Schema->PC_Boolean, WidgetTransitionNode::RemoveFromParentPinName)->DefaultValue = TEXT("false");
 	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Spring) && bValueTypeResolved && (ValueType == EWidgetTransitionValueType::Float || ValueType == EWidgetTransitionValueType::Vector2D))
 	{
-		CreatePin(EGPD_Input, Schema->PC_Boolean, WidgetTransitionNode::UseSpringPinName)->DefaultValue = TEXT("false");
 		CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::SpringFactorPinName)->DefaultValue = TEXT("200.0");
 		CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::DampingFactorPinName)->DefaultValue = TEXT("16.0");
 		CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::MaxVelocityPinName)->DefaultValue = TEXT("1600.0");
@@ -142,9 +134,12 @@ void UK2Node_WidgetTransition::ExpandNode(FKismetCompilerContext& CompilerContex
 	MoveLinks(UEdGraphSchema_K2::PN_Execute); MoveLinks(UEdGraphSchema_K2::PN_Then); MoveLinks(WidgetTransitionNode::WorldContextPinName);
 	MoveLinks(WidgetTransitionNode::WidgetPinName); MoveLinks(WidgetTransitionNode::WidgetPropertyPinName); MoveLinks(WidgetTransitionNode::FromValuePinName);
 	MoveLinks(WidgetTransitionNode::ToValuePinName); MoveLinks(WidgetTransitionNode::TimePinName); MoveLinks(WidgetTransitionNode::DelayPinName);
-	MoveLinks(WidgetTransitionNode::RepeatCountPinName); MoveLinks(WidgetTransitionNode::YoYoPinName); MoveLinks(WidgetTransitionNode::RemoveFromParentPinName);
-	MoveLinks(WidgetTransitionNode::UseSpringPinName); MoveLinks(WidgetTransitionNode::SpringFactorPinName); MoveLinks(WidgetTransitionNode::DampingFactorPinName); MoveLinks(WidgetTransitionNode::MaxVelocityPinName); MoveLinks(WidgetTransitionNode::CompleteTolerancePinName); MoveLinks(WidgetTransitionNode::OnUpdatePinName);
+	MoveLinks(WidgetTransitionNode::RepeatCountPinName);
+	MoveLinks(WidgetTransitionNode::SpringFactorPinName); MoveLinks(WidgetTransitionNode::DampingFactorPinName); MoveLinks(WidgetTransitionNode::MaxVelocityPinName); MoveLinks(WidgetTransitionNode::CompleteTolerancePinName); MoveLinks(WidgetTransitionNode::OnUpdatePinName);
 	CallNode->FindPinChecked(WidgetTransitionNode::UseFromPinName)->DefaultValue = bUseFrom ? TEXT("true") : TEXT("false");
+	if (UEdGraphPin* YoYoPin = CallNode->FindPin(WidgetTransitionNode::YoYoPinName)) YoYoPin->DefaultValue = IsOptionalPinVisible(EWidgetTransitionOptionalPin::YoYo) ? TEXT("true") : TEXT("false");
+	if (UEdGraphPin* RemovePin = CallNode->FindPin(WidgetTransitionNode::RemoveFromParentPinName)) RemovePin->DefaultValue = IsOptionalPinVisible(EWidgetTransitionOptionalPin::RemoveFromParent) && !bRepeatCountIsInfinite ? TEXT("true") : TEXT("false");
+	if (UEdGraphPin* SpringPin = CallNode->FindPin(WidgetTransitionNode::UseSpringPinName)) SpringPin->DefaultValue = IsOptionalPinVisible(EWidgetTransitionOptionalPin::Spring) ? TEXT("true") : TEXT("false");
 	BreakAllNodeLinks();
 }
 
