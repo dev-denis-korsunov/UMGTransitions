@@ -50,6 +50,8 @@ public:
 	void SetOptionalPins(int32 InOptionalPins);
 	int32 GetOptionalPins() const { return OptionalPins; }
 	bool IsOptionalPinVisible(EWidgetTransitionOptionalPin Pin) const { return (OptionalPins & static_cast<int32>(Pin)) != 0; }
+	bool IsEasingVisible() const { return bShowEasing; }
+	void SetEasingVisible(bool bInShowEasing);
 
 private:
 	UPROPERTY()
@@ -66,6 +68,9 @@ private:
 
 	UPROPERTY()
 	bool bRepeatCountIsInfinite = false;
+
+	UPROPERTY()
+	bool bShowEasing = false;
 
 	/** Select the optional inputs displayed on this node. */
 	UPROPERTY(EditAnywhere, Category = "Widget Transition", meta = (Bitmask, BitmaskEnum = "/Script/ElasticUMGEditor.EWidgetTransitionOptionalPin"))

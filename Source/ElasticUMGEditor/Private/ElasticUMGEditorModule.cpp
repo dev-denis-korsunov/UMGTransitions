@@ -1,5 +1,6 @@
 #include "EdGraphUtilities.h"
 #include "K2Node_WidgetTransition.h"
+#include "WidgetTransitionSettings.h"
 #include "K2Node_VariableGet.h"
 #include "EdGraphSchema_K2.h"
 #include "KismetPins/SGraphPinString.h"
@@ -10,6 +11,8 @@
 #include "Components/PanelSlot.h"
 #include "EdGraph/EdGraphPin.h"
 #include "ScopedTransaction.h"
+#include "ISettingsModule.h"
+#include "Modules/ModuleManager.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Images/SImage.h"
@@ -299,6 +302,91 @@ namespace ElasticUMGEditor
 		TArray<TSharedPtr<FWidgetPropertyPickerOption>> Options;
 	};
 
+	class SWidgetTransitionEasingGraphPin final : public SGraphPin
+	{
+	public:
+		SLATE_BEGIN_ARGS(SWidgetTransitionEasingGraphPin) {}
+		SLATE_END_ARGS()
+
+		void Construct(const FArguments& InArgs, UEdGraphPin* InGraphPinObj)
+		{
+			SGraphPin::Construct(SGraphPin::FArguments(), InGraphPinObj);
+		}
+
+	protected:
+		virtual TSharedRef<SWidget> GetDefaultValueWidget() override
+		{
+			RefreshOptions();
+			return SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot()
+				.FillWidth(1.0f)
+				[
+					SNew(SComboBox<TSharedPtr<FString>>)
+					.OptionsSource(&Options)
+					.OnComboBoxOpening(this, &SWidgetTransitionEasingGraphPin::RefreshOptions)
+					.OnGenerateWidget(this, &SWidgetTransitionEasingGraphPin::MakeOptionWidget)
+					.OnSelectionChanged(this, &SWidgetTransitionEasingGraphPin::SelectOption)
+					.IsEnabled(this, &SGraphPin::GetDefaultValueIsEditable)
+					.Content()
+					[
+						SNew(STextBlock)
+						.Text(this, &SWidgetTransitionEasingGraphPin::GetCurrentValue)
+						.Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+					]
+				]
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(FMargin(4.0f, 0.0f, 0.0f, 0.0f))
+				[
+					SNew(SButton)
+					.ButtonStyle(FAppStyle::Get(), "HoverHintOnly")
+					.ToolTipText(NSLOCTEXT("ElasticUMG", "OpenEasingSettings", "Open Elastic UMG easing settings"))
+					.OnClicked_Lambda([]()
+					{
+						FModuleManager::LoadModuleChecked<ISettingsModule>("Settings").ShowViewer(TEXT("Project"), TEXT("Plugins"), TEXT("ElasticUMG"));
+						return FReply::Handled();
+					})
+					[
+						SNew(SImage).Image(FAppStyle::GetBrush("Icons.Settings"))
+					]
+				];
+		}
+
+	private:
+		void RefreshOptions()
+		{
+			Options.Reset();
+			Options.Add(MakeShared<FString>(TEXT("None")));
+			for (const FWidgetTransitionEasing& Easing : GetDefault<UWidgetTransitionSettings>()->EasingFunctions)
+			{
+				if (!Easing.Name.IsNone()) Options.Add(MakeShared<FString>(Easing.Name.ToString()));
+			}
+		}
+
+		TSharedRef<SWidget> MakeOptionWidget(TSharedPtr<FString> Option) const
+		{
+			return SNew(STextBlock).Text(FText::FromString(Option.IsValid() ? *Option : FString()));
+		}
+
+		void SelectOption(TSharedPtr<FString> Option, ESelectInfo::Type)
+		{
+			if (!Option.IsValid()) return;
+			const FString NewValue = *Option == TEXT("None") ? FString() : *Option;
+			if (GraphPinObj->GetDefaultAsString() == NewValue) return;
+			const FScopedTransaction Transaction(NSLOCTEXT("ElasticUMG", "SetTransitionEasing", "Set Transition Easing"));
+			GraphPinObj->Modify();
+			GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, NewValue);
+		}
+
+		FText GetCurrentValue() const
+		{
+			const FString Value = GraphPinObj->GetDefaultAsString();
+			return FText::FromString(Value.IsEmpty() ? TEXT("None") : Value);
+		}
+
+		TArray<TSharedPtr<FString>> Options;
+	};
+
 	class SWidgetTransitionOptionalPins final : public SCompoundWidget
 	{
 	public:
@@ -326,6 +414,19 @@ namespace ElasticUMGEditor
 					]
 				];
 			}
+			Buttons->AddSlot().AutoWidth().Padding(FMargin(0.0f, 0.0f, 2.0f, 0.0f))
+			[
+				SNew(SCheckBox)
+				.Style(FAppStyle::Get(), "ToggleButtonCheckbox")
+				.Cursor(EMouseCursor::Hand)
+				.ToolTipText(NSLOCTEXT("ElasticUMG", "EasingOption", "Easing: select a configured cubic Bezier curve"))
+				.IsChecked_Lambda([this]() { return TransitionNode.IsValid() && TransitionNode->IsEasingVisible() ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+				.OnCheckStateChanged_Lambda([this](ECheckBoxState State) { if (TransitionNode.IsValid()) TransitionNode->SetEasingVisible(State == ECheckBoxState::Checked); })
+				.Padding(FMargin(4.0f, 5.0f))
+				[
+					SNew(STextBlock).Text(NSLOCTEXT("ElasticUMG", "EasingOptionLabel", "Es"))
+				]
+			];
 			ChildSlot [ Buttons ];
 		}
 
@@ -394,7 +495,7 @@ namespace ElasticUMGEditor
 					+ SVerticalBox::Slot()
 					.AutoHeight()
 					.HAlign(HAlign_Center)
-					.Padding(FMargin(0.0f, 0.0f, 0.0f, 2.0f))
+					.Padding(FMargin(4.0f, 0.0f, 4.0f, 2.0f))
 					[
 						SNew(SWidgetTransitionOptionalPins).TransitionNode(TransitionNode.Get())
 					]
@@ -431,6 +532,10 @@ namespace ElasticUMGEditor
 			if (bIsTypedTransitionNode && Pin->PinName == TEXT("WidgetProperty"))
 			{
 				return SNew(SWidgetPropertyPathGraphPin, Pin);
+			}
+			if (bIsTypedTransitionNode && Pin->PinName == TEXT("Easing"))
+			{
+				return SNew(SWidgetTransitionEasingGraphPin, Pin);
 			}
 			return nullptr;
 		}

@@ -20,6 +20,7 @@ namespace WidgetTransitionNode
 	static const FName ToValuePinName(TEXT("ToValue"));
 	static const FName TimePinName(TEXT("Time"));
 	static const FName DelayPinName(TEXT("Delay"));
+	static const FName EasingPinName(TEXT("Easing"));
 	static const FName RepeatCountPinName(TEXT("RepeatCount"));
 	static const FName YoYoPinName(TEXT("bYoYo"));
 	static const FName RemoveFromParentPinName(TEXT("bRemoveFromParent"));
@@ -115,7 +116,8 @@ namespace WidgetTransitionNode
 	{
 		if (!Pin || !Pin->bOrphanedPin || !Pin->LinkedTo.IsEmpty()) return false;
 		const FName Name = Pin->PinName;
-		return Name == FromValuePinName || Name == TimePinName || Name == DelayPinName || Name == RepeatCountPinName
+	return Name == FromValuePinName || Name == TimePinName || Name == DelayPinName || Name == RepeatCountPinName
+			|| Name == EasingPinName
 			|| Name == YoYoPinName || Name == RemoveFromParentPinName || Name == UseSpringPinName
 			|| Name == SpringFactorPinName || Name == DampingFactorPinName || Name == MaxVelocityPinName
 			|| Name == CompleteTolerancePinName || Name == OnUpdatePinName || Name == ValueTypePinName;
@@ -160,6 +162,7 @@ void UK2Node_WidgetTransition::AllocateDefaultPins()
 	}
 	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Delay)) CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::DelayPinName)->DefaultValue = TEXT("0.0");
 	CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::TimePinName)->DefaultValue = TEXT("0.2");
+	if (IsEasingVisible()) CreatePin(EGPD_Input, Schema->PC_Name, WidgetTransitionNode::EasingPinName);
 	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Repeat))
 	{
 		UEdGraphPin* RepeatCountPin = CreatePin(EGPD_Input, Schema->PC_Int, WidgetTransitionNode::RepeatCountPinName);
@@ -233,6 +236,7 @@ void UK2Node_WidgetTransition::ExpandNode(FKismetCompilerContext& CompilerContex
 	MoveLinks(UEdGraphSchema_K2::PN_Execute); MoveLinks(UEdGraphSchema_K2::PN_Then); MoveLinks(WidgetTransitionNode::WorldContextPinName);
 	MoveLinks(WidgetTransitionNode::WidgetPinName); MoveLinks(WidgetTransitionNode::WidgetPropertyPinName); MoveLinks(WidgetTransitionNode::FromValuePinName);
 	MoveLinks(WidgetTransitionNode::ToValuePinName); MoveLinks(WidgetTransitionNode::TimePinName); MoveLinks(WidgetTransitionNode::DelayPinName);
+	MoveLinks(WidgetTransitionNode::EasingPinName);
 	MoveLinks(WidgetTransitionNode::RepeatCountPinName);
 	MoveLinks(WidgetTransitionNode::SpringFactorPinName); MoveLinks(WidgetTransitionNode::DampingFactorPinName); MoveLinks(WidgetTransitionNode::MaxVelocityPinName); MoveLinks(WidgetTransitionNode::CompleteTolerancePinName); MoveLinks(WidgetTransitionNode::OnUpdatePinName);
 	CallNode->FindPinChecked(WidgetTransitionNode::UseFromPinName)->DefaultValue = bUseFrom ? TEXT("true") : TEXT("false");
@@ -336,6 +340,16 @@ void UK2Node_WidgetTransition::SetOptionalPins(int32 InOptionalPins)
 			bValueTypeResolved = true;
 			bValuePinsDisabled = false;
 		}
+		ReconstructNode();
+	}
+}
+
+void UK2Node_WidgetTransition::SetEasingVisible(bool bInShowEasing)
+{
+	if (bShowEasing != bInShowEasing)
+	{
+		Modify();
+		bShowEasing = bInShowEasing;
 		ReconstructNode();
 	}
 }

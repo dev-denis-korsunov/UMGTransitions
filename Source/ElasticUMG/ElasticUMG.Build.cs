@@ -26,6 +26,7 @@ public class ElasticUMG : ModuleRules
 			new string[]
 			{
 				"Core",
+				"DeveloperSettings",
 				"UMG",
 				// ... add other public dependencies that you statically link with here ...
 			}
