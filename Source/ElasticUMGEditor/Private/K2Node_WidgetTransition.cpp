@@ -11,6 +11,7 @@ namespace WidgetTransitionNode
 {
 	static const FName WidgetPinName(TEXT("Widget"));
 	static const FName WidgetPropertyPinName(TEXT("WidgetProperty"));
+	static const FName ValueTypePinName(TEXT("ValueType"));
 	static const FName FromValuePinName(TEXT("FromValue"));
 	static const FName ToValuePinName(TEXT("ToValue"));
 	static const FName TimePinName(TEXT("Time"));
@@ -71,7 +72,7 @@ namespace WidgetTransitionNode
 		return Name == FromValuePinName || Name == TimePinName || Name == DelayPinName || Name == RepeatCountPinName
 			|| Name == YoYoPinName || Name == RemoveFromParentPinName || Name == UseSpringPinName
 			|| Name == SpringFactorPinName || Name == DampingFactorPinName || Name == MaxVelocityPinName
-			|| Name == CompleteTolerancePinName || Name == OnUpdatePinName;
+			|| Name == CompleteTolerancePinName || Name == OnUpdatePinName || Name == ValueTypePinName;
 	}
 }
 
@@ -87,9 +88,15 @@ void UK2Node_WidgetTransition::AllocateDefaultPins()
 	WidgetPin->bHidden = !bShowWidgetAndProperty;
 	UEdGraphPin* WidgetPropertyPin = CreatePin(EGPD_Input, Schema->PC_String, WidgetTransitionNode::WidgetPropertyPinName);
 	WidgetPropertyPin->bHidden = !bShowWidgetAndProperty;
+	if (!bValueTypeResolved || !bShowWidgetAndProperty || !bHasPropertyValueType)
+	{
+		UEdGraphPin* ValueTypePin = CreatePin(EGPD_Input, Schema->PC_Byte, StaticEnum<EWidgetTransitionValueType>(), WidgetTransitionNode::ValueTypePinName);
+		ValueTypePin->bNotConnectable = true;
+		ValueTypePin->DefaultValue = StaticEnum<EWidgetTransitionValueType>()->GetNameStringByValue(static_cast<int64>(ValueType));
+	}
+	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::From)) WidgetTransitionNode::CreateValuePin(this, EGPD_Input, WidgetTransitionNode::FromValuePinName, Schema);
 	WidgetTransitionNode::CreateValuePin(this, EGPD_Input, WidgetTransitionNode::ToValuePinName, Schema);
 	CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::TimePinName)->DefaultValue = TEXT("0.0");
-	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::From)) WidgetTransitionNode::CreateValuePin(this, EGPD_Input, WidgetTransitionNode::FromValuePinName, Schema);
 	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Delay)) CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::DelayPinName)->DefaultValue = TEXT("0.0");
 	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Repeat)) CreatePin(EGPD_Input, Schema->PC_Int, WidgetTransitionNode::RepeatCountPinName)->DefaultValue = TEXT("0");
 	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Spring) && bValueTypeResolved && (ValueType == EWidgetTransitionValueType::Float || ValueType == EWidgetTransitionValueType::Vector2D))
@@ -146,6 +153,13 @@ void UK2Node_WidgetTransition::ExpandNode(FKismetCompilerContext& CompilerContex
 void UK2Node_WidgetTransition::PinDefaultValueChanged(UEdGraphPin* Pin)
 {
 	Super::PinDefaultValueChanged(Pin);
+	if (Pin && Pin->PinName == WidgetTransitionNode::ValueTypePinName)
+	{
+		const UEnum* ValueTypeEnum = StaticEnum<EWidgetTransitionValueType>();
+		const int64 EnumValue = ValueTypeEnum ? ValueTypeEnum->GetValueByNameString(Pin->DefaultValue) : INDEX_NONE;
+		if (EnumValue != INDEX_NONE) SetValueType(static_cast<EWidgetTransitionValueType>(EnumValue));
+		return;
+	}
 	if (Pin && Pin->PinName == WidgetTransitionNode::RepeatCountPinName)
 	{
 		const bool bNewInfinite = WidgetTransitionNode::IsInfiniteRepeat(Pin);
@@ -202,7 +216,24 @@ void UK2Node_WidgetTransition::SetOptionalPins(int32 InOptionalPins)
 	if (OptionalPins != InOptionalPins)
 	{
 		Modify();
+		const bool bWasShowingWidgetAndProperty = IsOptionalPinVisible(EWidgetTransitionOptionalPin::WidgetAndProperty);
 		OptionalPins = InOptionalPins;
+		const bool bIsShowingWidgetAndProperty = IsOptionalPinVisible(EWidgetTransitionOptionalPin::WidgetAndProperty);
+		if (!bWasShowingWidgetAndProperty && bIsShowingWidgetAndProperty && bHasPropertyValueType)
+		{
+			ValueType = PropertyValueType;
+			bValueTypeResolved = true;
+		}
 		ReconstructNode();
 	}
+}
+
+void UK2Node_WidgetTransition::SetPropertyValueType(EWidgetTransitionValueType InValueType)
+{
+	const bool bTypeChanged = !bValueTypeResolved || ValueType != InValueType;
+	Modify();
+	PropertyValueType = InValueType;
+	bHasPropertyValueType = true;
+	if (bTypeChanged) SetValueType(InValueType);
+	else ReconstructNode();
 }

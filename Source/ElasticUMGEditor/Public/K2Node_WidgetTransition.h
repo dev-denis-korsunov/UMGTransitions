@@ -46,6 +46,7 @@ public:
 	bool IsValueTypeResolved() const { return bValueTypeResolved; }
 	EWidgetTransitionValueType GetValueType() const { return ValueType; }
 	void SetValueType(EWidgetTransitionValueType InValueType);
+	void SetPropertyValueType(EWidgetTransitionValueType InValueType);
 	void SetOptionalPins(int32 InOptionalPins);
 	int32 GetOptionalPins() const { return OptionalPins; }
 	bool IsOptionalPinVisible(EWidgetTransitionOptionalPin Pin) const { return (OptionalPins & static_cast<int32>(Pin)) != 0; }
@@ -56,6 +57,12 @@ private:
 
 	UPROPERTY()
 	bool bValueTypeResolved = false;
+
+	UPROPERTY()
+	EWidgetTransitionValueType PropertyValueType = EWidgetTransitionValueType::Float;
+
+	UPROPERTY()
+	bool bHasPropertyValueType = false;
 
 	UPROPERTY()
 	bool bRepeatCountIsInfinite = false;

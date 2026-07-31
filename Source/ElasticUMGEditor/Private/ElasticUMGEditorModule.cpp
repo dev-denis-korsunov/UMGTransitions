@@ -250,12 +250,24 @@ namespace ElasticUMGEditor
 			{
 				return;
 			}
-			AddBindableProperties(ElasticUMGEditor::GetWidgetClass(GraphPinObj), FString(), 0, Options);
-			if (UWidget* DesignerWidget = GetDesignerWidget(GraphPinObj); DesignerWidget && DesignerWidget->Slot)
+			UClass* WidgetClass = ElasticUMGEditor::GetWidgetClass(GraphPinObj);
+			UWidget* DesignerWidget = GetDesignerWidget(GraphPinObj);
+			UClass* SlotClass = DesignerWidget && DesignerWidget->Slot ? DesignerWidget->Slot->GetClass() : nullptr;
+			const FString CacheKey = FString::Printf(TEXT("%u:%u"), WidgetClass ? WidgetClass->GetUniqueID() : 0, SlotClass ? SlotClass->GetUniqueID() : 0);
+			static TMap<FString, TArray<TSharedPtr<FWidgetPropertyPickerOption>>> CachedOptions;
+			if (const TArray<TSharedPtr<FWidgetPropertyPickerOption>>* Cached = CachedOptions.Find(CacheKey))
+			{
+				Options = *Cached;
+				return;
+			}
+
+			AddBindableProperties(WidgetClass, FString(), 0, Options);
+			if (SlotClass)
 			{
 				Options.Add(MakeShared<FWidgetPropertyPickerOption>(FWidgetPropertyPickerOption{ TEXT("Slot"), FString(), true, 0 }));
-				AddBindableProperties(DesignerWidget->Slot->GetClass(), TEXT("Slot."), 1, Options);
+				AddBindableProperties(SlotClass, TEXT("Slot."), 1, Options);
 			}
+			CachedOptions.Add(CacheKey, Options);
 		}
 
 		TSharedRef<SWidget> MakeOptionWidget(TSharedPtr<FWidgetPropertyPickerOption> Option) const
@@ -278,7 +290,7 @@ namespace ElasticUMGEditor
 			GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, Option->PropertyPath);
 			if (UK2Node_WidgetTransition* TransitionNode = Cast<UK2Node_WidgetTransition>(GraphPinObj->GetOwningNode()))
 			{
-				TransitionNode->SetValueType(GetPropertyValueType(GraphPinObj, Option->PropertyPath));
+				TransitionNode->SetPropertyValueType(GetPropertyValueType(GraphPinObj, Option->PropertyPath));
 			}
 		}
 
@@ -396,6 +408,7 @@ namespace ElasticUMGEditor
 				[
 					SNew(SCheckBox)
 					.Style(FAppStyle::Get(), "ToggleButtonCheckbox")
+					.Cursor(EMouseCursor::Hand)
 					.ToolTipText(FText::FromString(Option.Tooltip))
 					.IsChecked(this, &SWidgetTransitionOptionalPins::GetOptionState, Option.Pin)
 					.OnCheckStateChanged(this, &SWidgetTransitionOptionalPins::SetOptionState, Option.Pin)

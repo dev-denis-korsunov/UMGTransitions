@@ -16,7 +16,7 @@ DECLARE_DYNAMIC_DELEGATE_ThreeParams(FOnBoolWidgetTransitionUpdate, UWidget*, Wi
 DECLARE_DYNAMIC_DELEGATE_ThreeParams(FOnVectorWidgetTransitionUpdate, UWidget*, Widget, FVector2D, Value, float, Alpha);
 DECLARE_DYNAMIC_DELEGATE_ThreeParams(FOnColorWidgetTransitionUpdate, UWidget*, Widget, FLinearColor, Value, float, Alpha);
 
-UENUM()
+UENUM(BlueprintType)
 enum class EWidgetTransitionValueType : uint8
 {
 	Float,
