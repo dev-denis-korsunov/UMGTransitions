@@ -16,7 +16,7 @@
 class ELASTICUMG_API FSpringFloat
 {
 public:
-	FSpringFloat(float SpringFactor, const float DampingFactor, const float MaxVelocity, const float CompleteTolerance = 0.01f);
+	FSpringFloat(float SpringFactor, float DampingFactor);
 
 	void Tick(float DeltaTime);
 
@@ -36,20 +36,11 @@ private:
 	 */
 	const float DampingFactor = 16.0f;
 
-	/**
-	 * Specifies the maximum speed at which the value can move, capping the velocity to prevent overly rapid changes.
-	 */
-	const float MaxVelocity = 1600.0f;
-
-	/**
-	 * Completion tolerance used to check if the resulting force is nearly zero.
-	 */
-	const float CompleteTolerance;
-
 	/** State */
 	float TargetValue = 0.0f;
 	float CurrentValue = 0.0f;
 	float Velocity = 0.0f;
+	float InitialDisplacement = 0.0f;
 	uint8 bStarted : 1;
 	uint8 bCompleted : 1;
 };
@@ -58,7 +49,7 @@ private:
 class ELASTICUMG_API FSpringVector2D
 {
 public:
-	FSpringVector2D(float SpringFactor, float DampingFactor, float MaxVelocity, float CompleteTolerance = 0.01f);
+	FSpringVector2D(float SpringFactor, float DampingFactor);
 
 	void Tick(float DeltaTime);
 	void Start(FVector2D InStartValue, FVector2D InTargetValue);
@@ -69,11 +60,10 @@ public:
 private:
 	const float SpringFactor = 200.0f;
 	const float DampingFactor = 16.0f;
-	const float MaxVelocity = 1600.0f;
-	const float CompleteTolerance;
 	FVector2D TargetValue = FVector2D::ZeroVector;
 	FVector2D CurrentValue = FVector2D::ZeroVector;
 	FVector2D Velocity = FVector2D::ZeroVector;
+	float InitialDisplacement = 0.0f;
 	uint8 bStarted : 1;
 	uint8 bCompleted : 1;
 };

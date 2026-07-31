@@ -54,6 +54,18 @@ public:
 	void SetEasingVisible(bool bInShowEasing);
 
 private:
+	// Pin layout is deliberately expressed as ordered rules in the .cpp.
+	void ShowExecutionPins(const class UEdGraphSchema_K2* Schema);
+	void ShowWidgetSelectionPins(const class UEdGraphSchema_K2* Schema);
+	void ShowValueTypePinWhenWidgetSelectionIsHidden(const class UEdGraphSchema_K2* Schema);
+	void ShowTransitionValuePins(const class UEdGraphSchema_K2* Schema);
+	void ShowTimingAndEasingPins(const class UEdGraphSchema_K2* Schema);
+	bool ShowRepeatPin(const class UEdGraphSchema_K2* Schema);
+	bool ShowSpringPins(const class UEdGraphSchema_K2* Schema);
+	bool ShowUpdatePin(const class UEdGraphSchema_K2* Schema);
+	void UpdateAdvancedPinVisibility(bool bHasAdvancedPins);
+	bool SupportsSpring() const;
+
 	UPROPERTY()
 	EWidgetTransitionValueType ValueType = EWidgetTransitionValueType::Float;
 

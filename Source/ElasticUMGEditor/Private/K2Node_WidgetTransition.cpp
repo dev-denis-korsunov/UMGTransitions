@@ -25,10 +25,12 @@ namespace WidgetTransitionNode
 	static const FName YoYoPinName(TEXT("bYoYo"));
 	static const FName RemoveFromParentPinName(TEXT("bRemoveFromParent"));
 	static const FName UseSpringPinName(TEXT("bUseSpring"));
-	static const FName SpringFactorPinName(TEXT("SpringFactor"));
-	static const FName DampingFactorPinName(TEXT("DampingFactor"));
-	static const FName MaxVelocityPinName(TEXT("MaxVelocity"));
-	static const FName CompleteTolerancePinName(TEXT("CompleteTolerance"));
+	static const FName SpringSpeedPinName(TEXT("SpringSpeed"));
+	static const FName SpringBouncePinName(TEXT("SpringBounce"));
+	static const FName LegacySpringFactorPinName(TEXT("SpringFactor"));
+	static const FName LegacyDampingFactorPinName(TEXT("DampingFactor"));
+	static const FName LegacyMaxVelocityPinName(TEXT("MaxVelocity"));
+	static const FName LegacyCompleteTolerancePinName(TEXT("CompleteTolerance"));
 	static const FName OnUpdatePinName(TEXT("OnUpdate"));
 	static const FName WorldContextPinName(TEXT("WorldContextObject"));
 	static const FName UseFromPinName(TEXT("bUseFrom"));
@@ -119,30 +121,38 @@ namespace WidgetTransitionNode
 	return Name == FromValuePinName || Name == TimePinName || Name == DelayPinName || Name == RepeatCountPinName
 			|| Name == EasingPinName
 			|| Name == YoYoPinName || Name == RemoveFromParentPinName || Name == UseSpringPinName
-			|| Name == SpringFactorPinName || Name == DampingFactorPinName || Name == MaxVelocityPinName
-			|| Name == CompleteTolerancePinName || Name == OnUpdatePinName || Name == ValueTypePinName;
+			|| Name == SpringSpeedPinName || Name == SpringBouncePinName || Name == LegacySpringFactorPinName || Name == LegacyDampingFactorPinName || Name == LegacyMaxVelocityPinName
+			|| Name == LegacyCompleteTolerancePinName || Name == OnUpdatePinName || Name == ValueTypePinName;
 	}
 }
 
-void UK2Node_WidgetTransition::AllocateDefaultPins()
+void UK2Node_WidgetTransition::ShowExecutionPins(const UEdGraphSchema_K2* Schema)
 {
-	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
-	bool bHasAdvancedPins = false;
 	CreatePin(EGPD_Input, Schema->PC_Exec, UEdGraphSchema_K2::PN_Execute);
 	CreatePin(EGPD_Output, Schema->PC_Exec, UEdGraphSchema_K2::PN_Then);
 	UEdGraphPin* WorldContextPin = CreatePin(EGPD_Input, Schema->PC_Object, UObject::StaticClass(), WidgetTransitionNode::WorldContextPinName);
 	WorldContextPin->DefaultValue = TEXT("self"); WorldContextPin->bHidden = true;
+}
+
+void UK2Node_WidgetTransition::ShowWidgetSelectionPins(const UEdGraphSchema_K2* Schema)
+{
 	const bool bShowWidgetAndProperty = IsOptionalPinVisible(EWidgetTransitionOptionalPin::WidgetAndProperty);
 	UEdGraphPin* WidgetPin = CreatePin(EGPD_Input, Schema->PC_Object, UWidget::StaticClass(), WidgetTransitionNode::WidgetPinName);
 	WidgetPin->bHidden = !bShowWidgetAndProperty;
 	UEdGraphPin* WidgetPropertyPin = CreatePin(EGPD_Input, Schema->PC_String, WidgetTransitionNode::WidgetPropertyPinName);
 	WidgetPropertyPin->bHidden = !bShowWidgetAndProperty;
-	if (!bShowWidgetAndProperty)
-	{
-		UEdGraphPin* ValueTypePin = CreatePin(EGPD_Input, Schema->PC_Byte, StaticEnum<EWidgetTransitionValueType>(), WidgetTransitionNode::ValueTypePinName);
-		ValueTypePin->bNotConnectable = true;
-		ValueTypePin->DefaultValue = StaticEnum<EWidgetTransitionValueType>()->GetNameStringByValue(static_cast<int64>(ManualValueType));
-	}
+}
+
+void UK2Node_WidgetTransition::ShowValueTypePinWhenWidgetSelectionIsHidden(const UEdGraphSchema_K2* Schema)
+{
+	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::WidgetAndProperty)) return;
+	UEdGraphPin* ValueTypePin = CreatePin(EGPD_Input, Schema->PC_Byte, StaticEnum<EWidgetTransitionValueType>(), WidgetTransitionNode::ValueTypePinName);
+	ValueTypePin->bNotConnectable = true;
+	ValueTypePin->DefaultValue = StaticEnum<EWidgetTransitionValueType>()->GetNameStringByValue(static_cast<int64>(ManualValueType));
+}
+
+void UK2Node_WidgetTransition::ShowTransitionValuePins(const UEdGraphSchema_K2* Schema)
+{
 	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::From))
 	{
 		WidgetTransitionNode::CreateValuePin(this, EGPD_Input, WidgetTransitionNode::FromValuePinName, Schema);
@@ -160,42 +170,78 @@ void UK2Node_WidgetTransition::AllocateDefaultPins()
 		ToPin->bNotConnectable = true;
 		ToPin->bDefaultValueIsReadOnly = true;
 	}
+}
+
+void UK2Node_WidgetTransition::ShowTimingAndEasingPins(const UEdGraphSchema_K2* Schema)
+{
 	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Delay)) CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::DelayPinName)->DefaultValue = TEXT("0.0");
 	CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::TimePinName)->DefaultValue = TEXT("0.2");
 	if (IsEasingVisible()) CreatePin(EGPD_Input, Schema->PC_Name, WidgetTransitionNode::EasingPinName);
+}
+
+bool UK2Node_WidgetTransition::ShowRepeatPin(const UEdGraphSchema_K2* Schema)
+{
 	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Repeat))
 	{
 		UEdGraphPin* RepeatCountPin = CreatePin(EGPD_Input, Schema->PC_Int, WidgetTransitionNode::RepeatCountPinName);
 		RepeatCountPin->DefaultValue = TEXT("0");
 		RepeatCountPin->bAdvancedView = true;
-		bHasAdvancedPins = true;
+		return true;
 	}
-	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Spring) && bValueTypeResolved && (ValueType == EWidgetTransitionValueType::Float || ValueType == EWidgetTransitionValueType::Vector2D))
+	return false;
+}
+
+bool UK2Node_WidgetTransition::SupportsSpring() const
+{
+	return bValueTypeResolved && (ValueType == EWidgetTransitionValueType::Float || ValueType == EWidgetTransitionValueType::Vector2D);
+}
+
+bool UK2Node_WidgetTransition::ShowSpringPins(const UEdGraphSchema_K2* Schema)
+{
+	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Spring) && SupportsSpring())
 	{
-		UEdGraphPin* SpringFactorPin = CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::SpringFactorPinName);
-		SpringFactorPin->DefaultValue = TEXT("200.0");
-		SpringFactorPin->bAdvancedView = true;
-		UEdGraphPin* DampingFactorPin = CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::DampingFactorPinName);
-		DampingFactorPin->DefaultValue = TEXT("16.0");
-		DampingFactorPin->bAdvancedView = true;
-		UEdGraphPin* MaxVelocityPin = CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::MaxVelocityPinName);
-		MaxVelocityPin->DefaultValue = TEXT("1600.0");
-		MaxVelocityPin->bAdvancedView = true;
-		UEdGraphPin* CompleteTolerancePin = CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::CompleteTolerancePinName);
-		CompleteTolerancePin->DefaultValue = TEXT("0.01");
-		CompleteTolerancePin->bAdvancedView = true;
-		bHasAdvancedPins = true;
+		UEdGraphPin* SpringSpeedPin = CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::SpringSpeedPinName);
+		SpringSpeedPin->DefaultValue = TEXT("0.65");
+		UEdGraphPin* SpringBouncePin = CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::SpringBouncePinName);
+		SpringBouncePin->DefaultValue = TEXT("0.45");
+		return false;
 	}
+	return false;
+}
+
+bool UK2Node_WidgetTransition::ShowUpdatePin(const UEdGraphSchema_K2* Schema)
+{
 	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::OnUpdate))
 	{
 		WidgetTransitionNode::CreateFunctionParameterPin(this, WidgetTransitionNode::OnUpdatePinName, Schema);
 		if (UEdGraphPin* OnUpdatePin = FindPin(WidgetTransitionNode::OnUpdatePinName))
 		{
 			OnUpdatePin->bAdvancedView = true;
-			bHasAdvancedPins = true;
+			return true;
 		}
 	}
+	return false;
+}
+
+void UK2Node_WidgetTransition::UpdateAdvancedPinVisibility(bool bHasAdvancedPins)
+{
 	if (bHasAdvancedPins && AdvancedPinDisplay == ENodeAdvancedPins::NoPins) AdvancedPinDisplay = ENodeAdvancedPins::Hidden;
+}
+
+void UK2Node_WidgetTransition::AllocateDefaultPins()
+{
+	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+	// Keep this ordered: it is the complete pin visibility policy for the node.
+	ShowExecutionPins(Schema);
+	ShowWidgetSelectionPins(Schema);
+	ShowValueTypePinWhenWidgetSelectionIsHidden(Schema);
+	ShowTransitionValuePins(Schema);
+	ShowTimingAndEasingPins(Schema);
+	const bool bHasRepeatPin = ShowRepeatPin(Schema);
+	const bool bHasSpringPins = ShowSpringPins(Schema);
+	const bool bHasUpdatePin = ShowUpdatePin(Schema);
+	const bool bHasAdvancedPins = bHasRepeatPin || bHasSpringPins || bHasUpdatePin;
+	UpdateAdvancedPinVisibility(bHasAdvancedPins);
 }
 
 FText UK2Node_WidgetTransition::GetNodeTitle(ENodeTitleType::Type) const { return NSLOCTEXT("ElasticUMG", "CreateWidgetTransition", "Create Widget Transition"); }
@@ -238,7 +284,7 @@ void UK2Node_WidgetTransition::ExpandNode(FKismetCompilerContext& CompilerContex
 	MoveLinks(WidgetTransitionNode::ToValuePinName); MoveLinks(WidgetTransitionNode::TimePinName); MoveLinks(WidgetTransitionNode::DelayPinName);
 	MoveLinks(WidgetTransitionNode::EasingPinName);
 	MoveLinks(WidgetTransitionNode::RepeatCountPinName);
-	MoveLinks(WidgetTransitionNode::SpringFactorPinName); MoveLinks(WidgetTransitionNode::DampingFactorPinName); MoveLinks(WidgetTransitionNode::MaxVelocityPinName); MoveLinks(WidgetTransitionNode::CompleteTolerancePinName); MoveLinks(WidgetTransitionNode::OnUpdatePinName);
+	MoveLinks(WidgetTransitionNode::SpringSpeedPinName); MoveLinks(WidgetTransitionNode::SpringBouncePinName); MoveLinks(WidgetTransitionNode::OnUpdatePinName);
 	CallNode->FindPinChecked(WidgetTransitionNode::UseFromPinName)->DefaultValue = bUseFrom ? TEXT("true") : TEXT("false");
 	if (UEdGraphPin* YoYoPin = CallNode->FindPin(WidgetTransitionNode::YoYoPinName)) YoYoPin->DefaultValue = IsOptionalPinVisible(EWidgetTransitionOptionalPin::YoYo) ? TEXT("true") : TEXT("false");
 	if (UEdGraphPin* RemovePin = CallNode->FindPin(WidgetTransitionNode::RemoveFromParentPinName)) RemovePin->DefaultValue = IsOptionalPinVisible(EWidgetTransitionOptionalPin::RemoveFromParent) && !bRepeatCountIsInfinite ? TEXT("true") : TEXT("false");

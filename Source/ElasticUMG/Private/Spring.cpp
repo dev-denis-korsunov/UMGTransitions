@@ -1,10 +1,8 @@
 #include "Spring.h"
 
-FSpringFloat::FSpringFloat(const float SpringFactor, const float DampingFactor, const float MaxVelocity, const float CompleteTolerance)
-	: SpringFactor(SpringFactor)
-	, DampingFactor(DampingFactor)
-	, MaxVelocity(MaxVelocity)
-	, CompleteTolerance(CompleteTolerance)
+FSpringFloat::FSpringFloat(float InSpringFactor, float InDampingFactor)
+	: SpringFactor(InSpringFactor)
+	, DampingFactor(InDampingFactor)
 	, bStarted(false)
 	, bCompleted(false)
 {
@@ -15,58 +13,43 @@ void FSpringFloat::Start(float InStartValue, float InTargetValue)
 	CurrentValue = InStartValue;
 	TargetValue = InTargetValue;
 	Velocity = 0.0f;
+	InitialDisplacement = FMath::Abs(TargetValue - CurrentValue);
 	bStarted = true;
 	bCompleted = false;
 }
 
 void FSpringFloat::Tick(float DeltaTime)
 {
-	// If the motion hasn't started or is already completed, no further calculations are needed.
-	if (!bStarted || bCompleted)
+	if (!bStarted || bCompleted) return;
+	const float Frequency = FMath::Sqrt(SpringFactor);
+	const float DampingRatio = DampingFactor / (2.0f * Frequency);
+	const float Offset = CurrentValue - TargetValue;
+	if (DampingRatio < 1.0f)
 	{
-		return;
+		const float DampedFrequency = Frequency * FMath::Sqrt(1.0f - DampingRatio * DampingRatio);
+		const float Exponential = FMath::Exp(-DampingRatio * Frequency * DeltaTime);
+		const float Cosine = FMath::Cos(DampedFrequency * DeltaTime);
+		const float Sine = FMath::Sin(DampedFrequency * DeltaTime);
+		const float Coefficient = (Velocity + DampingRatio * Frequency * Offset) / DampedFrequency;
+		const float NewOffset = Exponential * (Offset * Cosine + Coefficient * Sine);
+		Velocity = Exponential * (-DampingRatio * Frequency * (Offset * Cosine + Coefficient * Sine) - Offset * DampedFrequency * Sine + Coefficient * DampedFrequency * Cosine);
+		CurrentValue = TargetValue + NewOffset;
 	}
-
-	// Limit DeltaTime to prevent large jumps at low FPS.
-	DeltaTime = FMath::Min(DeltaTime, 1.0f / 20.0f);
-
-	// Calculate the distance between the current and target values (spring displacement).
-	const float springDistance = TargetValue - CurrentValue;
-
-	// Calculate the damping force, which slows down the motion.
-	// The force is proportional to the current velocity and the damping factor.
-	const float dampingForce = -1 * Velocity * DampingFactor;
-
-	// Calculate the spring force, which pulls the current value towards the target.
-	// The force is proportional to the distance and the spring factor.
-	const float springForce = springDistance * SpringFactor;
-
-	// The resultant force is the sum of the spring force and the damping force.
-	const float resultForce = springForce + dampingForce;
-
-	// Update velocity based on the resultant force and elapsed time.
-	Velocity = Velocity + resultForce * DeltaTime;
-
-	// Clamp the velocity to ensure it doesn't exceed the maximum in either direction (positive or negative).
-	Velocity = FMath::Clamp(Velocity, -1 * MaxVelocity, MaxVelocity);
-
-	// Update the current value based on the velocity and elapsed time.
-	CurrentValue += Velocity * DeltaTime;
-
-	// Check if the resultant force is close enough to zero to consider the motion completed.
-	bCompleted = FMath::IsNearlyZero(resultForce, CompleteTolerance);
-
-	if (bCompleted)
+	else
 	{
-		CurrentValue = TargetValue;
+		const float Exponential = FMath::Exp(-Frequency * DeltaTime);
+		const float Coefficient = Velocity + Frequency * Offset;
+		CurrentValue = TargetValue + Exponential * (Offset + Coefficient * DeltaTime);
+		Velocity = Exponential * (Velocity - Frequency * Coefficient * DeltaTime);
 	}
+	const float Threshold = FMath::Max(0.0001f, InitialDisplacement * 0.001f);
+	bCompleted = FMath::Abs(CurrentValue - TargetValue) <= Threshold && FMath::Abs(Velocity) <= Threshold * Frequency;
+	if (bCompleted) CurrentValue = TargetValue;
 }
 
-FSpringVector2D::FSpringVector2D(float InSpringFactor, float InDampingFactor, float InMaxVelocity, float InCompleteTolerance)
+FSpringVector2D::FSpringVector2D(float InSpringFactor, float InDampingFactor)
 	: SpringFactor(InSpringFactor)
 	, DampingFactor(InDampingFactor)
-	, MaxVelocity(InMaxVelocity)
-	, CompleteTolerance(InCompleteTolerance)
 	, bStarted(false)
 	, bCompleted(false)
 {
@@ -77,6 +60,7 @@ void FSpringVector2D::Start(FVector2D InStartValue, FVector2D InTargetValue)
 	CurrentValue = InStartValue;
 	TargetValue = InTargetValue;
 	Velocity = FVector2D::ZeroVector;
+	InitialDisplacement = (TargetValue - CurrentValue).Size();
 	bStarted = true;
 	bCompleted = false;
 }
@@ -84,12 +68,28 @@ void FSpringVector2D::Start(FVector2D InStartValue, FVector2D InTargetValue)
 void FSpringVector2D::Tick(float DeltaTime)
 {
 	if (!bStarted || bCompleted) return;
-	DeltaTime = FMath::Min(DeltaTime, 1.0f / 20.0f);
-	const FVector2D ResultForce = (TargetValue - CurrentValue) * SpringFactor - Velocity * DampingFactor;
-	Velocity += ResultForce * DeltaTime;
-	const float VelocitySize = Velocity.Size();
-	if (VelocitySize > MaxVelocity && VelocitySize > UE_SMALL_NUMBER) Velocity *= MaxVelocity / VelocitySize;
-	CurrentValue += Velocity * DeltaTime;
-	bCompleted = ResultForce.SizeSquared() <= FMath::Square(CompleteTolerance) && Velocity.SizeSquared() <= FMath::Square(CompleteTolerance);
+	const float Frequency = FMath::Sqrt(SpringFactor);
+	const float DampingRatio = DampingFactor / (2.0f * Frequency);
+	const FVector2D Offset = CurrentValue - TargetValue;
+	if (DampingRatio < 1.0f)
+	{
+		const float DampedFrequency = Frequency * FMath::Sqrt(1.0f - DampingRatio * DampingRatio);
+		const float Exponential = FMath::Exp(-DampingRatio * Frequency * DeltaTime);
+		const float Cosine = FMath::Cos(DampedFrequency * DeltaTime);
+		const float Sine = FMath::Sin(DampedFrequency * DeltaTime);
+		const FVector2D Coefficient = (Velocity + DampingRatio * Frequency * Offset) / DampedFrequency;
+		const FVector2D NewOffset = Exponential * (Offset * Cosine + Coefficient * Sine);
+		Velocity = Exponential * (-DampingRatio * Frequency * (Offset * Cosine + Coefficient * Sine) - Offset * DampedFrequency * Sine + Coefficient * DampedFrequency * Cosine);
+		CurrentValue = TargetValue + NewOffset;
+	}
+	else
+	{
+		const float Exponential = FMath::Exp(-Frequency * DeltaTime);
+		const FVector2D Coefficient = Velocity + Frequency * Offset;
+		CurrentValue = TargetValue + Exponential * (Offset + Coefficient * DeltaTime);
+		Velocity = Exponential * (Velocity - Frequency * Coefficient * DeltaTime);
+	}
+	const float Threshold = FMath::Max(0.0001f, InitialDisplacement * 0.001f);
+	bCompleted = (CurrentValue - TargetValue).Size() <= Threshold && Velocity.Size() <= Threshold * Frequency;
 	if (bCompleted) CurrentValue = TargetValue;
 }

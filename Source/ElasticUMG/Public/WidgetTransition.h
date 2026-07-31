@@ -62,10 +62,9 @@ struct FWidgetTransition
 	bool bYoYo = false;
 	bool bRemoveFromParent = false;
 	bool bUseSpring = false;
-	float SpringFactor = 200.0f;
-	float DampingFactor = 16.0f;
-	float MaxVelocity = 1600.0f;
-	float CompleteTolerance = 0.01f;
+	/** Normalized designer controls. 0..1 maps to physical stiffness and damping ratio. */
+	float SpringSpeed = 0.65f;
+	float SpringBounce = 0.45f;
 	TSharedPtr<FSpringFloat> FloatSpring;
 	TSharedPtr<FSpringVector2D> VectorSpring;
 	FOnFloatWidgetTransitionUpdate FloatOnUpdate;
@@ -82,7 +81,7 @@ class ELASTICUMG_API UWidgetTransitionFunctionLibrary final : public UBlueprintF
 public:
 	/** Internal typed entry point used only when the universal node is compiled. */
 	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true"))
-	static void CreateFloatWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, float ToValue, FOnFloatWidgetTransitionUpdate OnUpdate, float Time = 0.2f, float Delay = 0.0f, FName Easing = NAME_None, int32 RepeatCount = 0, bool bYoYo = false, bool bRemoveFromParent = false, bool bUseSpring = false, float SpringFactor = 200.0f, float DampingFactor = 16.0f, float MaxVelocity = 1600.0f, float CompleteTolerance = 0.01f, bool bUseFrom = false, float FromValue = 0.0f);
+	static void CreateFloatWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, float ToValue, FOnFloatWidgetTransitionUpdate OnUpdate, float Time = 0.2f, float Delay = 0.0f, FName Easing = NAME_None, int32 RepeatCount = 0, bool bYoYo = false, bool bRemoveFromParent = false, bool bUseSpring = false, float SpringSpeed = 0.65f, float SpringBounce = 0.45f, bool bUseFrom = false, float FromValue = 0.0f);
 
 	/** Internal typed entry point used only when the universal node is compiled. */
 	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true"))
@@ -90,7 +89,7 @@ public:
 
 	/** Internal typed entry point used only when the universal node is compiled. */
 	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true"))
-	static void CreateVectorWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, FVector2D ToValue, FOnVectorWidgetTransitionUpdate OnUpdate, float Time = 0.2f, float Delay = 0.0f, FName Easing = NAME_None, int32 RepeatCount = 0, bool bYoYo = false, bool bRemoveFromParent = false, bool bUseSpring = false, float SpringFactor = 200.0f, float DampingFactor = 16.0f, float MaxVelocity = 1600.0f, float CompleteTolerance = 0.01f, bool bUseFrom = false, FVector2D FromValue = FVector2D::ZeroVector);
+	static void CreateVectorWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, FVector2D ToValue, FOnVectorWidgetTransitionUpdate OnUpdate, float Time = 0.2f, float Delay = 0.0f, FName Easing = NAME_None, int32 RepeatCount = 0, bool bYoYo = false, bool bRemoveFromParent = false, bool bUseSpring = false, float SpringSpeed = 0.65f, float SpringBounce = 0.45f, bool bUseFrom = false, FVector2D FromValue = FVector2D::ZeroVector);
 
 	/** Internal typed entry point used only when the universal node is compiled. */
 	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true"))
