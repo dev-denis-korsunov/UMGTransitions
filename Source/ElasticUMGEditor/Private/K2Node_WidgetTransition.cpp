@@ -24,6 +24,7 @@ namespace WidgetTransitionNode
 	static const FName MaxVelocityPinName(TEXT("MaxVelocity"));
 	static const FName CompleteTolerancePinName(TEXT("CompleteTolerance"));
 	static const FName OnUpdatePinName(TEXT("OnUpdate"));
+	static const FName OptionalPinsPinName(TEXT("OptionalPins"));
 	static const FName WorldContextPinName(TEXT("WorldContextObject"));
 	static const FName UseFromPinName(TEXT("bUseFrom"));
 
@@ -33,6 +34,7 @@ namespace WidgetTransitionNode
 		{
 		case EWidgetTransitionValueType::Bool: return GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateBoolWidgetTransition);
 		case EWidgetTransitionValueType::Vector2D: return GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateVectorWidgetTransition);
+		case EWidgetTransitionValueType::LinearColor: return GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateColorWidgetTransition);
 		default: return GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateFloatWidgetTransition);
 		}
 	}
@@ -44,6 +46,7 @@ namespace WidgetTransitionNode
 		{
 		case EWidgetTransitionValueType::Bool: Node->CreatePin(Direction, Schema->PC_Boolean, Name); break;
 		case EWidgetTransitionValueType::Vector2D: Node->CreatePin(Direction, Schema->PC_Struct, TBaseStructure<FVector2D>::Get(), Name); break;
+		case EWidgetTransitionValueType::LinearColor: Node->CreatePin(Direction, Schema->PC_Struct, TBaseStructure<FLinearColor>::Get(), Name); break;
 		default: Node->CreatePin(Direction, Schema->PC_Real, Schema->PC_Float, Name); break;
 		}
 	}
@@ -61,6 +64,16 @@ namespace WidgetTransitionNode
 	{
 		return Pin && Pin->LinkedTo.IsEmpty() && Pin->DefaultValue == TEXT("-1");
 	}
+
+	static bool IsDiscardableTypeSpecificPin(const UEdGraphPin* Pin)
+	{
+		if (!Pin || !Pin->bOrphanedPin || !Pin->LinkedTo.IsEmpty()) return false;
+		const FName Name = Pin->PinName;
+		return Name == FromValuePinName || Name == TimePinName || Name == DelayPinName || Name == RepeatCountPinName
+			|| Name == YoYoPinName || Name == RemoveFromParentPinName || Name == UseSpringPinName
+			|| Name == SpringFactorPinName || Name == DampingFactorPinName || Name == MaxVelocityPinName
+			|| Name == CompleteTolerancePinName || Name == OnUpdatePinName;
+	}
 }
 
 void UK2Node_WidgetTransition::AllocateDefaultPins()
@@ -72,18 +85,21 @@ void UK2Node_WidgetTransition::AllocateDefaultPins()
 	WorldContextPin->DefaultValue = TEXT("self"); WorldContextPin->bHidden = true;
 	CreatePin(EGPD_Input, Schema->PC_Object, UWidget::StaticClass(), WidgetTransitionNode::WidgetPinName);
 	CreatePin(EGPD_Input, Schema->PC_String, WidgetTransitionNode::WidgetPropertyPinName);
-	WidgetTransitionNode::CreateValuePin(this, EGPD_Input, WidgetTransitionNode::FromValuePinName, Schema);
-	FindPinChecked(WidgetTransitionNode::FromValuePinName)->bAdvancedView = true;
+	UEdGraphPin* OptionalPinsPin = CreatePin(EGPD_Input, Schema->PC_Int, WidgetTransitionNode::OptionalPinsPinName);
+	OptionalPinsPin->bNotConnectable = true;
+	OptionalPinsPin->PinFriendlyName = NSLOCTEXT("ElasticUMG", "OptionalPinsFriendlyName", "Optional Pins");
+	OptionalPinsPin->DefaultValue = LexToString(OptionalPins);
+	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::From))
+	{
+		WidgetTransitionNode::CreateValuePin(this, EGPD_Input, WidgetTransitionNode::FromValuePinName, Schema);
+	}
 	WidgetTransitionNode::CreateValuePin(this, EGPD_Input, WidgetTransitionNode::ToValuePinName, Schema);
-	UEdGraphPin* TimePin = CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::TimePinName);
-	TimePin->DefaultValue = TEXT("0.0");
-	UEdGraphPin* DelayPin = CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::DelayPinName);
-	DelayPin->DefaultValue = TEXT("0.0");
-	UEdGraphPin* RepeatPin = CreatePin(EGPD_Input, Schema->PC_Int, WidgetTransitionNode::RepeatCountPinName);
-	RepeatPin->DefaultValue = TEXT("0");
-	CreatePin(EGPD_Input, Schema->PC_Boolean, WidgetTransitionNode::YoYoPinName)->DefaultValue = TEXT("false");
-	if (!bRepeatCountIsInfinite) CreatePin(EGPD_Input, Schema->PC_Boolean, WidgetTransitionNode::RemoveFromParentPinName)->DefaultValue = TEXT("false");
-	if (bValueTypeResolved && ValueType != EWidgetTransitionValueType::Bool)
+	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Time)) CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::TimePinName)->DefaultValue = TEXT("0.0");
+	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Delay)) CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::DelayPinName)->DefaultValue = TEXT("0.0");
+	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Repeat)) CreatePin(EGPD_Input, Schema->PC_Int, WidgetTransitionNode::RepeatCountPinName)->DefaultValue = TEXT("0");
+	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::YoYo)) CreatePin(EGPD_Input, Schema->PC_Boolean, WidgetTransitionNode::YoYoPinName)->DefaultValue = TEXT("false");
+	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::RemoveFromParent) && !bRepeatCountIsInfinite) CreatePin(EGPD_Input, Schema->PC_Boolean, WidgetTransitionNode::RemoveFromParentPinName)->DefaultValue = TEXT("false");
+	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Spring) && bValueTypeResolved && (ValueType == EWidgetTransitionValueType::Float || ValueType == EWidgetTransitionValueType::Vector2D))
 	{
 		CreatePin(EGPD_Input, Schema->PC_Boolean, WidgetTransitionNode::UseSpringPinName)->DefaultValue = TEXT("false");
 		CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::SpringFactorPinName)->DefaultValue = TEXT("200.0");
@@ -91,7 +107,7 @@ void UK2Node_WidgetTransition::AllocateDefaultPins()
 		CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::MaxVelocityPinName)->DefaultValue = TEXT("1600.0");
 		CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::CompleteTolerancePinName)->DefaultValue = TEXT("0.01");
 	}
-	WidgetTransitionNode::CreateFunctionParameterPin(this, WidgetTransitionNode::OnUpdatePinName, Schema);
+	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::OnUpdate)) WidgetTransitionNode::CreateFunctionParameterPin(this, WidgetTransitionNode::OnUpdatePinName, Schema);
 }
 
 FText UK2Node_WidgetTransition::GetNodeTitle(ENodeTitleType::Type) const { return NSLOCTEXT("ElasticUMG", "CreateWidgetTransition", "Create Widget Transition"); }
@@ -117,8 +133,8 @@ void UK2Node_WidgetTransition::ExpandNode(FKismetCompilerContext& CompilerContex
 	if (!Function) { CompilerContext.MessageLog.Error(*NSLOCTEXT("ElasticUMG", "MissingWidgetTransitionFunction", "@@ could not find its transition function.").ToString(), this); BreakAllNodeLinks(); return; }
 	UK2Node_CallFunction* CallNode = CompilerContext.SpawnIntermediateNode<UK2Node_CallFunction>(this, SourceGraph);
 	CallNode->SetFromFunction(Function); CallNode->AllocateDefaultPins();
-	const UEdGraphPin* FromPin = FindPinChecked(WidgetTransitionNode::FromValuePinName);
-	const bool bUseFrom = !FromPin->LinkedTo.IsEmpty() || !FromPin->DefaultValue.IsEmpty();
+	const UEdGraphPin* FromPin = FindPin(WidgetTransitionNode::FromValuePinName);
+	const bool bUseFrom = FromPin && (!FromPin->LinkedTo.IsEmpty() || !FromPin->DefaultValue.IsEmpty());
 	const auto MoveLinks = [&CompilerContext, this, CallNode](FName PinName)
 	{
 		if (UEdGraphPin* SourcePin = FindPin(PinName)) if (UEdGraphPin* DestinationPin = CallNode->FindPin(PinName)) CompilerContext.MovePinLinksToIntermediate(*SourcePin, *DestinationPin);
@@ -152,6 +168,29 @@ void UK2Node_WidgetTransition::NotifyPinConnectionListChanged(UEdGraphPin* Pin)
 	}
 }
 
+void UK2Node_WidgetTransition::PostReconstructNode()
+{
+	Super::PostReconstructNode();
+	TArray<UEdGraphPin*> PinsToDiscard;
+	for (UEdGraphPin* Pin : Pins)
+	{
+		if (WidgetTransitionNode::IsDiscardableTypeSpecificPin(Pin)) PinsToDiscard.Add(Pin);
+	}
+	if (PinsToDiscard.IsEmpty()) return;
+	for (UEdGraphPin* Pin : PinsToDiscard) Pins.Remove(Pin);
+	DestroyPinList(PinsToDiscard);
+}
+
+void UK2Node_WidgetTransition::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+	if (PropertyChangedEvent.GetPropertyName() == GET_MEMBER_NAME_CHECKED(UK2Node_WidgetTransition, OptionalPins))
+	{
+		Modify();
+		ReconstructNode();
+	}
+}
+
 void UK2Node_WidgetTransition::SetValueType(EWidgetTransitionValueType InValueType)
 {
 	if (!bValueTypeResolved || ValueType != InValueType)
@@ -159,6 +198,16 @@ void UK2Node_WidgetTransition::SetValueType(EWidgetTransitionValueType InValueTy
 		Modify();
 		ValueType = InValueType;
 		bValueTypeResolved = true;
+		ReconstructNode();
+	}
+}
+
+void UK2Node_WidgetTransition::SetOptionalPins(int32 InOptionalPins)
+{
+	if (OptionalPins != InOptionalPins)
+	{
+		Modify();
+		OptionalPins = InOptionalPins;
 		ReconstructNode();
 	}
 }

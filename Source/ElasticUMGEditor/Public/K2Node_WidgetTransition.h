@@ -9,6 +9,20 @@
 class FBlueprintActionDatabaseRegistrar;
 class FKismetCompilerContext;
 class UEdGraph;
+struct FPropertyChangedEvent;
+
+UENUM(meta = (Bitflags, UseEnumValuesAsMaskValuesInEditor = "true"))
+enum class EWidgetTransitionOptionalPin : uint8
+{
+	From = 1 << 0,
+	Time = 1 << 1,
+	Delay = 1 << 2,
+	Repeat = 1 << 3,
+	YoYo = 1 << 4,
+	RemoveFromParent = 1 << 5,
+	Spring = 1 << 6,
+	OnUpdate = 1 << 7,
+};
 
 UCLASS()
 class ELASTICUMGEDITOR_API UK2Node_WidgetTransition final : public UK2Node
@@ -24,11 +38,16 @@ public:
 	virtual void ExpandNode(FKismetCompilerContext& CompilerContext, UEdGraph* SourceGraph) override;
 	virtual void PinDefaultValueChanged(UEdGraphPin* Pin) override;
 	virtual void NotifyPinConnectionListChanged(UEdGraphPin* Pin) override;
+	virtual void PostReconstructNode() override;
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 	virtual bool IsNodePure() const override { return false; }
 
 	bool IsValueTypeResolved() const { return bValueTypeResolved; }
 	EWidgetTransitionValueType GetValueType() const { return ValueType; }
 	void SetValueType(EWidgetTransitionValueType InValueType);
+	void SetOptionalPins(int32 InOptionalPins);
+	int32 GetOptionalPins() const { return OptionalPins; }
+	bool IsOptionalPinVisible(EWidgetTransitionOptionalPin Pin) const { return (OptionalPins & static_cast<int32>(Pin)) != 0; }
 
 private:
 	UPROPERTY()
@@ -39,4 +58,8 @@ private:
 
 	UPROPERTY()
 	bool bRepeatCountIsInfinite = false;
+
+	/** Select the optional inputs displayed on this node. */
+	UPROPERTY(EditAnywhere, Category = "Widget Transition", meta = (Bitmask, BitmaskEnum = "/Script/ElasticUMGEditor.EWidgetTransitionOptionalPin"))
+	int32 OptionalPins = static_cast<int32>(EWidgetTransitionOptionalPin::Time) | static_cast<int32>(EWidgetTransitionOptionalPin::Delay);
 };

@@ -14,6 +14,7 @@ class UWidget;
 DECLARE_DYNAMIC_DELEGATE_ThreeParams(FOnFloatWidgetTransitionUpdate, UWidget*, Widget, float, Value, float, Alpha);
 DECLARE_DYNAMIC_DELEGATE_ThreeParams(FOnBoolWidgetTransitionUpdate, UWidget*, Widget, bool, Value, float, Alpha);
 DECLARE_DYNAMIC_DELEGATE_ThreeParams(FOnVectorWidgetTransitionUpdate, UWidget*, Widget, FVector2D, Value, float, Alpha);
+DECLARE_DYNAMIC_DELEGATE_ThreeParams(FOnColorWidgetTransitionUpdate, UWidget*, Widget, FLinearColor, Value, float, Alpha);
 
 UENUM()
 enum class EWidgetTransitionValueType : uint8
@@ -21,10 +22,11 @@ enum class EWidgetTransitionValueType : uint8
 	Float,
 	Bool,
 	Vector2D,
+	LinearColor,
 };
 
 /** The two endpoints of a transition always use the same alternative. */
-using FTransitionValue = TVariant<float, FVector2D, bool>;
+using FTransitionValue = TVariant<float, FVector2D, bool, FLinearColor>;
 
 USTRUCT()
 struct ELASTICUMG_API FWidgetTransitionPropertyBinding
@@ -69,6 +71,7 @@ struct FWidgetTransition
 	FOnFloatWidgetTransitionUpdate FloatOnUpdate;
 	FOnBoolWidgetTransitionUpdate BoolOnUpdate;
 	FOnVectorWidgetTransitionUpdate VectorOnUpdate;
+	FOnColorWidgetTransitionUpdate ColorOnUpdate;
 };
 
 UCLASS()
@@ -88,6 +91,10 @@ public:
 	/** Internal typed entry point used only when the universal node is compiled. */
 	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true"))
 	static void CreateVectorWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, FVector2D ToValue, FOnVectorWidgetTransitionUpdate OnUpdate, float Time = 0.0f, float Delay = 0.0f, int32 RepeatCount = 0, bool bYoYo = false, bool bRemoveFromParent = false, bool bUseSpring = false, float SpringFactor = 200.0f, float DampingFactor = 16.0f, float MaxVelocity = 1600.0f, float CompleteTolerance = 0.01f, bool bUseFrom = false, FVector2D FromValue = FVector2D::ZeroVector);
+
+	/** Internal typed entry point used only when the universal node is compiled. */
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true"))
+	static void CreateColorWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, FLinearColor ToValue, FOnColorWidgetTransitionUpdate OnUpdate, float Time = 0.0f, float Delay = 0.0f, int32 RepeatCount = 0, bool bYoYo = false, bool bRemoveFromParent = false, bool bUseFrom = false, FLinearColor FromValue = FLinearColor::White);
 
 	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject"))
 	static void ClearAllWidgetTransitions(const UObject* WorldContextObject, UWidget* Widget);

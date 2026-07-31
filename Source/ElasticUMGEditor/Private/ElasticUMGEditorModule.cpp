@@ -13,7 +13,9 @@
 #include "EdGraph/EdGraphPin.h"
 #include "ScopedTransaction.h"
 #include "Widgets/Input/SComboBox.h"
+#include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SNumericEntryBox.h"
+#include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
 namespace ElasticUMGEditor
@@ -81,7 +83,7 @@ namespace ElasticUMGEditor
 		const FStructProperty* StructProperty = CastField<FStructProperty>(Property);
 		return IsBindableFloatProperty(Property)
 			|| (Property && Property->IsA<FBoolProperty>())
-			|| (StructProperty && StructProperty->Struct == TBaseStructure<FVector2D>::Get());
+			|| (StructProperty && (StructProperty->Struct == TBaseStructure<FVector2D>::Get() || StructProperty->Struct == TBaseStructure<FLinearColor>::Get()));
 	}
 
 	static bool HasTransitionBindableDescendant(const UStruct* Struct, int32 Depth)
@@ -170,6 +172,7 @@ namespace ElasticUMGEditor
 			if (const FStructProperty* StructProperty = CastField<FStructProperty>(Property))
 			{
 				if (StructProperty->Struct == TBaseStructure<FVector2D>::Get()) return EWidgetTransitionValueType::Vector2D;
+				if (StructProperty->Struct == TBaseStructure<FLinearColor>::Get()) return EWidgetTransitionValueType::LinearColor;
 			}
 		}
 		return EWidgetTransitionValueType::Float;
@@ -375,6 +378,78 @@ namespace ElasticUMGEditor
 		TUniquePtr<FScopedTransaction> SliderTransaction;
 	};
 
+	class SWidgetTransitionOptionalPinsGraphPin final : public SGraphPin
+	{
+	public:
+		SLATE_BEGIN_ARGS(SWidgetTransitionOptionalPinsGraphPin) {}
+		SLATE_END_ARGS()
+
+		void Construct(const FArguments& InArgs, UEdGraphPin* InGraphPinObj)
+		{
+			SGraphPin::Construct(SGraphPin::FArguments(), InGraphPinObj);
+		}
+
+	protected:
+		virtual TSharedRef<SWidget> GetDefaultValueWidget() override
+		{
+			TSharedRef<SHorizontalBox> Buttons = SNew(SHorizontalBox);
+			for (const FPinOption& Option : GetOptions())
+			{
+				Buttons->AddSlot().AutoWidth().Padding(0.0f)
+				[
+					SNew(SCheckBox)
+					.Style(FAppStyle::Get(), "ToggleButtonCheckbox")
+					.IsChecked(this, &SWidgetTransitionOptionalPinsGraphPin::GetOptionState, Option.Pin)
+					.OnCheckStateChanged(this, &SWidgetTransitionOptionalPinsGraphPin::SetOptionState, Option.Pin)
+					.Padding(FMargin(3.0f, 1.0f))
+					[
+						SNew(STextBlock).Text(FText::FromString(Option.Label))
+					]
+				];
+			}
+			return Buttons;
+		}
+
+	private:
+		struct FPinOption { EWidgetTransitionOptionalPin Pin; const TCHAR* Label; };
+
+		static const TArray<FPinOption>& GetOptions()
+		{
+			static const TArray<FPinOption> Options =
+			{
+				{ EWidgetTransitionOptionalPin::From, TEXT("Fr") },
+				{ EWidgetTransitionOptionalPin::Time, TEXT("Tm") },
+				{ EWidgetTransitionOptionalPin::Delay, TEXT("Dl") },
+				{ EWidgetTransitionOptionalPin::Repeat, TEXT("Rp") },
+				{ EWidgetTransitionOptionalPin::YoYo, TEXT("Yo") },
+				{ EWidgetTransitionOptionalPin::RemoveFromParent, TEXT("Rm") },
+				{ EWidgetTransitionOptionalPin::Spring, TEXT("Sp") },
+				{ EWidgetTransitionOptionalPin::OnUpdate, TEXT("Up") },
+			};
+			return Options;
+		}
+
+		ECheckBoxState GetOptionState(EWidgetTransitionOptionalPin Option) const
+		{
+			if (!GraphPinObj) return ECheckBoxState::Unchecked;
+			const UK2Node_WidgetTransition* Node = Cast<UK2Node_WidgetTransition>(GraphPinObj->GetOwningNodeUnchecked());
+			return Node && Node->IsOptionalPinVisible(Option) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+		}
+
+		void SetOptionState(ECheckBoxState State, EWidgetTransitionOptionalPin Option)
+		{
+			if (!GraphPinObj) return;
+			if (UK2Node_WidgetTransition* Node = Cast<UK2Node_WidgetTransition>(GraphPinObj->GetOwningNodeUnchecked()))
+			{
+				const FScopedTransaction Transaction(NSLOCTEXT("ElasticUMG", "ToggleTransitionOptionalPin", "Toggle Transition Optional Pin"));
+				const int32 NewOptionalPins = State == ECheckBoxState::Checked
+					? Node->GetOptionalPins() | static_cast<int32>(Option)
+					: Node->GetOptionalPins() & ~static_cast<int32>(Option);
+				Node->SetOptionalPins(NewOptionalPins);
+			}
+		}
+	};
+
 	class FWidgetPropertyPathPinFactory final : public FGraphPanelPinFactory
 	{
 	public:
@@ -386,6 +461,10 @@ namespace ElasticUMGEditor
 			if (bIsTypedTransitionNode && Pin->PinName == TEXT("WidgetProperty"))
 			{
 				return SNew(SWidgetPropertyPathGraphPin, Pin);
+			}
+			if (bIsTypedTransitionNode && Pin->PinName == TEXT("OptionalPins"))
+			{
+				return SNew(SWidgetTransitionOptionalPinsGraphPin, Pin);
 			}
 
 			const bool bIsTransitionFunction = (Function
