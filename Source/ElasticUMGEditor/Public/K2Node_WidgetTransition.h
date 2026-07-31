@@ -69,5 +69,5 @@ private:
 
 	/** Select the optional inputs displayed on this node. */
 	UPROPERTY(EditAnywhere, Category = "Widget Transition", meta = (Bitmask, BitmaskEnum = "/Script/ElasticUMGEditor.EWidgetTransitionOptionalPin"))
-	int32 OptionalPins = static_cast<int32>(EWidgetTransitionOptionalPin::WidgetAndProperty) | static_cast<int32>(EWidgetTransitionOptionalPin::Delay);
+	int32 OptionalPins = static_cast<int32>(EWidgetTransitionOptionalPin::WidgetAndProperty);
 };

@@ -125,6 +125,7 @@ namespace WidgetTransitionNode
 void UK2Node_WidgetTransition::AllocateDefaultPins()
 {
 	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+	bool bHasAdvancedPins = false;
 	CreatePin(EGPD_Input, Schema->PC_Exec, UEdGraphSchema_K2::PN_Execute);
 	CreatePin(EGPD_Output, Schema->PC_Exec, UEdGraphSchema_K2::PN_Then);
 	UEdGraphPin* WorldContextPin = CreatePin(EGPD_Input, Schema->PC_Object, UObject::StaticClass(), WidgetTransitionNode::WorldContextPinName);
@@ -157,22 +158,46 @@ void UK2Node_WidgetTransition::AllocateDefaultPins()
 		ToPin->bNotConnectable = true;
 		ToPin->bDefaultValueIsReadOnly = true;
 	}
-	CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::TimePinName)->DefaultValue = TEXT("0.2");
 	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Delay)) CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::DelayPinName)->DefaultValue = TEXT("0.0");
-	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Repeat)) CreatePin(EGPD_Input, Schema->PC_Int, WidgetTransitionNode::RepeatCountPinName)->DefaultValue = TEXT("0");
+	CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::TimePinName)->DefaultValue = TEXT("0.2");
+	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Repeat))
+	{
+		UEdGraphPin* RepeatCountPin = CreatePin(EGPD_Input, Schema->PC_Int, WidgetTransitionNode::RepeatCountPinName);
+		RepeatCountPin->DefaultValue = TEXT("0");
+		RepeatCountPin->bAdvancedView = true;
+		bHasAdvancedPins = true;
+	}
 	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Spring) && bValueTypeResolved && (ValueType == EWidgetTransitionValueType::Float || ValueType == EWidgetTransitionValueType::Vector2D))
 	{
-		CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::SpringFactorPinName)->DefaultValue = TEXT("200.0");
-		CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::DampingFactorPinName)->DefaultValue = TEXT("16.0");
-		CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::MaxVelocityPinName)->DefaultValue = TEXT("1600.0");
-		CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::CompleteTolerancePinName)->DefaultValue = TEXT("0.01");
+		UEdGraphPin* SpringFactorPin = CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::SpringFactorPinName);
+		SpringFactorPin->DefaultValue = TEXT("200.0");
+		SpringFactorPin->bAdvancedView = true;
+		UEdGraphPin* DampingFactorPin = CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::DampingFactorPinName);
+		DampingFactorPin->DefaultValue = TEXT("16.0");
+		DampingFactorPin->bAdvancedView = true;
+		UEdGraphPin* MaxVelocityPin = CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::MaxVelocityPinName);
+		MaxVelocityPin->DefaultValue = TEXT("1600.0");
+		MaxVelocityPin->bAdvancedView = true;
+		UEdGraphPin* CompleteTolerancePin = CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::CompleteTolerancePinName);
+		CompleteTolerancePin->DefaultValue = TEXT("0.01");
+		CompleteTolerancePin->bAdvancedView = true;
+		bHasAdvancedPins = true;
 	}
-	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::OnUpdate)) WidgetTransitionNode::CreateFunctionParameterPin(this, WidgetTransitionNode::OnUpdatePinName, Schema);
+	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::OnUpdate))
+	{
+		WidgetTransitionNode::CreateFunctionParameterPin(this, WidgetTransitionNode::OnUpdatePinName, Schema);
+		if (UEdGraphPin* OnUpdatePin = FindPin(WidgetTransitionNode::OnUpdatePinName))
+		{
+			OnUpdatePin->bAdvancedView = true;
+			bHasAdvancedPins = true;
+		}
+	}
+	if (bHasAdvancedPins && AdvancedPinDisplay == ENodeAdvancedPins::NoPins) AdvancedPinDisplay = ENodeAdvancedPins::Hidden;
 }
 
 FText UK2Node_WidgetTransition::GetNodeTitle(ENodeTitleType::Type) const { return NSLOCTEXT("ElasticUMG", "CreateWidgetTransition", "Create Widget Transition"); }
 FText UK2Node_WidgetTransition::GetTooltipText() const { return NSLOCTEXT("ElasticUMG", "WidgetTransitionNodeTooltip", "Animates a selected property of the input widget. From is optional; when omitted, the current property value is used."); }
-FText UK2Node_WidgetTransition::GetMenuCategory() const { return NSLOCTEXT("ElasticUMG", "WidgetTransitionNodeCategory", "Widget Transition"); }
+FText UK2Node_WidgetTransition::GetMenuCategory() const { return NSLOCTEXT("ElasticUMG", "WidgetTransitionNodeCategory", "User Interface"); }
 
 void UK2Node_WidgetTransition::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
 {
