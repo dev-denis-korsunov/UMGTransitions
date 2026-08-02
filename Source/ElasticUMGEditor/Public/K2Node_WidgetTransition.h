@@ -12,7 +12,7 @@ class UEdGraph;
 struct FPropertyChangedEvent;
 
 UENUM(meta = (Bitflags, UseEnumValuesAsMaskValuesInEditor = "true"))
-enum class EWidgetTransitionOptionalPin : uint8
+enum class EWidgetTransitionOptionalPin : uint16
 {
 	From = 1 << 0,
 	/** Uses the bit formerly reserved for Time, keeping saved node masks compatible. */
@@ -23,6 +23,8 @@ enum class EWidgetTransitionOptionalPin : uint8
 	RemoveFromParent = 1 << 5,
 	Spring = 1 << 6,
 	OnUpdate = 1 << 7,
+	OnStarted = 1 << 8,
+	OnFinished = 1 << 9,
 };
 
 UCLASS()
@@ -53,6 +55,7 @@ public:
 	bool IsOptionalPinVisible(EWidgetTransitionOptionalPin Pin) const { return (OptionalPins & static_cast<int32>(Pin)) != 0; }
 	bool IsEasingVisible() const { return bShowEasing; }
 	void SetEasingVisible(bool bInShowEasing);
+	void SetTransitionMode(bool bInUseSpring);
 	bool IsCustomEasingSelected() const;
 	FName GetSelectedEasingPreset() const { return SelectedEasingPreset; }
 	void SetSelectedEasingPreset(FName InPreset);
@@ -68,6 +71,7 @@ private:
 	bool ShowRepeatPin(const class UEdGraphSchema_K2* Schema);
 	bool ShowSpringPins(const class UEdGraphSchema_K2* Schema);
 	bool ShowUpdatePin(const class UEdGraphSchema_K2* Schema);
+	bool ShowEventPins(const class UEdGraphSchema_K2* Schema);
 	void UpdateAdvancedPinVisibility(bool bHasAdvancedPins);
 	bool SupportsSpring() const;
 

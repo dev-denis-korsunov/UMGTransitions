@@ -20,6 +20,7 @@ namespace WidgetTransitionNode
 	static const FName ToValuePinName(TEXT("ToValue"));
 	static const FName TimePinName(TEXT("Time"));
 	static const FName DelayPinName(TEXT("Delay"));
+	static const FName ApplyValueBeforeDelayPinName(TEXT("bApplyValueBeforeDelay"));
 	static const FName EasingPinName(TEXT("Easing"));
 	static const FName EasingControlPoint1PinName(TEXT("EasingControlPoint1"));
 	static const FName EasingControlPoint2PinName(TEXT("EasingControlPoint2"));
@@ -34,6 +35,8 @@ namespace WidgetTransitionNode
 	static const FName LegacyMaxVelocityPinName(TEXT("MaxVelocity"));
 	static const FName LegacyCompleteTolerancePinName(TEXT("CompleteTolerance"));
 	static const FName OnUpdatePinName(TEXT("OnUpdate"));
+	static const FName OnStartedPinName(TEXT("OnStarted"));
+	static const FName OnFinishedPinName(TEXT("OnFinished"));
 	static const FName WorldContextPinName(TEXT("WorldContextObject"));
 	static const FName UseFromPinName(TEXT("bUseFrom"));
 
@@ -145,12 +148,12 @@ namespace WidgetTransitionNode
 	{
 		if (!Pin || !Pin->bOrphanedPin || !Pin->LinkedTo.IsEmpty()) return false;
 		const FName Name = Pin->PinName;
-	return Name == FromValuePinName || Name == TimePinName || Name == DelayPinName || Name == RepeatCountPinName
+	return Name == FromValuePinName || Name == TimePinName || Name == DelayPinName || Name == ApplyValueBeforeDelayPinName || Name == RepeatCountPinName
 			|| Name == EasingPinName
 			|| Name == EasingControlPoint1PinName || Name == EasingControlPoint2PinName
 			|| Name == YoYoPinName || Name == RemoveFromParentPinName || Name == UseSpringPinName
 			|| Name == SpringSpeedPinName || Name == SpringBouncePinName || Name == LegacySpringFactorPinName || Name == LegacyDampingFactorPinName || Name == LegacyMaxVelocityPinName
-			|| Name == LegacyCompleteTolerancePinName || Name == OnUpdatePinName || Name == ValueTypePinName;
+			|| Name == LegacyCompleteTolerancePinName || Name == OnUpdatePinName || Name == OnStartedPinName || Name == OnFinishedPinName || Name == ValueTypePinName;
 	}
 }
 
@@ -202,9 +205,14 @@ void UK2Node_WidgetTransition::ShowTransitionValuePins(const UEdGraphSchema_K2* 
 
 void UK2Node_WidgetTransition::ShowTimingAndEasingPins(const UEdGraphSchema_K2* Schema)
 {
-	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Delay)) CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::DelayPinName)->DefaultValue = TEXT("0.0");
-	CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::TimePinName)->DefaultValue = TEXT("0.2");
-	if (IsEasingVisible())
+	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Delay))
+	{
+		CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::DelayPinName)->DefaultValue = TEXT("0.0");
+		UEdGraphPin* ApplyBeforeDelayPin = CreatePin(EGPD_Input, Schema->PC_Boolean, WidgetTransitionNode::ApplyValueBeforeDelayPinName);
+		ApplyBeforeDelayPin->DefaultValue = TEXT("true");
+	}
+	if (!IsOptionalPinVisible(EWidgetTransitionOptionalPin::Spring)) CreatePin(EGPD_Input, Schema->PC_Real, Schema->PC_Float, WidgetTransitionNode::TimePinName)->DefaultValue = TEXT("0.2");
+	if (!IsOptionalPinVisible(EWidgetTransitionOptionalPin::Spring))
 	{
 		UEdGraphPin* EasingPin = CreatePin(EGPD_Input, Schema->PC_Struct, FWidgetTransitionEasingValue::StaticStruct(), WidgetTransitionNode::EasingPinName);
 		WidgetTransitionNode::SetEasingDefault(EasingPin, GetDisplayedEasingValue());
@@ -260,6 +268,14 @@ bool UK2Node_WidgetTransition::ShowUpdatePin(const UEdGraphSchema_K2* Schema)
 	return false;
 }
 
+bool UK2Node_WidgetTransition::ShowEventPins(const UEdGraphSchema_K2* Schema)
+{
+	bool bHasEvents = false;
+	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::OnStarted)) { WidgetTransitionNode::CreateFunctionParameterPin(this, WidgetTransitionNode::OnStartedPinName, Schema); bHasEvents = true; }
+	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::OnFinished)) { WidgetTransitionNode::CreateFunctionParameterPin(this, WidgetTransitionNode::OnFinishedPinName, Schema); bHasEvents = true; }
+	return bHasEvents;
+}
+
 void UK2Node_WidgetTransition::UpdateAdvancedPinVisibility(bool bHasAdvancedPins)
 {
 	if (bHasAdvancedPins && AdvancedPinDisplay == ENodeAdvancedPins::NoPins) AdvancedPinDisplay = ENodeAdvancedPins::Hidden;
@@ -277,7 +293,8 @@ void UK2Node_WidgetTransition::AllocateDefaultPins()
 	const bool bHasRepeatPin = ShowRepeatPin(Schema);
 	const bool bHasSpringPins = ShowSpringPins(Schema);
 	const bool bHasUpdatePin = ShowUpdatePin(Schema);
-	const bool bHasAdvancedPins = bHasRepeatPin || bHasSpringPins || bHasUpdatePin;
+	const bool bHasEventPins = ShowEventPins(Schema);
+	const bool bHasAdvancedPins = bHasRepeatPin || bHasSpringPins || bHasUpdatePin || bHasEventPins;
 	UpdateAdvancedPinVisibility(bHasAdvancedPins);
 }
 
@@ -322,10 +339,22 @@ void UK2Node_WidgetTransition::ExpandNode(FKismetCompilerContext& CompilerContex
 	};
 	MoveLinks(UEdGraphSchema_K2::PN_Execute); MoveLinks(UEdGraphSchema_K2::PN_Then); MoveLinks(WidgetTransitionNode::WorldContextPinName);
 	MoveLinks(WidgetTransitionNode::WidgetPinName); MoveLinks(WidgetTransitionNode::WidgetPropertyPinName); MoveLinks(WidgetTransitionNode::FromValuePinName);
-	MoveLinks(WidgetTransitionNode::ToValuePinName); MoveLinks(WidgetTransitionNode::TimePinName); MoveLinks(WidgetTransitionNode::DelayPinName);
-	MoveLinks(WidgetTransitionNode::EasingPinName);
+	MoveLinks(WidgetTransitionNode::ToValuePinName); MoveLinks(WidgetTransitionNode::TimePinName); MoveLinks(WidgetTransitionNode::DelayPinName); MoveLinks(WidgetTransitionNode::ApplyValueBeforeDelayPinName);
+	// The easing pin is normally a literal struct (a preset resolved by this node), not a wire.
+	// MovePinLinksToIntermediate only guarantees connections, so preserve its literal explicitly.
+	if (UEdGraphPin* SourceEasingPin = FindPin(WidgetTransitionNode::EasingPinName))
+	{
+		if (UEdGraphPin* DestinationEasingPin = CallNode->FindPin(WidgetTransitionNode::EasingPinName))
+		{
+			const bool bWasLinked = !SourceEasingPin->LinkedTo.IsEmpty();
+			const FString EasingDefaultValue = SourceEasingPin->DefaultValue;
+			CompilerContext.MovePinLinksToIntermediate(*SourceEasingPin, *DestinationEasingPin);
+			if (!bWasLinked) DestinationEasingPin->DefaultValue = EasingDefaultValue;
+		}
+	}
 	MoveLinks(WidgetTransitionNode::RepeatCountPinName);
 	MoveLinks(WidgetTransitionNode::SpringSpeedPinName); MoveLinks(WidgetTransitionNode::SpringBouncePinName); MoveLinks(WidgetTransitionNode::OnUpdatePinName);
+	MoveLinks(WidgetTransitionNode::OnStartedPinName); MoveLinks(WidgetTransitionNode::OnFinishedPinName);
 	CallNode->FindPinChecked(WidgetTransitionNode::UseFromPinName)->DefaultValue = bUseFrom ? TEXT("true") : TEXT("false");
 	if (UEdGraphPin* YoYoPin = CallNode->FindPin(WidgetTransitionNode::YoYoPinName)) YoYoPin->DefaultValue = IsOptionalPinVisible(EWidgetTransitionOptionalPin::YoYo) ? TEXT("true") : TEXT("false");
 	if (UEdGraphPin* RemovePin = CallNode->FindPin(WidgetTransitionNode::RemoveFromParentPinName)) RemovePin->DefaultValue = IsOptionalPinVisible(EWidgetTransitionOptionalPin::RemoveFromParent) && !bRepeatCountIsInfinite ? TEXT("true") : TEXT("false");
@@ -464,6 +493,19 @@ void UK2Node_WidgetTransition::SetEasingVisible(bool bInShowEasing)
 		bShowEasing = bInShowEasing;
 		ReconstructNode();
 	}
+}
+
+void UK2Node_WidgetTransition::SetTransitionMode(bool bInUseSpring)
+{
+	Modify();
+	int32 NewOptionalPins = OptionalPins;
+	if (bInUseSpring) NewOptionalPins |= static_cast<int32>(EWidgetTransitionOptionalPin::Spring);
+	else NewOptionalPins &= ~static_cast<int32>(EWidgetTransitionOptionalPin::Spring);
+	const bool bNewShowEasing = !bInUseSpring;
+	if (OptionalPins == NewOptionalPins && bShowEasing == bNewShowEasing) return;
+	OptionalPins = NewOptionalPins;
+	bShowEasing = bNewShowEasing;
+	ReconstructNode();
 }
 
 bool UK2Node_WidgetTransition::IsCustomEasingSelected() const

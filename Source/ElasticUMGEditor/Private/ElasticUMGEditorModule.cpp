@@ -556,56 +556,74 @@ namespace ElasticUMGEditor
 		void Construct(const FArguments& InArgs)
 		{
 			TransitionNode = InArgs._TransitionNode;
-			TSharedRef<SHorizontalBox> Buttons = SNew(SHorizontalBox);
-			for (const FPinOption& Option : GetOptions())
-			{
-				Buttons->AddSlot().AutoWidth().Padding(FMargin(0.0f, 0.0f, 2.0f, 0.0f))
-				[
-					SNew(SCheckBox)
-					.Style(FAppStyle::Get(), "ToggleButtonCheckbox")
-					.Cursor(EMouseCursor::Hand)
-					.ToolTipText(FText::FromString(Option.Tooltip))
-					.IsChecked(this, &SWidgetTransitionOptionalPins::GetOptionState, Option.Pin)
-					.OnCheckStateChanged(this, &SWidgetTransitionOptionalPins::SetOptionState, Option.Pin)
-					.Padding(FMargin(4.0f, 5.0f))
-					[
-						SNew(STextBlock).Text(FText::FromString(Option.Label))
-					]
-				];
-			}
-			Buttons->AddSlot().AutoWidth().Padding(FMargin(0.0f, 0.0f, 2.0f, 0.0f))
+			TSharedRef<SHorizontalBox> BasicButtons = SNew(SHorizontalBox);
+			for (const FPinOption& Option : GetBaseOptions()) AddOption(BasicButtons, Option);
+			TSharedRef<SHorizontalBox> ModeButtons = SNew(SHorizontalBox);
+			ModeButtons->AddSlot().AutoWidth().Padding(FMargin(0.0f, 0.0f, 2.0f, 0.0f))
 			[
 				SNew(SCheckBox)
 				.Style(FAppStyle::Get(), "ToggleButtonCheckbox")
 				.Cursor(EMouseCursor::Hand)
-				.ToolTipText(NSLOCTEXT("ElasticUMG", "EasingOption", "Easing: select a configured cubic Bezier curve"))
-				.IsChecked_Lambda([this]() { return TransitionNode.IsValid() && TransitionNode->IsEasingVisible() ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-				.OnCheckStateChanged_Lambda([this](ECheckBoxState State) { if (TransitionNode.IsValid()) TransitionNode->SetEasingVisible(State == ECheckBoxState::Checked); })
+				.ToolTipText(NSLOCTEXT("ElasticUMG", "EasingOption", "Interpolation: select a configured cubic Bezier curve"))
+				.IsChecked_Lambda([this]() { return TransitionNode.IsValid() && !TransitionNode->IsOptionalPinVisible(EWidgetTransitionOptionalPin::Spring) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+				.OnCheckStateChanged_Lambda([this](ECheckBoxState State) { if (TransitionNode.IsValid() && State == ECheckBoxState::Checked) TransitionNode->SetTransitionMode(false); })
 				.Padding(FMargin(4.0f, 5.0f))
 				[
-					SNew(STextBlock).Text(NSLOCTEXT("ElasticUMG", "EasingOptionLabel", "Es"))
+					SNew(STextBlock).Text(NSLOCTEXT("ElasticUMG", "InterpolationOptionLabel", "In"))
 				]
 			];
-			Buttons->AddSlot().AutoWidth()
+			ModeButtons->AddSlot().AutoWidth()
 			[
 				SNew(SCheckBox)
 				.Style(FAppStyle::Get(), "ToggleButtonCheckbox")
 				.Cursor(EMouseCursor::Hand)
-				.ToolTipText(NSLOCTEXT("ElasticUMG", "RemoveFromParentOption", "Remove From Parent after the final transition"))
-				.IsChecked(this, &SWidgetTransitionOptionalPins::GetOptionState, EWidgetTransitionOptionalPin::RemoveFromParent)
-				.OnCheckStateChanged(this, &SWidgetTransitionOptionalPins::SetOptionState, EWidgetTransitionOptionalPin::RemoveFromParent)
+				.ToolTipText(NSLOCTEXT("ElasticUMG", "SpringOption", "Spring: use physical spring motion"))
+				.IsChecked_Lambda([this]() { return TransitionNode.IsValid() && TransitionNode->IsOptionalPinVisible(EWidgetTransitionOptionalPin::Spring) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+				.OnCheckStateChanged_Lambda([this](ECheckBoxState State) { if (TransitionNode.IsValid() && State == ECheckBoxState::Checked) TransitionNode->SetTransitionMode(true); })
 				.Padding(FMargin(4.0f, 5.0f))
 				[
-					SNew(STextBlock).Text(NSLOCTEXT("ElasticUMG", "RemoveFromParentOptionLabel", "Rm"))
+					SNew(STextBlock).Text(NSLOCTEXT("ElasticUMG", "SpringOptionLabel", "Sp"))
 				]
 			];
-			ChildSlot [ Buttons ];
+			TSharedRef<SHorizontalBox> EventButtons = SNew(SHorizontalBox);
+			for (const FPinOption& Option : GetEventOptions()) AddOption(EventButtons, Option);
+			ChildSlot
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth()[ModeButtons]
+				+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(5.0f, 2.0f))[CreateGroupSeparator()]
+				+ SHorizontalBox::Slot().AutoWidth()[BasicButtons]
+				+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(5.0f, 2.0f))[CreateGroupSeparator()]
+				+ SHorizontalBox::Slot().AutoWidth()[EventButtons]
+			];
 		}
 
 	private:
 		struct FPinOption { EWidgetTransitionOptionalPin Pin; const TCHAR* Label; const TCHAR* Tooltip; };
 
-		static const TArray<FPinOption>& GetOptions()
+		static TSharedRef<SWidget> CreateGroupSeparator()
+		{
+			return SNew(SBox)
+				.WidthOverride(2.0f)
+				[
+					SNew(SBorder)
+					.BorderImage(FAppStyle::Get().GetBrush("WhiteBrush"))
+					.BorderBackgroundColor(FLinearColor(0.12f, 0.12f, 0.12f, 0.9f))
+					.Padding(0.0f)
+				];
+		}
+
+		void AddOption(const TSharedRef<SHorizontalBox>& Buttons, const FPinOption& Option)
+		{
+			Buttons->AddSlot().AutoWidth().Padding(FMargin(0.0f, 0.0f, 2.0f, 0.0f))
+			[
+				SNew(SCheckBox).Style(FAppStyle::Get(), "ToggleButtonCheckbox").Cursor(EMouseCursor::Hand).ToolTipText(FText::FromString(Option.Tooltip))
+				.IsChecked(this, &SWidgetTransitionOptionalPins::GetOptionState, Option.Pin).OnCheckStateChanged(this, &SWidgetTransitionOptionalPins::SetOptionState, Option.Pin).Padding(FMargin(4.0f, 5.0f))
+				[SNew(STextBlock).Text(FText::FromString(Option.Label))]
+			];
+		}
+
+		static const TArray<FPinOption>& GetBaseOptions()
 		{
 			static const TArray<FPinOption> Options =
 			{
@@ -614,8 +632,18 @@ namespace ElasticUMGEditor
 				{ EWidgetTransitionOptionalPin::Delay, TEXT("Dl"), TEXT("Delay: wait before starting the transition") },
 				{ EWidgetTransitionOptionalPin::Repeat, TEXT("Rp"), TEXT("Repeat Count: number of additional repeats; -1 repeats forever") },
 				{ EWidgetTransitionOptionalPin::YoYo, TEXT("Yo"), TEXT("Yo Yo: reverse From and To on every repeat") },
-				{ EWidgetTransitionOptionalPin::Spring, TEXT("Sp"), TEXT("Spring: use spring motion instead of linear interpolation") },
+				{ EWidgetTransitionOptionalPin::RemoveFromParent, TEXT("Rm"), TEXT("Remove From Parent after the final transition") },
+			};
+			return Options;
+		}
+
+		static const TArray<FPinOption>& GetEventOptions()
+		{
+			static const TArray<FPinOption> Options =
+			{
+				{ EWidgetTransitionOptionalPin::OnStarted, TEXT("St"), TEXT("On Started: called after Delay when the transition begins") },
 				{ EWidgetTransitionOptionalPin::OnUpdate, TEXT("Up"), TEXT("On Update: expose the per-frame update delegate") },
+				{ EWidgetTransitionOptionalPin::OnFinished, TEXT("En"), TEXT("On Finished: called after the final transition") },
 			};
 			return Options;
 		}
