@@ -11,6 +11,11 @@
 #include "Components/PanelSlot.h"
 #include "EdGraph/EdGraphPin.h"
 #include "ScopedTransaction.h"
+#include "PropertyEditorModule.h"
+#include "IPropertyTypeCustomization.h"
+#include "DetailWidgetRow.h"
+#include "IDetailChildrenBuilder.h"
+#include "PropertyHandle.h"
 #include "ISettingsModule.h"
 #include "Modules/ModuleManager.h"
 #include "Widgets/Input/SComboBox.h"
@@ -309,11 +314,13 @@ namespace ElasticUMGEditor
 	public:
 		SLATE_BEGIN_ARGS(SWidgetTransitionEasingPreview) {}
 			SLATE_ARGUMENT(FName, EasingName)
+			SLATE_ARGUMENT(UEdGraphPin*, EasingPin)
 		SLATE_END_ARGS()
 
 		void Construct(const FArguments& InArgs)
 		{
 			EasingName = InArgs._EasingName;
+			EasingPin = InArgs._EasingPin;
 			StartTime = FPlatformTime::Seconds();
 			RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateSP(this, &SWidgetTransitionEasingPreview::AdvancePreview));
 		}
@@ -326,7 +333,17 @@ namespace ElasticUMGEditor
 			const UWidgetTransitionSettings* Settings = GetDefault<UWidgetTransitionSettings>();
 			const float Duration = FMath::Max(Settings->PreviewDuration, 0.1f);
 			const float Progress = FMath::Fmod(static_cast<float>(FPlatformTime::Seconds() - StartTime), Duration) / Duration;
-			const float EasedProgress = Settings->EvaluateEasing(EasingName, Progress);
+			float EasedProgress = Settings->EvaluateEasing(EasingName, Progress);
+			if (EasingName == TEXT("Custom"))
+			{
+				if (const UK2Node_WidgetTransition* Node = EasingPin ? Cast<UK2Node_WidgetTransition>(EasingPin->GetOwningNode()) : nullptr)
+				{
+					FVector2D Point1(0.25f, 0.1f), Point2(0.25f, 1.0f);
+					if (const UEdGraphPin* Pin = Node->FindPin(TEXT("EasingControlPoint1"))) Point1.InitFromString(Pin->GetDefaultAsString());
+					if (const UEdGraphPin* Pin = Node->FindPin(TEXT("EasingControlPoint2"))) Point2.InitFromString(Pin->GetDefaultAsString());
+					EasedProgress = FWidgetTransitionEasing::EvaluateCubicBezier(Point1, Point2, Progress);
+				}
+			}
 			const float Radius = 6.0f;
 			const float Left = Radius + 4.0f;
 			const float Right = FMath::Max(Left, Size.X - Radius - 4.0f);
@@ -344,7 +361,94 @@ namespace ElasticUMGEditor
 		}
 
 		FName EasingName;
+		UEdGraphPin* EasingPin = nullptr;
 		double StartTime = 0.0;
+	};
+
+	class SWidgetTransitionEasingTemplatePreview final : public SLeafWidget
+	{
+	public:
+		SLATE_BEGIN_ARGS(SWidgetTransitionEasingTemplatePreview) {}
+			SLATE_ARGUMENT(TSharedPtr<IPropertyHandle>, ControlPoint1)
+			SLATE_ARGUMENT(TSharedPtr<IPropertyHandle>, ControlPoint2)
+		SLATE_END_ARGS()
+
+		void Construct(const FArguments& InArgs) { ControlPoint1 = InArgs._ControlPoint1; ControlPoint2 = InArgs._ControlPoint2; }
+		virtual FVector2D ComputeDesiredSize(float) const override { return FVector2D(130.0f, 96.0f); }
+
+		virtual int32 OnPaint(const FPaintArgs&, const FGeometry& Geometry, const FSlateRect&, FSlateWindowElementList& Elements, int32 LayerId, const FWidgetStyle&, bool) const override
+		{
+			FVector2D Point1(0.25f, 0.1f), Point2(0.25f, 1.0f);
+			if (ControlPoint1.IsValid()) ControlPoint1->GetValue(Point1);
+			if (ControlPoint2.IsValid()) ControlPoint2->GetValue(Point2);
+			const FVector2D Size = Geometry.GetLocalSize();
+			const float GraphSize = FMath::Min(Size.X - 12.0f, Size.Y - 12.0f);
+			TArray<FVector2D> Values; Values.Reserve(33);
+			float MinY = 0.0f, MaxY = 1.0f;
+			for (int32 Index = 0; Index <= 32; ++Index) { const float T = static_cast<float>(Index) / 32.0f; const float U = 1.0f - T; const FVector2D Value = 3.0f * U * U * T * Point1 + 3.0f * U * T * T * Point2 + T * T * T * FVector2D(1.0f, 1.0f); Values.Add(Value); MinY = FMath::Min(MinY, Value.Y); MaxY = FMath::Max(MaxY, Value.Y); }
+			const float Padding = (MaxY - MinY) * 0.05f;
+			MinY -= Padding; MaxY += Padding;
+			const FVector2D Origin(6.0f, 6.0f);
+			const auto ToPoint = [Origin, GraphSize, MinY, MaxY](FVector2D Value) { return FVector2D(Origin.X + Value.X * GraphSize, Origin.Y + (1.0f - (Value.Y - MinY) / (MaxY - MinY)) * GraphSize); };
+			FSlateDrawElement::MakeLines(Elements, LayerId, Geometry.ToPaintGeometry(), TArray<FVector2D>{ Origin, Origin + FVector2D(GraphSize, 0.0f), Origin + FVector2D(GraphSize, GraphSize), Origin + FVector2D(0.0f, GraphSize), Origin }, ESlateDrawEffect::None, FLinearColor(0.3f, 0.3f, 0.3f), true, 1.0f);
+			TArray<FVector2D> Curve; Curve.Reserve(Values.Num()); for (const FVector2D& Value : Values) Curve.Add(ToPoint(Value));
+			FSlateDrawElement::MakeLines(Elements, LayerId + 1, Geometry.ToPaintGeometry(), Curve, ESlateDrawEffect::None, FLinearColor(0.25f, 0.65f, 1.0f), true, 2.0f);
+			return LayerId + 1;
+		}
+
+	private:
+		TSharedPtr<IPropertyHandle> ControlPoint1;
+		TSharedPtr<IPropertyHandle> ControlPoint2;
+	};
+
+	class SWidgetTransitionNodeEasingCurvePreview final : public SLeafWidget
+	{
+	public:
+		SLATE_BEGIN_ARGS(SWidgetTransitionNodeEasingCurvePreview) {}
+			SLATE_ARGUMENT(UK2Node_WidgetTransition*, TransitionNode)
+		SLATE_END_ARGS()
+		void Construct(const FArguments& InArgs) { TransitionNode = InArgs._TransitionNode; }
+		virtual FVector2D ComputeDesiredSize(float) const override { return FVector2D(130.0f, 96.0f); }
+		virtual int32 OnPaint(const FPaintArgs&, const FGeometry& Geometry, const FSlateRect&, FSlateWindowElementList& Elements, int32 LayerId, const FWidgetStyle&, bool) const override
+		{
+			const FWidgetTransitionEasingValue Value = TransitionNode.IsValid() ? TransitionNode->GetDisplayedEasingValue() : FWidgetTransitionEasingValue();
+			const FVector2D Point1 = Value.ControlPoint1, Point2 = Value.ControlPoint2;
+			const FVector2D Size = Geometry.GetLocalSize(); const float GraphSize = FMath::Min(Size.X - 12.0f, (Size.Y - 12.0f) / 1.4f); const FVector2D Origin(6.0f, 6.0f + GraphSize * 0.2f);
+			TArray<FVector2D> Values; Values.Reserve(33); float MinY = 0.0f, MaxY = 1.0f;
+			for (int32 Index = 0; Index <= 32; ++Index) { const float T = static_cast<float>(Index) / 32.0f; const float U = 1.0f - T; const FVector2D CurveValue = 3.0f * U * U * T * Point1 + 3.0f * U * T * T * Point2 + T * T * T * FVector2D(1.0f, 1.0f); Values.Add(CurveValue); MinY = FMath::Min(MinY, CurveValue.Y); MaxY = FMath::Max(MaxY, CurveValue.Y); }
+			const float Padding = FMath::Max((MaxY - MinY) * 0.05f, KINDA_SMALL_NUMBER); MinY -= Padding; MaxY += Padding;
+			const auto ToPoint = [Origin, GraphSize, MinY, MaxY](FVector2D CurveValue) { return FVector2D(Origin.X + CurveValue.X * GraphSize, Origin.Y + (1.0f - (CurveValue.Y - MinY) / (MaxY - MinY)) * GraphSize); };
+			FSlateDrawElement::MakeLines(Elements, LayerId, Geometry.ToPaintGeometry(), TArray<FVector2D>{ Origin, Origin + FVector2D(GraphSize, 0.0f), Origin + FVector2D(GraphSize, GraphSize), Origin + FVector2D(0.0f, GraphSize), Origin }, ESlateDrawEffect::None, FLinearColor(0.3f, 0.3f, 0.3f), true, 1.0f);
+			TArray<FVector2D> Curve; Curve.Reserve(Values.Num()); for (const FVector2D& CurveValue : Values) Curve.Add(ToPoint(CurveValue));
+			const bool bEditable = TransitionNode.IsValid() && TransitionNode->IsCustomEasingSelected();
+			FSlateDrawElement::MakeLines(Elements, LayerId + 1, Geometry.ToPaintGeometry(), Curve, ESlateDrawEffect::None, bEditable ? FLinearColor(0.25f, 0.65f, 1.0f) : FLinearColor(0.42f, 0.42f, 0.42f), true, 2.0f); return LayerId + 1;
+		}
+	private: TWeakObjectPtr<UK2Node_WidgetTransition> TransitionNode;
+	};
+
+	class FWidgetTransitionEasingCustomization final : public IPropertyTypeCustomization
+	{
+	public:
+		static TSharedRef<IPropertyTypeCustomization> MakeInstance() { return MakeShared<FWidgetTransitionEasingCustomization>(); }
+
+		virtual void CustomizeHeader(TSharedRef<IPropertyHandle> StructHandle, FDetailWidgetRow& HeaderRow, IPropertyTypeCustomizationUtils&) override
+		{
+			HeaderRow.NameContent()[StructHandle->CreatePropertyNameWidget()]
+			.ValueContent()[StructHandle->CreatePropertyValueWidget()];
+		}
+
+		virtual void CustomizeChildren(TSharedRef<IPropertyHandle> StructHandle, IDetailChildrenBuilder& ChildrenBuilder, IPropertyTypeCustomizationUtils&) override
+		{
+			TSharedPtr<IPropertyHandle> Name = StructHandle->GetChildHandle(GET_MEMBER_NAME_CHECKED(FWidgetTransitionEasing, Name));
+			TSharedPtr<IPropertyHandle> ControlPoint1 = StructHandle->GetChildHandle(GET_MEMBER_NAME_CHECKED(FWidgetTransitionEasing, ControlPoint1));
+			TSharedPtr<IPropertyHandle> ControlPoint2 = StructHandle->GetChildHandle(GET_MEMBER_NAME_CHECKED(FWidgetTransitionEasing, ControlPoint2));
+			if (Name.IsValid()) ChildrenBuilder.AddProperty(Name.ToSharedRef());
+			if (ControlPoint1.IsValid()) ChildrenBuilder.AddProperty(ControlPoint1.ToSharedRef());
+			if (ControlPoint2.IsValid()) ChildrenBuilder.AddProperty(ControlPoint2.ToSharedRef());
+			ChildrenBuilder.AddCustomRow(NSLOCTEXT("ElasticUMG", "EasingPreview", "Preview"))
+			.NameContent()[SNew(STextBlock).Text(NSLOCTEXT("ElasticUMG", "EasingPreview", "Preview"))]
+			.ValueContent().MinDesiredWidth(130.0f)[SNew(SWidgetTransitionEasingTemplatePreview).ControlPoint1(ControlPoint1).ControlPoint2(ControlPoint2)];
+		}
 	};
 
 	class SWidgetTransitionEasingGraphPin final : public SGraphPin
@@ -362,7 +466,10 @@ namespace ElasticUMGEditor
 		virtual TSharedRef<SWidget> GetDefaultValueWidget() override
 		{
 			RefreshOptions();
-			return SNew(SHorizontalBox)
+			return SNew(SVerticalBox)
+				+ SVerticalBox::Slot().AutoHeight()
+				[
+				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot()
 				.FillWidth(1.0f)
 				[
@@ -371,7 +478,7 @@ namespace ElasticUMGEditor
 					.OnComboBoxOpening(this, &SWidgetTransitionEasingGraphPin::RefreshOptions)
 					.OnGenerateWidget(this, &SWidgetTransitionEasingGraphPin::MakeOptionWidget)
 					.OnSelectionChanged(this, &SWidgetTransitionEasingGraphPin::SelectOption)
-					.IsEnabled(this, &SGraphPin::GetDefaultValueIsEditable)
+					.IsEnabled(true)
 					.Content()
 					[
 						SNew(STextBlock)
@@ -395,21 +502,10 @@ namespace ElasticUMGEditor
 						SNew(SImage).Image(FAppStyle::GetBrush("Icons.Settings"))
 					]
 				]
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.Padding(FMargin(2.0f, 0.0f, 0.0f, 0.0f))
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.0f, 4.0f, 0.0f, 0.0f))
 				[
-					SNew(SImage)
-					.Image(FAppStyle::GetBrush("Icons.Play"))
-					.ToolTip(SNew(SToolTip)
-						[
-							SNew(SBorder)
-							.BorderImage(FAppStyle::GetBrush("Menu.Background"))
-							.Padding(FMargin(8.0f))
-							[
-								SNew(SWidgetTransitionEasingPreview).EasingName(FName(*GraphPinObj->GetDefaultAsString()))
-							]
-						])
+					SNew(SWidgetTransitionNodeEasingCurvePreview).TransitionNode(Cast<UK2Node_WidgetTransition>(GraphPinObj->GetOwningNode()))
 				];
 		}
 
@@ -418,6 +514,7 @@ namespace ElasticUMGEditor
 		{
 			Options.Reset();
 			Options.Add(MakeShared<FString>(TEXT("None")));
+			Options.Add(MakeShared<FString>(TEXT("Custom")));
 			for (const FWidgetTransitionEasing& Easing : GetDefault<UWidgetTransitionSettings>()->EasingFunctions)
 			{
 				if (!Easing.Name.IsNone()) Options.Add(MakeShared<FString>(Easing.Name.ToString()));
@@ -432,17 +529,18 @@ namespace ElasticUMGEditor
 		void SelectOption(TSharedPtr<FString> Option, ESelectInfo::Type)
 		{
 			if (!Option.IsValid()) return;
-			const FString NewValue = *Option == TEXT("None") ? FString() : *Option;
-			if (GraphPinObj->GetDefaultAsString() == NewValue) return;
+			const FName NewValue = *Option == TEXT("None") ? NAME_None : FName(**Option);
+			UK2Node_WidgetTransition* TransitionNode = Cast<UK2Node_WidgetTransition>(GraphPinObj->GetOwningNode());
+			if (!TransitionNode || TransitionNode->GetSelectedEasingPreset() == NewValue) return;
 			const FScopedTransaction Transaction(NSLOCTEXT("ElasticUMG", "SetTransitionEasing", "Set Transition Easing"));
-			GraphPinObj->Modify();
-			GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, NewValue);
+			TransitionNode->SetSelectedEasingPreset(NewValue);
 		}
 
 		FText GetCurrentValue() const
 		{
-			const FString Value = GraphPinObj->GetDefaultAsString();
-			return FText::FromString(Value.IsEmpty() ? TEXT("None") : Value);
+			const UK2Node_WidgetTransition* TransitionNode = Cast<UK2Node_WidgetTransition>(GraphPinObj->GetOwningNode());
+			const FName Value = TransitionNode ? TransitionNode->GetSelectedEasingPreset() : NAME_None;
+			return FText::FromString(Value.IsNone() ? TEXT("None") : Value.ToString());
 		}
 
 		TArray<TSharedPtr<FString>> Options;
@@ -589,6 +687,21 @@ namespace ElasticUMGEditor
 							SAssignNew(RightNodeBox, SVerticalBox)
 						]
 					]
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					.HAlign(HAlign_Center)
+					.Padding(FMargin(0.0f, 2.0f, 0.0f, 2.0f))
+					[
+						SNew(SBox)
+						.Visibility_Lambda([Node = TransitionNode]()
+						{
+							const UEdGraphPin* EasingPin = Node.IsValid() ? Node->FindPin(TEXT("Easing")) : nullptr;
+							return EasingPin && EasingPin->SubPins.Num() > 0 ? EVisibility::Visible : EVisibility::Collapsed;
+						})
+						[
+							SNew(SWidgetTransitionNodeEasingCurvePreview).TransitionNode(TransitionNode.Get())
+						]
+					]
 				];
 		}
 
@@ -630,6 +743,9 @@ class FElasticUMGEditorModule final : public IModuleInterface
 public:
 	virtual void StartupModule() override
 	{
+		FPropertyEditorModule& PropertyEditor = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
+		PropertyEditor.RegisterCustomPropertyTypeLayout(TEXT("WidgetTransitionEasing"), FOnGetPropertyTypeCustomizationInstance::CreateStatic(&ElasticUMGEditor::FWidgetTransitionEasingCustomization::MakeInstance));
+		PropertyEditor.NotifyCustomizationModuleChanged();
 		PinFactory = MakeShared<ElasticUMGEditor::FWidgetPropertyPathPinFactory>();
 		FEdGraphUtilities::RegisterVisualPinFactory(PinFactory);
 		NodeFactory = MakeShared<ElasticUMGEditor::FWidgetTransitionNodeFactory>();
@@ -638,6 +754,11 @@ public:
 
 	virtual void ShutdownModule() override
 	{
+		if (FModuleManager::Get().IsModuleLoaded("PropertyEditor"))
+		{
+			FPropertyEditorModule& PropertyEditor = FModuleManager::GetModuleChecked<FPropertyEditorModule>("PropertyEditor");
+			PropertyEditor.UnregisterCustomPropertyTypeLayout(TEXT("WidgetTransitionEasing"));
+		}
 		if (PinFactory.IsValid())
 		{
 			FEdGraphUtilities::UnregisterVisualPinFactory(PinFactory);

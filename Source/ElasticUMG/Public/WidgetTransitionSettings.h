@@ -1,12 +1,24 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Curves/CurveFloat.h"
 #include "Engine/DeveloperSettings.h"
 
 #include "WidgetTransitionSettings.generated.h"
 
-/** A named easing curve edited with Unreal's standard Curve Editor. */
+/** Value carried by the Easing pin. Split it to edit the two cubic-bezier handles. */
+USTRUCT(BlueprintType)
+struct ELASTICUMG_API FWidgetTransitionEasingValue
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Easing")
+	FVector2D ControlPoint1 = FVector2D(0.25f, 0.1f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Easing")
+	FVector2D ControlPoint2 = FVector2D(0.25f, 1.0f);
+};
+
+/** A CSS-style cubic Bezier: fixed endpoints (0,0) and (1,1), plus two editable handles. */
 USTRUCT()
 struct ELASTICUMG_API FWidgetTransitionEasing
 {
@@ -16,7 +28,13 @@ struct ELASTICUMG_API FWidgetTransitionEasing
 	FName Name;
 
 	UPROPERTY(EditAnywhere, Config, Category = "Easing")
-	FRuntimeFloatCurve Curve;
+	FVector2D ControlPoint1 = FVector2D(0.25f, 0.1f);
+
+	UPROPERTY(EditAnywhere, Config, Category = "Easing")
+	FVector2D ControlPoint2 = FVector2D(0.25f, 1.0f);
+
+	float Evaluate(float Alpha) const;
+	static float EvaluateCubicBezier(FVector2D InControlPoint1, FVector2D InControlPoint2, float Alpha);
 };
 
 /** Project-wide easing presets used by widget transitions. */

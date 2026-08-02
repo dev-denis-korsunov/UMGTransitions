@@ -41,6 +41,7 @@ public:
 	virtual void NotifyPinConnectionListChanged(UEdGraphPin* Pin) override;
 	virtual void PostReconstructNode() override;
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+	virtual bool CanSplitPin(const UEdGraphPin* Pin) const override;
 	virtual bool IsNodePure() const override { return false; }
 
 	bool IsValueTypeResolved() const { return bValueTypeResolved; }
@@ -52,6 +53,10 @@ public:
 	bool IsOptionalPinVisible(EWidgetTransitionOptionalPin Pin) const { return (OptionalPins & static_cast<int32>(Pin)) != 0; }
 	bool IsEasingVisible() const { return bShowEasing; }
 	void SetEasingVisible(bool bInShowEasing);
+	bool IsCustomEasingSelected() const;
+	FName GetSelectedEasingPreset() const { return SelectedEasingPreset; }
+	void SetSelectedEasingPreset(FName InPreset);
+	FWidgetTransitionEasingValue GetDisplayedEasingValue() const;
 
 private:
 	// Pin layout is deliberately expressed as ordered rules in the .cpp.
@@ -83,6 +88,10 @@ private:
 
 	UPROPERTY()
 	bool bShowEasing = false;
+
+	/** "Custom" enables the editable Easing struct; every other value resolves to a preset. */
+	UPROPERTY()
+	FName SelectedEasingPreset;
 
 	/** Select the optional inputs displayed on this node. */
 	UPROPERTY(EditAnywhere, Category = "Widget Transition", meta = (Bitmask, BitmaskEnum = "/Script/ElasticUMGEditor.EWidgetTransitionOptionalPin"))
