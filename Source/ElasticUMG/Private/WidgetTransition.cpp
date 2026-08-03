@@ -16,9 +16,8 @@ static FTransitionValue MakeTransitionValue(TValue&& Value)
 
 bool FWidgetTransitionPropertyBinding::Resolve(UWidget* InWidget, const FString& InPropertyPath)
 {
-	Widget = InWidget;
 	CachedPropertyPath = FDynamicPropertyPath(InPropertyPath);
-	bResolved = Widget.IsValid() && CachedPropertyPath.IsValid() && CachedPropertyPath.Resolve(Widget.Get());
+	bResolved = IsValid(InWidget) && CachedPropertyPath.IsValid() && CachedPropertyPath.Resolve(InWidget);
 	bUsesDouble = false;
 	if (!bResolved)
 	{
@@ -38,36 +37,35 @@ bool FWidgetTransitionPropertyBinding::Resolve(UWidget* InWidget, const FString&
 
 void FWidgetTransitionPropertyBinding::Invalidate()
 {
-	Widget.Reset();
 	CachedPropertyPath = FDynamicPropertyPath();
 	bResolved = false;
 	bUsesDouble = false;
 	ValueType = EWidgetTransitionValueType::Float;
 }
 
-bool FWidgetTransitionPropertyBinding::Apply(const FTransitionValue& Value) const
+bool FWidgetTransitionPropertyBinding::Apply(UWidget* Widget, const FTransitionValue& Value) const
 {
-	if (!bResolved || !Widget.IsValid()) return false;
+	if (!bResolved || !IsValid(Widget)) return false;
 	switch (ValueType)
 	{
 	case EWidgetTransitionValueType::Float:
 		if (!Value.IsType<float>()) return false;
 		return bUsesDouble
-			? PropertyPathHelpers::SetPropertyValue(Widget.Get(), CachedPropertyPath, static_cast<double>(Value.Get<float>()))
-			: PropertyPathHelpers::SetPropertyValue(Widget.Get(), CachedPropertyPath, Value.Get<float>());
+			? PropertyPathHelpers::SetPropertyValue(Widget, CachedPropertyPath, static_cast<double>(Value.Get<float>()))
+			: PropertyPathHelpers::SetPropertyValue(Widget, CachedPropertyPath, Value.Get<float>());
 	case EWidgetTransitionValueType::Bool:
-		return Value.IsType<bool>() && PropertyPathHelpers::SetPropertyValue(Widget.Get(), CachedPropertyPath, Value.Get<bool>());
+		return Value.IsType<bool>() && PropertyPathHelpers::SetPropertyValue(Widget, CachedPropertyPath, Value.Get<bool>());
 	case EWidgetTransitionValueType::Vector2D:
-		return Value.IsType<FVector2D>() && PropertyPathHelpers::SetPropertyValue(Widget.Get(), CachedPropertyPath, Value.Get<FVector2D>());
+		return Value.IsType<FVector2D>() && PropertyPathHelpers::SetPropertyValue(Widget, CachedPropertyPath, Value.Get<FVector2D>());
 	case EWidgetTransitionValueType::LinearColor:
-		return Value.IsType<FLinearColor>() && PropertyPathHelpers::SetPropertyValue(Widget.Get(), CachedPropertyPath, Value.Get<FLinearColor>());
+		return Value.IsType<FLinearColor>() && PropertyPathHelpers::SetPropertyValue(Widget, CachedPropertyPath, Value.Get<FLinearColor>());
 	default: return false;
 	}
 }
 
-bool FWidgetTransitionPropertyBinding::Read(FTransitionValue& OutValue) const
+bool FWidgetTransitionPropertyBinding::Read(UWidget* Widget, FTransitionValue& OutValue) const
 {
-	if (!bResolved || !Widget.IsValid()) return false;
+	if (!bResolved || !IsValid(Widget)) return false;
 	switch (ValueType)
 	{
 	case EWidgetTransitionValueType::Float:
@@ -75,12 +73,12 @@ bool FWidgetTransitionPropertyBinding::Read(FTransitionValue& OutValue) const
 		float FloatValue = 0.0f;
 		if (!bUsesDouble)
 		{
-			if (!PropertyPathHelpers::GetPropertyValue(Widget.Get(), CachedPropertyPath, FloatValue)) return false;
+			if (!PropertyPathHelpers::GetPropertyValue(Widget, CachedPropertyPath, FloatValue)) return false;
 		}
 		else
 		{
 			double DoubleValue = 0.0;
-			if (!PropertyPathHelpers::GetPropertyValue(Widget.Get(), CachedPropertyPath, DoubleValue)) return false;
+			if (!PropertyPathHelpers::GetPropertyValue(Widget, CachedPropertyPath, DoubleValue)) return false;
 			FloatValue = static_cast<float>(DoubleValue);
 		}
 		OutValue.Emplace<float>(FloatValue);
@@ -89,21 +87,21 @@ bool FWidgetTransitionPropertyBinding::Read(FTransitionValue& OutValue) const
 	case EWidgetTransitionValueType::Bool:
 	{
 		bool BoolValue = false;
-		if (!PropertyPathHelpers::GetPropertyValue(Widget.Get(), CachedPropertyPath, BoolValue)) return false;
+		if (!PropertyPathHelpers::GetPropertyValue(Widget, CachedPropertyPath, BoolValue)) return false;
 		OutValue.Emplace<bool>(BoolValue);
 		return true;
 	}
 	case EWidgetTransitionValueType::Vector2D:
 	{
 		FVector2D VectorValue = FVector2D::ZeroVector;
-		if (!PropertyPathHelpers::GetPropertyValue(Widget.Get(), CachedPropertyPath, VectorValue)) return false;
+		if (!PropertyPathHelpers::GetPropertyValue(Widget, CachedPropertyPath, VectorValue)) return false;
 		OutValue.Emplace<FVector2D>(VectorValue);
 		return true;
 	}
 	case EWidgetTransitionValueType::LinearColor:
 	{
 		FLinearColor ColorValue = FLinearColor::White;
-		if (!PropertyPathHelpers::GetPropertyValue(Widget.Get(), CachedPropertyPath, ColorValue)) return false;
+		if (!PropertyPathHelpers::GetPropertyValue(Widget, CachedPropertyPath, ColorValue)) return false;
 		OutValue.Emplace<FLinearColor>(ColorValue);
 		return true;
 	}
@@ -111,32 +109,40 @@ bool FWidgetTransitionPropertyBinding::Read(FTransitionValue& OutValue) const
 	}
 }
 
-static void ClearTransitionsForWidget(TSparseArray<FWidgetTransition>& Transitions, UWidget* Widget)
+static void ClearTransitionsForWidget(UWidgetTransitionSubsystem& Subsystem, UWidget* Widget)
 {
-	for (auto It = Transitions.CreateIterator(); It; ++It)
+	for (auto It = Subsystem.Transitions.CreateIterator(); It; ++It)
 	{
-		if (It->Widget == Widget) It.RemoveCurrent();
+		if (It->Widget == Widget)
+		{
+			Subsystem.EventCallbacks.Remove(It->TransitionId);
+			It.RemoveCurrent();
+		}
 	}
 }
 
 static void StartSprings(FWidgetTransition& Transition)
 {
-	if (!Transition.bUseSpring) return;
+	if (!Transition.bSpring) return;
 	const float Frequency = 4.0f * FMath::Pow(6.0f, FMath::Clamp(Transition.SpringSpeed, 0.0f, 1.0f));
 	const float SpringFactor = Frequency * Frequency;
 	const float DampingRatio = FMath::Lerp(1.0f, 0.15f, FMath::Clamp(Transition.SpringBounce, 0.0f, 1.0f));
 	const float DampingFactor = 2.0f * DampingRatio * Frequency;
 	if (Transition.PropertyBinding.ValueType == EWidgetTransitionValueType::Float)
 	{
-		Transition.FloatSpring = MakeShared<FSpringFloat>(SpringFactor, DampingFactor);
-		Transition.FloatSpring->Start(Transition.FromValue.Get<float>(), Transition.ToValue.Get<float>());
+		Transition.SpringState = MakeUnique<FWidgetTransitionSpringState>();
+		Transition.SpringState->Spring.Emplace<FSpringFloat>(SpringFactor, DampingFactor);
+		FSpringFloat& Spring = Transition.SpringState->Spring.Get<FSpringFloat>();
+		Spring.Start(Transition.FromValue.Get<float>(), Transition.ToValue.Get<float>());
 	}
 	else if (Transition.PropertyBinding.ValueType == EWidgetTransitionValueType::Vector2D)
 	{
 		const FVector2D& From = Transition.FromValue.Get<FVector2D>();
 		const FVector2D& To = Transition.ToValue.Get<FVector2D>();
-		Transition.VectorSpring = MakeShared<FSpringVector2D>(SpringFactor, DampingFactor);
-		Transition.VectorSpring->Start(From, To);
+		Transition.SpringState = MakeUnique<FWidgetTransitionSpringState>();
+		Transition.SpringState->Spring.Emplace<FSpringVector2D>(SpringFactor, DampingFactor);
+		FSpringVector2D& Spring = Transition.SpringState->Spring.Get<FSpringVector2D>();
+		Spring.Start(From, To);
 	}
 }
 
@@ -150,57 +156,73 @@ static bool RestartTransition(FWidgetTransition& Transition)
 	return true;
 }
 
-static void TickTransitions(TSparseArray<FWidgetTransition>& Transitions, float DeltaTime)
+static void TickTransitions(UWidgetTransitionSubsystem& Subsystem, float DeltaTime)
 {
-	for (auto It = Transitions.CreateIterator(); It; ++It)
+	for (auto It = Subsystem.Transitions.CreateIterator(); It; ++It)
 	{
-		if (!It->Widget.IsValid()) { It.RemoveCurrent(); continue; }
+		if (!It->Widget.IsValid())
+		{
+			Subsystem.EventCallbacks.Remove(It->TransitionId);
+			It.RemoveCurrent();
+			continue;
+		}
 		It->CurrentTime += FMath::Min(DeltaTime, 1.0f / 20.0f);
 		if (It->CurrentTime < It->Delay) continue;
-		if (!It->bStarted) { It->bStarted = true; It->OnStarted.ExecuteIfBound(It->Widget.Get()); }
+		if (!It->bStarted)
+		{
+			It->bStarted = true;
+			if (const FWidgetTransitionEvents* Events = Subsystem.EventCallbacks.Find(It->TransitionId)) Events->OnStarted.ExecuteIfBound(It->Widget.Get());
+		}
 		bool bEnd = It->Time <= 0.0f || It->CurrentTime >= It->Delay + It->Time;
 		const float Alpha = It->Time <= 0.0f ? 1.0f : FMath::Clamp((It->CurrentTime - It->Delay) / It->Time, 0.0f, 1.0f);
 		const float EasedAlpha = FWidgetTransitionEasing::EvaluateCubicBezier(It->Easing.ControlPoint1, It->Easing.ControlPoint2, Alpha);
 		if (It->PropertyBinding.ValueType == EWidgetTransitionValueType::Bool)
 		{
 			const bool Value = bEnd ? It->ToValue.Get<bool>() : It->FromValue.Get<bool>();
-			It->PropertyBinding.Apply(MakeTransitionValue(Value));
-			It->BoolOnUpdate.ExecuteIfBound(It->Widget.Get(), Value, Alpha);
+			It->PropertyBinding.Apply(It->Widget.Get(), MakeTransitionValue(Value));
+			if (FOnBoolWidgetTransitionUpdate* OnUpdate = It->UpdateCallback ? It->UpdateCallback->TryGet<FOnBoolWidgetTransitionUpdate>() : nullptr) OnUpdate->ExecuteIfBound(It->Widget.Get(), Value, Alpha);
 		}
 		else if (It->PropertyBinding.ValueType == EWidgetTransitionValueType::Float)
 		{
 			float Value = FMath::Lerp(It->FromValue.Get<float>(), It->ToValue.Get<float>(), EasedAlpha);
-			if (It->bUseSpring && It->FloatSpring.IsValid())
+			if (It->bSpring && It->SpringState.IsValid())
 			{
-				It->FloatSpring->Tick(DeltaTime);
-				Value = It->FloatSpring->GetValue();
-				bEnd = It->FloatSpring->IsCompleted();
+				if (FSpringFloat* Spring = It->SpringState->Spring.TryGet<FSpringFloat>())
+				{
+					Spring->Tick(DeltaTime);
+					Value = Spring->GetValue();
+					bEnd = Spring->IsCompleted();
+				}
 			}
-			It->PropertyBinding.Apply(MakeTransitionValue(Value));
-			It->FloatOnUpdate.ExecuteIfBound(It->Widget.Get(), Value, Alpha);
+			It->PropertyBinding.Apply(It->Widget.Get(), MakeTransitionValue(Value));
+			if (FOnFloatWidgetTransitionUpdate* OnUpdate = It->UpdateCallback ? It->UpdateCallback->TryGet<FOnFloatWidgetTransitionUpdate>() : nullptr) OnUpdate->ExecuteIfBound(It->Widget.Get(), Value, Alpha);
 		}
 		else if (It->PropertyBinding.ValueType == EWidgetTransitionValueType::Vector2D)
 		{
 			FVector2D Value = FMath::Lerp(It->FromValue.Get<FVector2D>(), It->ToValue.Get<FVector2D>(), EasedAlpha);
-			if (It->bUseSpring && It->VectorSpring.IsValid())
+			if (It->bSpring && It->SpringState.IsValid())
 			{
-				It->VectorSpring->Tick(DeltaTime);
-				Value = It->VectorSpring->GetValue();
-				bEnd = It->VectorSpring->IsCompleted();
+				if (FSpringVector2D* Spring = It->SpringState->Spring.TryGet<FSpringVector2D>())
+				{
+					Spring->Tick(DeltaTime);
+					Value = Spring->GetValue();
+					bEnd = Spring->IsCompleted();
+				}
 			}
-			It->PropertyBinding.Apply(MakeTransitionValue(Value));
-			It->VectorOnUpdate.ExecuteIfBound(It->Widget.Get(), Value, Alpha);
+			It->PropertyBinding.Apply(It->Widget.Get(), MakeTransitionValue(Value));
+			if (FOnVectorWidgetTransitionUpdate* OnUpdate = It->UpdateCallback ? It->UpdateCallback->TryGet<FOnVectorWidgetTransitionUpdate>() : nullptr) OnUpdate->ExecuteIfBound(It->Widget.Get(), Value, Alpha);
 		}
 		else if (It->PropertyBinding.ValueType == EWidgetTransitionValueType::LinearColor)
 		{
 			const FLinearColor Value = FMath::Lerp(It->FromValue.Get<FLinearColor>(), It->ToValue.Get<FLinearColor>(), EasedAlpha);
-			It->PropertyBinding.Apply(MakeTransitionValue(Value));
-			It->ColorOnUpdate.ExecuteIfBound(It->Widget.Get(), Value, Alpha);
+			It->PropertyBinding.Apply(It->Widget.Get(), MakeTransitionValue(Value));
+			if (FOnColorWidgetTransitionUpdate* OnUpdate = It->UpdateCallback ? It->UpdateCallback->TryGet<FOnColorWidgetTransitionUpdate>() : nullptr) OnUpdate->ExecuteIfBound(It->Widget.Get(), Value, Alpha);
 		}
 		if (bEnd && !RestartTransition(*It))
 		{
-			It->OnFinished.ExecuteIfBound(It->Widget.Get());
+			if (const FWidgetTransitionEvents* Events = Subsystem.EventCallbacks.Find(It->TransitionId)) Events->OnFinished.ExecuteIfBound(It->Widget.Get());
 			if (It->bRemoveFromParent) It->Widget->RemoveFromParent();
+			Subsystem.EventCallbacks.Remove(It->TransitionId);
 			It.RemoveCurrent();
 		}
 	}
@@ -211,17 +233,47 @@ static void CreateWidgetTransition(const UObject* WorldContextObject, UWidget* W
 	const UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
 	UWidgetTransitionSubsystem* Subsystem = World ? World->GetSubsystem<UWidgetTransitionSubsystem>() : nullptr;
 	if (!IsValid(Widget) || !Subsystem) return;
-	FWidgetTransition Transition; Transition.Widget = Widget; Transition.WidgetProperty = WidgetProperty; Transition.ToValue = MoveTemp(ToValue); Transition.Time = Time; Transition.Delay = Delay; Transition.bApplyValueBeforeDelay = bApplyValueBeforeDelay; Transition.Easing = MoveTemp(Easing);
-	Transition.RepeatCount = FMath::Max(-1, RepeatCount); Transition.bYoYo = bYoYo; Transition.bRemoveFromParent = bRemoveFromParent; Transition.bUseSpring = bUseSpring;
+	const FName PropertyPath(*WidgetProperty);
+	FWidgetTransition Transition; Transition.Widget = Widget; Transition.WidgetProperty = PropertyPath; Transition.ToValue = MoveTemp(ToValue); Transition.Time = Time; Transition.Delay = Delay; Transition.Easing = MoveTemp(Easing);
+	Transition.RepeatCount = FMath::Max(-1, RepeatCount); Transition.bFrom = bUseFrom; Transition.bChangeFromPropertyAfterDelay = !bApplyValueBeforeDelay; Transition.bYoYo = bYoYo; Transition.bRemoveFromParent = bRemoveFromParent; Transition.bSpring = bUseSpring;
 	Transition.SpringSpeed = SpringSpeed; Transition.SpringBounce = SpringBounce;
-	if (!Transition.PropertyBinding.Resolve(Widget, WidgetProperty) || Transition.PropertyBinding.ValueType != ExpectedType || (!bUseFrom && !Transition.PropertyBinding.Read(Transition.FromValue))) return;
+	if (!Transition.PropertyBinding.Resolve(Widget, WidgetProperty) || Transition.PropertyBinding.ValueType != ExpectedType || (!bUseFrom && !Transition.PropertyBinding.Read(Widget, Transition.FromValue))) return;
 	if (bUseFrom) Transition.FromValue = MoveTemp(FromValue);
-	if (Transition.Delay > 0.0f && Transition.bApplyValueBeforeDelay) Transition.PropertyBinding.Apply(Transition.FromValue);
-	if (Transition.PropertyBinding.ValueType == EWidgetTransitionValueType::Bool || Transition.PropertyBinding.ValueType == EWidgetTransitionValueType::LinearColor) Transition.bUseSpring = false;
-	Transition.FloatOnUpdate = MoveTemp(FloatOnUpdate); Transition.BoolOnUpdate = MoveTemp(BoolOnUpdate); Transition.VectorOnUpdate = MoveTemp(VectorOnUpdate); Transition.ColorOnUpdate = MoveTemp(ColorOnUpdate);
-	Transition.OnStarted = MoveTemp(OnStarted); Transition.OnFinished = MoveTemp(OnFinished);
+	if (Transition.Delay > 0.0f && !Transition.bChangeFromPropertyAfterDelay) Transition.PropertyBinding.Apply(Widget, Transition.FromValue);
+	if (Transition.PropertyBinding.ValueType == EWidgetTransitionValueType::Bool || Transition.PropertyBinding.ValueType == EWidgetTransitionValueType::LinearColor) Transition.bSpring = false;
+	if (FloatOnUpdate.IsBound())
+	{
+		Transition.UpdateCallback = MakeUnique<FWidgetTransitionUpdateCallback>();
+		Transition.UpdateCallback->Emplace<FOnFloatWidgetTransitionUpdate>(MoveTemp(FloatOnUpdate));
+	}
+	else if (BoolOnUpdate.IsBound())
+	{
+		Transition.UpdateCallback = MakeUnique<FWidgetTransitionUpdateCallback>();
+		Transition.UpdateCallback->Emplace<FOnBoolWidgetTransitionUpdate>(MoveTemp(BoolOnUpdate));
+	}
+	else if (VectorOnUpdate.IsBound())
+	{
+		Transition.UpdateCallback = MakeUnique<FWidgetTransitionUpdateCallback>();
+		Transition.UpdateCallback->Emplace<FOnVectorWidgetTransitionUpdate>(MoveTemp(VectorOnUpdate));
+	}
+	else if (ColorOnUpdate.IsBound())
+	{
+		Transition.UpdateCallback = MakeUnique<FWidgetTransitionUpdateCallback>();
+		Transition.UpdateCallback->Emplace<FOnColorWidgetTransitionUpdate>(MoveTemp(ColorOnUpdate));
+	}
+	Transition.TransitionId = Subsystem->NextTransitionId++;
+	if (Subsystem->NextTransitionId == 0) ++Subsystem->NextTransitionId;
+	FWidgetTransitionEvents Events; Events.OnStarted = MoveTemp(OnStarted); Events.OnFinished = MoveTemp(OnFinished);
 	StartSprings(Transition);
-	for (auto It = Subsystem->Transitions.CreateIterator(); It; ++It) if (It->Widget == Widget && It->WidgetProperty == WidgetProperty) It.RemoveCurrent();
+	for (auto It = Subsystem->Transitions.CreateIterator(); It; ++It)
+	{
+		if (It->Widget == Widget && It->WidgetProperty == PropertyPath)
+		{
+			Subsystem->EventCallbacks.Remove(It->TransitionId);
+			It.RemoveCurrent();
+		}
+	}
+	if (Events.HasBoundEvents()) Subsystem->EventCallbacks.Add(Transition.TransitionId, MoveTemp(Events));
 	Subsystem->Transitions.Emplace(MoveTemp(Transition));
 }
 
@@ -250,12 +302,12 @@ void UWidgetTransitionFunctionLibrary::ClearAllWidgetTransitions(const UObject* 
 	const UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
 	UWidgetTransitionSubsystem* Subsystem = World ? World->GetSubsystem<UWidgetTransitionSubsystem>() : nullptr;
 	if (!IsValid(Widget) || !Subsystem) return;
-	ClearTransitionsForWidget(Subsystem->Transitions, Widget);
+	ClearTransitionsForWidget(*Subsystem, Widget);
 }
 
 ETickableTickType UWidgetTransitionSubsystem::GetTickableTickType() const { return IsTemplate() ? ETickableTickType::Never : ETickableTickType::Always; }
 void UWidgetTransitionSubsystem::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	TickTransitions(Transitions, DeltaTime);
+	TickTransitions(*this, DeltaTime);
 }
