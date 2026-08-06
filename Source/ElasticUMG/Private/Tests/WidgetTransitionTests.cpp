@@ -111,4 +111,36 @@ bool FWidgetTransitionEventRegistryTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionMetadataTest, "ElasticUMG.WidgetTransition.Editor.Metadata", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetTransitionMetadataTest::RunTest(const FString& Parameters)
+{
+	struct FExpectedFunction { FName Name; const TCHAR* ValueType; };
+	const FExpectedFunction Functions[] =
+	{
+		{ GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateFloatWidgetTransition), TEXT("Float") },
+		{ GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateBoolWidgetTransition), TEXT("Bool") },
+		{ GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateVectorWidgetTransition), TEXT("Vector2D") },
+		{ GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateColorWidgetTransition), TEXT("LinearColor") },
+	};
+
+	for (const FExpectedFunction& Expected : Functions)
+	{
+		const UFunction* Function = UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(Expected.Name);
+		TestNotNull(*FString::Printf(TEXT("%s exists"), *Expected.Name.ToString()), Function);
+		if (!Function) continue;
+		TestTrue(*FString::Printf(TEXT("%s is a transition function"), *Expected.Name.ToString()), Function->HasMetaData(TEXT("ElasticUMGTransition")));
+		TestEqual(*FString::Printf(TEXT("%s has its declared value type"), *Expected.Name.ToString()), Function->GetMetaData(TEXT("ElasticUMGValueType")), FString(Expected.ValueType));
+	}
+
+	const UFunction* FloatFunction = UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateFloatWidgetTransition));
+	const FProperty* Delay = FloatFunction ? FindFProperty<FProperty>(FloatFunction, TEXT("Delay")) : nullptr;
+	const FProperty* OnStarted = FloatFunction ? FindFProperty<FProperty>(FloatFunction, TEXT("OnStarted")) : nullptr;
+	TestNotNull(TEXT("Delay parameter exists"), Delay);
+	TestNotNull(TEXT("OnStarted parameter exists"), OnStarted);
+	if (Delay) TestEqual(TEXT("Delay belongs to Basic tab"), Delay->GetMetaData(TEXT("ElasticUMGTab")), FString(TEXT("Basic")));
+	if (OnStarted) TestEqual(TEXT("On Started has an editor role"), OnStarted->GetMetaData(TEXT("ElasticUMGRole")), FString(TEXT("OnStarted")));
+	if (FloatFunction) TestEqual(TEXT("Float supports both transition modes"), FloatFunction->GetMetaData(TEXT("ElasticUMGModes")), FString(TEXT("Interpolation,Spring")));
+	return true;
+}
+
 #endif

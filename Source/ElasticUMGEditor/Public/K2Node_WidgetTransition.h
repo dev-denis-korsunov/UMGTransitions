@@ -54,6 +54,7 @@ public:
 	int32 GetOptionalPins() const { return OptionalPins; }
 	bool IsOptionalPinVisible(EWidgetTransitionOptionalPin Pin) const { return (OptionalPins & static_cast<int32>(Pin)) != 0; }
 	bool IsEasingVisible() const { return bShowEasing; }
+	bool SupportsTransitionMode(FName Mode) const;
 	void SetEasingVisible(bool bInShowEasing);
 	void SetTransitionMode(bool bInUseSpring);
 	bool IsCustomEasingSelected() const;
@@ -68,10 +69,10 @@ private:
 	void ShowValueTypePinWhenWidgetSelectionIsHidden(const class UEdGraphSchema_K2* Schema);
 	void ShowTransitionValuePins(const class UEdGraphSchema_K2* Schema);
 	void ShowTimingAndEasingPins(const class UEdGraphSchema_K2* Schema);
-	bool ShowRepeatPin(const class UEdGraphSchema_K2* Schema);
+	void ShowRepeatPin(const class UEdGraphSchema_K2* Schema);
 	bool ShowSpringPins(const class UEdGraphSchema_K2* Schema);
 	bool ShowUpdatePin(const class UEdGraphSchema_K2* Schema);
-	bool ShowEventPins(const class UEdGraphSchema_K2* Schema);
+	bool ShowAdvancedPins(const class UEdGraphSchema_K2* Schema);
 	void UpdateAdvancedPinVisibility(bool bHasAdvancedPins);
 	bool SupportsSpring() const;
 

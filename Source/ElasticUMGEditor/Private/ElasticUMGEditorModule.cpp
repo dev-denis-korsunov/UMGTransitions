@@ -557,7 +557,7 @@ namespace ElasticUMGEditor
 		{
 			TransitionNode = InArgs._TransitionNode;
 			TSharedRef<SHorizontalBox> BasicButtons = SNew(SHorizontalBox);
-			for (const FPinOption& Option : GetBaseOptions()) AddOption(BasicButtons, Option);
+			for (const FPinOption& Option : GetOptions(TEXT("Basic"))) AddOption(BasicButtons, Option);
 			TSharedRef<SHorizontalBox> ModeButtons = SNew(SHorizontalBox);
 			ModeButtons->AddSlot().AutoWidth().Padding(FMargin(0.0f, 0.0f, 2.0f, 0.0f))
 			[
@@ -574,32 +574,32 @@ namespace ElasticUMGEditor
 			];
 			ModeButtons->AddSlot().AutoWidth()
 			[
-				SNew(SCheckBox)
-				.Style(FAppStyle::Get(), "ToggleButtonCheckbox")
-				.Cursor(EMouseCursor::Hand)
-				.ToolTipText(NSLOCTEXT("ElasticUMG", "SpringOption", "Spring: use physical spring motion"))
-				.IsChecked_Lambda([this]() { return TransitionNode.IsValid() && TransitionNode->IsOptionalPinVisible(EWidgetTransitionOptionalPin::Spring) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-				.OnCheckStateChanged_Lambda([this](ECheckBoxState State) { if (TransitionNode.IsValid() && State == ECheckBoxState::Checked) TransitionNode->SetTransitionMode(true); })
-				.Padding(FMargin(4.0f, 5.0f))
+				SNew(SBox)
+				.Visibility_Lambda([this]() { return TransitionNode.IsValid() && TransitionNode->SupportsTransitionMode(TEXT("Spring")) ? EVisibility::Visible : EVisibility::Collapsed; })
 				[
-					SNew(STextBlock).Text(NSLOCTEXT("ElasticUMG", "SpringOptionLabel", "Sp"))
+					SNew(SCheckBox)
+					.Style(FAppStyle::Get(), "ToggleButtonCheckbox")
+					.Cursor(EMouseCursor::Hand)
+					.ToolTipText(NSLOCTEXT("ElasticUMG", "SpringOption", "Spring: use physical spring motion"))
+					.IsChecked_Lambda([this]() { return TransitionNode.IsValid() && TransitionNode->IsOptionalPinVisible(EWidgetTransitionOptionalPin::Spring) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+					.OnCheckStateChanged_Lambda([this](ECheckBoxState State) { if (TransitionNode.IsValid() && State == ECheckBoxState::Checked) TransitionNode->SetTransitionMode(true); })
+					.Padding(FMargin(4.0f, 5.0f))
+					[
+						SNew(STextBlock).Text(NSLOCTEXT("ElasticUMG", "SpringOptionLabel", "Sp"))
+					]
 				]
 			];
-			TSharedRef<SHorizontalBox> EventButtons = SNew(SHorizontalBox);
-			for (const FPinOption& Option : GetEventOptions()) AddOption(EventButtons, Option);
 			ChildSlot
 			[
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().AutoWidth()[ModeButtons]
 				+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(5.0f, 2.0f))[CreateGroupSeparator()]
 				+ SHorizontalBox::Slot().AutoWidth()[BasicButtons]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(5.0f, 2.0f))[CreateGroupSeparator()]
-				+ SHorizontalBox::Slot().AutoWidth()[EventButtons]
 			];
 		}
 
 	private:
-		struct FPinOption { EWidgetTransitionOptionalPin Pin; const TCHAR* Label; const TCHAR* Tooltip; };
+		struct FPinOption { EWidgetTransitionOptionalPin Pin; FText Label; FText Tooltip; };
 
 		static TSharedRef<SWidget> CreateGroupSeparator()
 		{
@@ -617,34 +617,34 @@ namespace ElasticUMGEditor
 		{
 			Buttons->AddSlot().AutoWidth().Padding(FMargin(0.0f, 0.0f, 2.0f, 0.0f))
 			[
-				SNew(SCheckBox).Style(FAppStyle::Get(), "ToggleButtonCheckbox").Cursor(EMouseCursor::Hand).ToolTipText(FText::FromString(Option.Tooltip))
+				SNew(SCheckBox).Style(FAppStyle::Get(), "ToggleButtonCheckbox").Cursor(EMouseCursor::Hand).ToolTipText(Option.Tooltip)
 				.IsChecked(this, &SWidgetTransitionOptionalPins::GetOptionState, Option.Pin).OnCheckStateChanged(this, &SWidgetTransitionOptionalPins::SetOptionState, Option.Pin).Padding(FMargin(4.0f, 5.0f))
-				[SNew(STextBlock).Text(FText::FromString(Option.Label))]
+				[SNew(STextBlock).Text(Option.Label)]
 			];
 		}
 
-		static const TArray<FPinOption>& GetBaseOptions()
+		static TOptional<EWidgetTransitionOptionalPin> GetOptionalPin(const FString& Name)
 		{
-			static const TArray<FPinOption> Options =
-			{
-				{ EWidgetTransitionOptionalPin::WidgetAndProperty, TEXT("Wp"), TEXT("Widget and Property: show or hide both binding inputs") },
-				{ EWidgetTransitionOptionalPin::From, TEXT("Fr"), TEXT("From: use an explicit starting value") },
-				{ EWidgetTransitionOptionalPin::Delay, TEXT("Dl"), TEXT("Delay: wait before starting the transition") },
-				{ EWidgetTransitionOptionalPin::Repeat, TEXT("Rp"), TEXT("Repeat Count: number of additional repeats; -1 repeats forever") },
-				{ EWidgetTransitionOptionalPin::YoYo, TEXT("Yo"), TEXT("Yo Yo: reverse From and To on every repeat") },
-				{ EWidgetTransitionOptionalPin::RemoveFromParent, TEXT("Rm"), TEXT("Remove From Parent after the final transition") },
-			};
-			return Options;
+			if (Name == TEXT("WidgetAndProperty")) return EWidgetTransitionOptionalPin::WidgetAndProperty;
+			if (Name == TEXT("From")) return EWidgetTransitionOptionalPin::From;
+			if (Name == TEXT("Delay")) return EWidgetTransitionOptionalPin::Delay;
+			return {};
 		}
 
-		static const TArray<FPinOption>& GetEventOptions()
+		/** Reads the compact tab buttons from the canonical typed function's UPARAM metadata. */
+		static TArray<FPinOption> GetOptions(const FString& Tab)
 		{
-			static const TArray<FPinOption> Options =
+			TArray<FPinOption> Options;
+			const UFunction* Function = UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateFloatWidgetTransition));
+			if (!Function) return Options;
+			for (TFieldIterator<FProperty> It(Function); It; ++It)
 			{
-				{ EWidgetTransitionOptionalPin::OnStarted, TEXT("St"), TEXT("On Started: called after Delay when the transition begins") },
-				{ EWidgetTransitionOptionalPin::OnUpdate, TEXT("Up"), TEXT("On Update: expose the per-frame update delegate") },
-				{ EWidgetTransitionOptionalPin::OnFinished, TEXT("En"), TEXT("On Finished: called after the final transition") },
-			};
+				const FProperty* Property = *It;
+				if (Property->GetMetaData(TEXT("ElasticUMGTab")) != Tab) continue;
+				const TOptional<EWidgetTransitionOptionalPin> Pin = GetOptionalPin(Property->GetMetaData(TEXT("ElasticUMGOption")));
+				if (!Pin.IsSet()) continue;
+				Options.Add({ Pin.GetValue(), FText::FromString(Property->GetMetaData(TEXT("ElasticUMGLabel"))), FText::FromString(Property->GetMetaData(TEXT("ElasticUMGTooltip"))) });
+			}
 			return Options;
 		}
 

@@ -40,22 +40,34 @@ namespace WidgetTransitionNode
 	static const FName WorldContextPinName(TEXT("WorldContextObject"));
 	static const FName UseFromPinName(TEXT("bUseFrom"));
 
-	static FName GetFunctionName(EWidgetTransitionValueType ValueType)
+	/** Finds the typed runtime entry point from UFUNCTION metadata rather than a hard-coded name table. */
+	static UFunction* GetTransitionFunction(EWidgetTransitionValueType ValueType)
 	{
-		switch (ValueType)
+		const FString ExpectedValueType = StaticEnum<EWidgetTransitionValueType>()->GetNameStringByValue(static_cast<int64>(ValueType));
+		for (TFieldIterator<UFunction> It(UWidgetTransitionFunctionLibrary::StaticClass()); It; ++It)
 		{
-		case EWidgetTransitionValueType::Bool: return GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateBoolWidgetTransition);
-		case EWidgetTransitionValueType::Vector2D: return GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateVectorWidgetTransition);
-		case EWidgetTransitionValueType::LinearColor: return GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateColorWidgetTransition);
-		default: return GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateFloatWidgetTransition);
+			UFunction* Function = *It;
+			if (Function->HasMetaData(TEXT("ElasticUMGTransition")) && Function->GetMetaData(TEXT("ElasticUMGValueType")) == ExpectedValueType) return Function;
 		}
+		return nullptr;
+	}
+
+	static const FProperty* FindTransitionParameter(const UFunction* Function, FName Role)
+	{
+		if (!Function) return nullptr;
+		for (TFieldIterator<FProperty> It(Function); It; ++It)
+		{
+			const FProperty* Property = *It;
+			if (Property->GetMetaData(TEXT("ElasticUMGRole")) == Role.ToString()) return Property;
+		}
+		return FindFProperty<FProperty>(Function, Role);
 	}
 
 	static void CreateValuePin(UK2Node_WidgetTransition* Node, EEdGraphPinDirection Direction, FName Name, const UEdGraphSchema_K2* Schema)
 	{
 		if (!Node->IsValueTypeResolved()) { Node->CreatePin(Direction, Schema->PC_Wildcard, Name); return; }
-		UFunction* Function = UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(GetFunctionName(Node->GetValueType()));
-		const FProperty* Parameter = Function ? FindFProperty<FProperty>(Function, Name) : nullptr;
+		UFunction* Function = GetTransitionFunction(Node->GetValueType());
+		const FProperty* Parameter = FindTransitionParameter(Function, Name);
 		FEdGraphPinType PinType;
 		if (!Parameter || !Schema->ConvertPropertyToPinType(Parameter, PinType)) return;
 		UEdGraphPin* Pin = Node->CreatePin(Direction, PinType, Name);
@@ -77,8 +89,8 @@ namespace WidgetTransitionNode
 	static void CreateFunctionParameterPin(UK2Node_WidgetTransition* Node, FName ParameterName, const UEdGraphSchema_K2* Schema)
 	{
 		if (!Node->IsValueTypeResolved()) return;
-		UFunction* Function = UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(GetFunctionName(Node->GetValueType()));
-		const FProperty* Parameter = Function ? FindFProperty<FProperty>(Function, ParameterName) : nullptr;
+		UFunction* Function = GetTransitionFunction(Node->GetValueType());
+		const FProperty* Parameter = FindTransitionParameter(Function, ParameterName);
 		FEdGraphPinType PinType;
 		if (Parameter && Schema->ConvertPropertyToPinType(Parameter, PinType))
 		{
@@ -224,21 +236,24 @@ void UK2Node_WidgetTransition::ShowTimingAndEasingPins(const UEdGraphSchema_K2* 
 	}
 }
 
-bool UK2Node_WidgetTransition::ShowRepeatPin(const UEdGraphSchema_K2* Schema)
+void UK2Node_WidgetTransition::ShowRepeatPin(const UEdGraphSchema_K2* Schema)
 {
-	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::Repeat))
-	{
-		UEdGraphPin* RepeatCountPin = CreatePin(EGPD_Input, Schema->PC_Int, WidgetTransitionNode::RepeatCountPinName);
-		RepeatCountPin->DefaultValue = TEXT("0");
-		RepeatCountPin->bAdvancedView = true;
-		return true;
-	}
-	return false;
+	CreatePin(EGPD_Input, Schema->PC_Int, WidgetTransitionNode::RepeatCountPinName)->DefaultValue = TEXT("0");
 }
 
 bool UK2Node_WidgetTransition::SupportsSpring() const
 {
-	return bValueTypeResolved && (ValueType == EWidgetTransitionValueType::Float || ValueType == EWidgetTransitionValueType::Vector2D);
+	return SupportsTransitionMode(TEXT("Spring"));
+}
+
+bool UK2Node_WidgetTransition::SupportsTransitionMode(FName Mode) const
+{
+	if (!bValueTypeResolved) return false;
+	const UFunction* Function = WidgetTransitionNode::GetTransitionFunction(ValueType);
+	if (!Function) return false;
+	TArray<FString> Modes;
+	Function->GetMetaData(TEXT("ElasticUMGModes")).ParseIntoArray(Modes, TEXT(","), true);
+	return Modes.ContainsByPredicate([Mode](const FString& Candidate) { return Candidate.Equals(Mode.ToString(), ESearchCase::IgnoreCase); });
 }
 
 bool UK2Node_WidgetTransition::ShowSpringPins(const UEdGraphSchema_K2* Schema)
@@ -256,24 +271,31 @@ bool UK2Node_WidgetTransition::ShowSpringPins(const UEdGraphSchema_K2* Schema)
 
 bool UK2Node_WidgetTransition::ShowUpdatePin(const UEdGraphSchema_K2* Schema)
 {
-	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::OnUpdate))
+	WidgetTransitionNode::CreateFunctionParameterPin(this, WidgetTransitionNode::OnUpdatePinName, Schema);
+	if (UEdGraphPin* OnUpdatePin = FindPin(WidgetTransitionNode::OnUpdatePinName))
 	{
-		WidgetTransitionNode::CreateFunctionParameterPin(this, WidgetTransitionNode::OnUpdatePinName, Schema);
-		if (UEdGraphPin* OnUpdatePin = FindPin(WidgetTransitionNode::OnUpdatePinName))
-		{
-			OnUpdatePin->bAdvancedView = true;
-			return true;
-		}
+		OnUpdatePin->bAdvancedView = true;
+		return true;
 	}
 	return false;
 }
 
-bool UK2Node_WidgetTransition::ShowEventPins(const UEdGraphSchema_K2* Schema)
+bool UK2Node_WidgetTransition::ShowAdvancedPins(const UEdGraphSchema_K2* Schema)
 {
-	bool bHasEvents = false;
-	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::OnStarted)) { WidgetTransitionNode::CreateFunctionParameterPin(this, WidgetTransitionNode::OnStartedPinName, Schema); bHasEvents = true; }
-	if (IsOptionalPinVisible(EWidgetTransitionOptionalPin::OnFinished)) { WidgetTransitionNode::CreateFunctionParameterPin(this, WidgetTransitionNode::OnFinishedPinName, Schema); bHasEvents = true; }
-	return bHasEvents;
+	WidgetTransitionNode::CreateFunctionParameterPin(this, WidgetTransitionNode::YoYoPinName, Schema);
+	WidgetTransitionNode::CreateFunctionParameterPin(this, WidgetTransitionNode::RemoveFromParentPinName, Schema);
+	WidgetTransitionNode::CreateFunctionParameterPin(this, WidgetTransitionNode::OnStartedPinName, Schema);
+	WidgetTransitionNode::CreateFunctionParameterPin(this, WidgetTransitionNode::OnFinishedPinName, Schema);
+	bool bHasPins = false;
+	for (const FName PinName : { WidgetTransitionNode::YoYoPinName, WidgetTransitionNode::RemoveFromParentPinName, WidgetTransitionNode::OnStartedPinName, WidgetTransitionNode::OnFinishedPinName })
+	{
+		if (UEdGraphPin* Pin = FindPin(PinName))
+		{
+			Pin->bAdvancedView = true;
+			bHasPins = true;
+		}
+	}
+	return bHasPins;
 }
 
 void UK2Node_WidgetTransition::UpdateAdvancedPinVisibility(bool bHasAdvancedPins)
@@ -290,11 +312,10 @@ void UK2Node_WidgetTransition::AllocateDefaultPins()
 	ShowValueTypePinWhenWidgetSelectionIsHidden(Schema);
 	ShowTransitionValuePins(Schema);
 	ShowTimingAndEasingPins(Schema);
-	const bool bHasRepeatPin = ShowRepeatPin(Schema);
+	ShowRepeatPin(Schema);
 	const bool bHasSpringPins = ShowSpringPins(Schema);
 	const bool bHasUpdatePin = ShowUpdatePin(Schema);
-	const bool bHasEventPins = ShowEventPins(Schema);
-	const bool bHasAdvancedPins = bHasRepeatPin || bHasSpringPins || bHasUpdatePin || bHasEventPins;
+	const bool bHasAdvancedPins = bHasSpringPins || bHasUpdatePin || ShowAdvancedPins(Schema);
 	UpdateAdvancedPinVisibility(bHasAdvancedPins);
 }
 
@@ -327,7 +348,7 @@ void UK2Node_WidgetTransition::ExpandNode(FKismetCompilerContext& CompilerContex
 		BreakAllNodeLinks();
 		return;
 	}
-	UFunction* Function = UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(WidgetTransitionNode::GetFunctionName(ValueType));
+	UFunction* Function = WidgetTransitionNode::GetTransitionFunction(ValueType);
 	if (!Function) { CompilerContext.MessageLog.Error(*NSLOCTEXT("ElasticUMG", "MissingWidgetTransitionFunction", "@@ could not find its transition function.").ToString(), this); BreakAllNodeLinks(); return; }
 	UK2Node_CallFunction* CallNode = CompilerContext.SpawnIntermediateNode<UK2Node_CallFunction>(this, SourceGraph);
 	CallNode->SetFromFunction(Function); CallNode->AllocateDefaultPins();
@@ -353,11 +374,9 @@ void UK2Node_WidgetTransition::ExpandNode(FKismetCompilerContext& CompilerContex
 		}
 	}
 	MoveLinks(WidgetTransitionNode::RepeatCountPinName);
-	MoveLinks(WidgetTransitionNode::SpringSpeedPinName); MoveLinks(WidgetTransitionNode::SpringBouncePinName); MoveLinks(WidgetTransitionNode::OnUpdatePinName);
+	MoveLinks(WidgetTransitionNode::SpringSpeedPinName); MoveLinks(WidgetTransitionNode::SpringBouncePinName); MoveLinks(WidgetTransitionNode::YoYoPinName); MoveLinks(WidgetTransitionNode::RemoveFromParentPinName); MoveLinks(WidgetTransitionNode::OnUpdatePinName);
 	MoveLinks(WidgetTransitionNode::OnStartedPinName); MoveLinks(WidgetTransitionNode::OnFinishedPinName);
 	CallNode->FindPinChecked(WidgetTransitionNode::UseFromPinName)->DefaultValue = bUseFrom ? TEXT("true") : TEXT("false");
-	if (UEdGraphPin* YoYoPin = CallNode->FindPin(WidgetTransitionNode::YoYoPinName)) YoYoPin->DefaultValue = IsOptionalPinVisible(EWidgetTransitionOptionalPin::YoYo) ? TEXT("true") : TEXT("false");
-	if (UEdGraphPin* RemovePin = CallNode->FindPin(WidgetTransitionNode::RemoveFromParentPinName)) RemovePin->DefaultValue = IsOptionalPinVisible(EWidgetTransitionOptionalPin::RemoveFromParent) && !bRepeatCountIsInfinite ? TEXT("true") : TEXT("false");
 	if (UEdGraphPin* SpringPin = CallNode->FindPin(WidgetTransitionNode::UseSpringPinName)) SpringPin->DefaultValue = IsOptionalPinVisible(EWidgetTransitionOptionalPin::Spring) ? TEXT("true") : TEXT("false");
 	BreakAllNodeLinks();
 }
@@ -419,6 +438,19 @@ void UK2Node_WidgetTransition::PostReconstructNode()
 		}
 		WidgetTransitionNode::SetEasingDefault(FindPin(WidgetTransitionNode::EasingPinName), LegacyValue);
 	}
+	const auto MigrateLegacyToggle = [this](EWidgetTransitionOptionalPin LegacyOption, FName PinName)
+	{
+		if (!IsOptionalPinVisible(LegacyOption)) return;
+		if (UEdGraphPin* Pin = FindPin(PinName))
+		{
+			Pin->DefaultValue = TEXT("true");
+			Pin->AutogeneratedDefaultValue = TEXT("true");
+		}
+		OptionalPins &= ~static_cast<int32>(LegacyOption);
+	};
+	// Convert old tab state once; subsequent edits use the regular bool pins.
+	MigrateLegacyToggle(EWidgetTransitionOptionalPin::YoYo, WidgetTransitionNode::YoYoPinName);
+	MigrateLegacyToggle(EWidgetTransitionOptionalPin::RemoveFromParent, WidgetTransitionNode::RemoveFromParentPinName);
 	TArray<UEdGraphPin*> PinsToDiscard;
 	for (UEdGraphPin* Pin : Pins)
 	{
@@ -453,6 +485,11 @@ void UK2Node_WidgetTransition::SetValueType(EWidgetTransitionValueType InValueTy
 		ManualValueType = InValueType;
 		bValueTypeResolved = true;
 		bValuePinsDisabled = false;
+		if (!SupportsTransitionMode(TEXT("Spring")))
+		{
+			OptionalPins &= ~static_cast<int32>(EWidgetTransitionOptionalPin::Spring);
+			bShowEasing = true;
+		}
 		ReconstructNode();
 	}
 }
@@ -497,6 +534,7 @@ void UK2Node_WidgetTransition::SetEasingVisible(bool bInShowEasing)
 
 void UK2Node_WidgetTransition::SetTransitionMode(bool bInUseSpring)
 {
+	if (bInUseSpring && !SupportsTransitionMode(TEXT("Spring"))) return;
 	Modify();
 	int32 NewOptionalPins = OptionalPins;
 	if (bInUseSpring) NewOptionalPins |= static_cast<int32>(EWidgetTransitionOptionalPin::Spring);
@@ -552,5 +590,10 @@ void UK2Node_WidgetTransition::SetPropertyValueType(EWidgetTransitionValueType I
 	ValueType = InValueType;
 	bValueTypeResolved = true;
 	bValuePinsDisabled = false;
+	if (!SupportsTransitionMode(TEXT("Spring")))
+	{
+		OptionalPins &= ~static_cast<int32>(EWidgetTransitionOptionalPin::Spring);
+		bShowEasing = true;
+	}
 	ReconstructNode();
 }

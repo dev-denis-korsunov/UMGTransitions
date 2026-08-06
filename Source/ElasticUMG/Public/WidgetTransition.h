@@ -112,19 +112,32 @@ class ELASTICUMG_API UWidgetTransitionFunctionLibrary final : public UBlueprintF
 
 public:
 	/** Internal typed entry point used only when the universal node is compiled. */
-	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true"))
-	static void CreateFloatWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, float ToValue, FOnFloatWidgetTransitionUpdate OnUpdate, FOnWidgetTransitionEvent OnStarted, FOnWidgetTransitionEvent OnFinished, float Time = 0.2f, float Delay = 0.0f, bool bApplyValueBeforeDelay = true, FWidgetTransitionEasingValue Easing = FWidgetTransitionEasingValue(), int32 RepeatCount = 0, bool bYoYo = false, bool bRemoveFromParent = false, bool bUseSpring = false, float SpringSpeed = 0.65f, float SpringBounce = 0.45f, bool bUseFrom = false, float FromValue = 0.0f);
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true", ElasticUMGTransition = "true", ElasticUMGValueType = "Float", ElasticUMGModes = "Interpolation,Spring"))
+	static void CreateFloatWidgetTransition(const UObject* WorldContextObject,
+		UPARAM(meta = (ElasticUMGTab = "Basic", ElasticUMGOption = "WidgetAndProperty", ElasticUMGLabel = "Wp", ElasticUMGTooltip = "Widget and Property: show or hide both binding inputs")) UWidget* Widget,
+		UPARAM(meta = (ElasticUMGRole = "WidgetProperty")) const FString& WidgetProperty, UPARAM(meta = (ElasticUMGRole = "ToValue")) float ToValue,
+		UPARAM(meta = (ElasticUMGRole = "OnUpdate")) FOnFloatWidgetTransitionUpdate OnUpdate,
+		UPARAM(meta = (ElasticUMGRole = "OnStarted")) FOnWidgetTransitionEvent OnStarted,
+		UPARAM(meta = (ElasticUMGRole = "OnFinished")) FOnWidgetTransitionEvent OnFinished,
+		UPARAM(meta = (ElasticUMGRole = "Time")) float Time = 0.2f,
+		UPARAM(meta = (ElasticUMGTab = "Basic", ElasticUMGOption = "Delay", ElasticUMGLabel = "Dl", ElasticUMGTooltip = "Delay: wait before starting the transition")) float Delay = 0.0f,
+		UPARAM(meta = (ElasticUMGRole = "ApplyValueBeforeDelay")) bool bApplyValueBeforeDelay = true, UPARAM(meta = (ElasticUMGRole = "Easing")) FWidgetTransitionEasingValue Easing = FWidgetTransitionEasingValue(),
+		UPARAM(meta = (ElasticUMGRole = "RepeatCount")) int32 RepeatCount = 0,
+		UPARAM(meta = (ElasticUMGRole = "YoYo")) bool bYoYo = false,
+		UPARAM(meta = (ElasticUMGRole = "RemoveFromParent")) bool bRemoveFromParent = false,
+		UPARAM(meta = (ElasticUMGRole = "UseSpring")) bool bUseSpring = false, UPARAM(meta = (ElasticUMGRole = "SpringSpeed")) float SpringSpeed = 0.65f, UPARAM(meta = (ElasticUMGRole = "SpringBounce")) float SpringBounce = 0.45f,
+		UPARAM(meta = (ElasticUMGRole = "UseFrom")) bool bUseFrom = false, UPARAM(meta = (ElasticUMGTab = "Basic", ElasticUMGOption = "From", ElasticUMGLabel = "Fr", ElasticUMGTooltip = "From: use an explicit starting value")) float FromValue = 0.0f);
 
 	/** Internal typed entry point used only when the universal node is compiled. */
-	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true"))
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true", ElasticUMGTransition = "true", ElasticUMGValueType = "Bool", ElasticUMGModes = "Interpolation"))
 	static void CreateBoolWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, bool ToValue, FOnBoolWidgetTransitionUpdate OnUpdate, FOnWidgetTransitionEvent OnStarted, FOnWidgetTransitionEvent OnFinished, float Time = 0.2f, float Delay = 0.0f, bool bApplyValueBeforeDelay = true, FWidgetTransitionEasingValue Easing = FWidgetTransitionEasingValue(), int32 RepeatCount = 0, bool bYoYo = false, bool bRemoveFromParent = false, bool bUseFrom = false, bool FromValue = false);
 
 	/** Internal typed entry point used only when the universal node is compiled. */
-	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true"))
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true", ElasticUMGTransition = "true", ElasticUMGValueType = "Vector2D", ElasticUMGModes = "Interpolation,Spring"))
 	static void CreateVectorWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, FVector2D ToValue, FOnVectorWidgetTransitionUpdate OnUpdate, FOnWidgetTransitionEvent OnStarted, FOnWidgetTransitionEvent OnFinished, float Time = 0.2f, float Delay = 0.0f, bool bApplyValueBeforeDelay = true, FWidgetTransitionEasingValue Easing = FWidgetTransitionEasingValue(), int32 RepeatCount = 0, bool bYoYo = false, bool bRemoveFromParent = false, bool bUseSpring = false, float SpringSpeed = 0.65f, float SpringBounce = 0.45f, bool bUseFrom = false, FVector2D FromValue = FVector2D::ZeroVector);
 
 	/** Internal typed entry point used only when the universal node is compiled. */
-	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true"))
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true", ElasticUMGTransition = "true", ElasticUMGValueType = "LinearColor", ElasticUMGModes = "Interpolation"))
 	static void CreateColorWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, FLinearColor ToValue, FOnColorWidgetTransitionUpdate OnUpdate, FOnWidgetTransitionEvent OnStarted, FOnWidgetTransitionEvent OnFinished, float Time = 0.2f, float Delay = 0.0f, bool bApplyValueBeforeDelay = true, FWidgetTransitionEasingValue Easing = FWidgetTransitionEasingValue(), int32 RepeatCount = 0, bool bYoYo = false, bool bRemoveFromParent = false, bool bUseFrom = false, FLinearColor FromValue = FLinearColor::White);
 
 	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject"))
