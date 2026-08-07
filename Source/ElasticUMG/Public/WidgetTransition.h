@@ -73,8 +73,38 @@ struct ELASTICUMG_API FWidgetTransitionPropertyBinding
 	bool Read(UWidget* Widget, FTransitionValue& OutValue) const;
 };
 
+/**
+ * Blueprint-facing transition description. It is intentionally cold data: it is
+ * assembled by pure functions and converted into a compact runtime transition
+ * only when StartWidgetTransition is called.
+ */
+USTRUCT(BlueprintType)
+struct ELASTICUMG_API FWidgetTransition
+{
+	GENERATED_BODY()
+
+	TWeakObjectPtr<UWidget> Widget;
+	FName WidgetProperty;
+	FTransitionValue FromValue;
+	FTransitionValue ToValue;
+	FWidgetTransitionEasingValue Easing;
+	FWidgetTransitionEvents Events;
+	FWidgetTransitionUpdateCallback UpdateCallback;
+	float Time = 0.2f;
+	float Delay = 0.0f;
+	float SpringSpeed = 0.65f;
+	float SpringBounce = 0.45f;
+	int32 RepeatCount = 0;
+	EWidgetTransitionValueType ValueType = EWidgetTransitionValueType::Float;
+	bool bUseFrom = false;
+	bool bApplyValueBeforeDelay = true;
+	bool bYoYo = false;
+	bool bRemoveFromParent = false;
+	bool bUseSpring = false;
+};
+
 /** Runtime transition with compact tagged From/To values. */
-struct FWidgetTransition
+struct FActiveWidgetTransition
 {
 	TWeakObjectPtr<UWidget> Widget;
 	FName WidgetProperty;
@@ -111,34 +141,46 @@ class ELASTICUMG_API UWidgetTransitionFunctionLibrary final : public UBlueprintF
 	GENERATED_BODY()
 
 public:
-	/** Internal typed entry point used only when the universal node is compiled. */
-	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true", ElasticUMGTransition = "true", ElasticUMGValueType = "Float", ElasticUMGModes = "Interpolation,Spring"))
-	static void CreateFloatWidgetTransition(const UObject* WorldContextObject,
+	/** Typed pure builder selected by the universal Create Widget Transition node. */
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (BlueprintInternalUseOnly = "true", ElasticUMGTransition = "true", ElasticUMGValueType = "Float", ElasticUMGModes = "Interpolation,Spring"))
+	static FWidgetTransition CreateFloatWidgetTransition(
 		UPARAM(meta = (ElasticUMGTab = "Basic", ElasticUMGOption = "WidgetAndProperty", ElasticUMGLabel = "Wp", ElasticUMGTooltip = "Widget and Property: show or hide both binding inputs")) UWidget* Widget,
 		UPARAM(meta = (ElasticUMGRole = "WidgetProperty")) const FString& WidgetProperty, UPARAM(meta = (ElasticUMGRole = "ToValue")) float ToValue,
-		UPARAM(meta = (ElasticUMGRole = "OnUpdate")) FOnFloatWidgetTransitionUpdate OnUpdate,
-		UPARAM(meta = (ElasticUMGRole = "OnStarted")) FOnWidgetTransitionEvent OnStarted,
-		UPARAM(meta = (ElasticUMGRole = "OnFinished")) FOnWidgetTransitionEvent OnFinished,
-		UPARAM(meta = (ElasticUMGRole = "Time")) float Time = 0.2f,
-		UPARAM(meta = (ElasticUMGTab = "Basic", ElasticUMGOption = "Delay", ElasticUMGLabel = "Dl", ElasticUMGTooltip = "Delay: wait before starting the transition")) float Delay = 0.0f,
-		UPARAM(meta = (ElasticUMGRole = "ApplyValueBeforeDelay")) bool bApplyValueBeforeDelay = true, UPARAM(meta = (ElasticUMGRole = "Easing")) FWidgetTransitionEasingValue Easing = FWidgetTransitionEasingValue(),
-		UPARAM(meta = (ElasticUMGRole = "RepeatCount")) int32 RepeatCount = 0,
-		UPARAM(meta = (ElasticUMGRole = "YoYo")) bool bYoYo = false,
-		UPARAM(meta = (ElasticUMGRole = "RemoveFromParent")) bool bRemoveFromParent = false,
-		UPARAM(meta = (ElasticUMGRole = "UseSpring")) bool bUseSpring = false, UPARAM(meta = (ElasticUMGRole = "SpringSpeed")) float SpringSpeed = 0.65f, UPARAM(meta = (ElasticUMGRole = "SpringBounce")) float SpringBounce = 0.45f,
 		UPARAM(meta = (ElasticUMGRole = "UseFrom")) bool bUseFrom = false, UPARAM(meta = (ElasticUMGTab = "Basic", ElasticUMGOption = "From", ElasticUMGLabel = "Fr", ElasticUMGTooltip = "From: use an explicit starting value")) float FromValue = 0.0f);
 
-	/** Internal typed entry point used only when the universal node is compiled. */
-	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true", ElasticUMGTransition = "true", ElasticUMGValueType = "Bool", ElasticUMGModes = "Interpolation"))
-	static void CreateBoolWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, bool ToValue, FOnBoolWidgetTransitionUpdate OnUpdate, FOnWidgetTransitionEvent OnStarted, FOnWidgetTransitionEvent OnFinished, float Time = 0.2f, float Delay = 0.0f, bool bApplyValueBeforeDelay = true, FWidgetTransitionEasingValue Easing = FWidgetTransitionEasingValue(), int32 RepeatCount = 0, bool bYoYo = false, bool bRemoveFromParent = false, bool bUseFrom = false, bool FromValue = false);
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (BlueprintInternalUseOnly = "true", ElasticUMGTransition = "true", ElasticUMGValueType = "Bool", ElasticUMGModes = "Interpolation"))
+	static FWidgetTransition CreateBoolWidgetTransition(UWidget* Widget, const FString& WidgetProperty, bool ToValue, bool bUseFrom = false, bool FromValue = false);
 
-	/** Internal typed entry point used only when the universal node is compiled. */
-	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true", ElasticUMGTransition = "true", ElasticUMGValueType = "Vector2D", ElasticUMGModes = "Interpolation,Spring"))
-	static void CreateVectorWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, FVector2D ToValue, FOnVectorWidgetTransitionUpdate OnUpdate, FOnWidgetTransitionEvent OnStarted, FOnWidgetTransitionEvent OnFinished, float Time = 0.2f, float Delay = 0.0f, bool bApplyValueBeforeDelay = true, FWidgetTransitionEasingValue Easing = FWidgetTransitionEasingValue(), int32 RepeatCount = 0, bool bYoYo = false, bool bRemoveFromParent = false, bool bUseSpring = false, float SpringSpeed = 0.65f, float SpringBounce = 0.45f, bool bUseFrom = false, FVector2D FromValue = FVector2D::ZeroVector);
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (BlueprintInternalUseOnly = "true", ElasticUMGTransition = "true", ElasticUMGValueType = "Vector2D", ElasticUMGModes = "Interpolation,Spring"))
+	static FWidgetTransition CreateVectorWidgetTransition(UWidget* Widget, const FString& WidgetProperty, FVector2D ToValue, bool bUseFrom = false, FVector2D FromValue = FVector2D::ZeroVector);
 
-	/** Internal typed entry point used only when the universal node is compiled. */
-	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject", BlueprintInternalUseOnly = "true", ElasticUMGTransition = "true", ElasticUMGValueType = "LinearColor", ElasticUMGModes = "Interpolation"))
-	static void CreateColorWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, FLinearColor ToValue, FOnColorWidgetTransitionUpdate OnUpdate, FOnWidgetTransitionEvent OnStarted, FOnWidgetTransitionEvent OnFinished, float Time = 0.2f, float Delay = 0.0f, bool bApplyValueBeforeDelay = true, FWidgetTransitionEasingValue Easing = FWidgetTransitionEasingValue(), int32 RepeatCount = 0, bool bYoYo = false, bool bRemoveFromParent = false, bool bUseFrom = false, FLinearColor FromValue = FLinearColor::White);
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (BlueprintInternalUseOnly = "true", ElasticUMGTransition = "true", ElasticUMGValueType = "LinearColor", ElasticUMGModes = "Interpolation"))
+	static FWidgetTransition CreateColorWidgetTransition(UWidget* Widget, const FString& WidgetProperty, FLinearColor ToValue, bool bUseFrom = false, FLinearColor FromValue = FLinearColor::White);
+
+	UFUNCTION(BlueprintPure, Category = "Widget Transition")
+	static FWidgetTransition WithDelay(FWidgetTransition Transition, float Delay, bool bApplyValueBeforeDelay = true);
+	UFUNCTION(BlueprintPure, Category = "Widget Transition")
+	static FWidgetTransition WithEasing(FWidgetTransition Transition, FWidgetTransitionEasingValue Easing);
+	UFUNCTION(BlueprintPure, Category = "Widget Transition")
+	static FWidgetTransition WithRepeat(FWidgetTransition Transition, int32 RepeatCount, bool bYoYo = false);
+	UFUNCTION(BlueprintPure, Category = "Widget Transition")
+	static FWidgetTransition WithSpring(FWidgetTransition Transition, float SpringSpeed = 0.65f, float SpringBounce = 0.45f);
+	UFUNCTION(BlueprintPure, Category = "Widget Transition")
+	static FWidgetTransition WithRemoveFromParent(FWidgetTransition Transition, bool bRemoveFromParent = true);
+	UFUNCTION(BlueprintPure, Category = "Widget Transition")
+	static FWidgetTransition WithEvents(FWidgetTransition Transition, FOnWidgetTransitionEvent OnStarted, FOnWidgetTransitionEvent OnFinished);
+	UFUNCTION(BlueprintPure, Category = "Widget Transition")
+	static FWidgetTransition WithFloatUpdate(FWidgetTransition Transition, FOnFloatWidgetTransitionUpdate OnUpdate);
+	UFUNCTION(BlueprintPure, Category = "Widget Transition")
+	static FWidgetTransition WithBoolUpdate(FWidgetTransition Transition, FOnBoolWidgetTransitionUpdate OnUpdate);
+	UFUNCTION(BlueprintPure, Category = "Widget Transition")
+	static FWidgetTransition WithVectorUpdate(FWidgetTransition Transition, FOnVectorWidgetTransitionUpdate OnUpdate);
+	UFUNCTION(BlueprintPure, Category = "Widget Transition")
+	static FWidgetTransition WithColorUpdate(FWidgetTransition Transition, FOnColorWidgetTransitionUpdate OnUpdate);
+
+	/** Converts a transition description to compact runtime data and starts it. */
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject"))
+	static void StartWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition);
 
 	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject"))
 	static void ClearAllWidgetTransitions(const UObject* WorldContextObject, UWidget* Widget);
@@ -155,7 +197,7 @@ public:
 	virtual TStatId GetStatId() const override { RETURN_QUICK_DECLARE_CYCLE_STAT(UWidgetTransitionSubsystem, STATGROUP_Tickables); }
 	virtual bool IsTickableInEditor() const override { return true; }
 
-	TSparseArray<FWidgetTransition> Transitions;
+	TSparseArray<FActiveWidgetTransition> Transitions;
 	/** Lifecycle callbacks for the small subset of transitions that bind Start or Finished. */
 	TMap<uint64, FWidgetTransitionEvents> EventCallbacks;
 	/** Monotonic key source; a sparse-array index cannot be used because indices are reused. */

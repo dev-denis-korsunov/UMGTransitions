@@ -44,7 +44,7 @@ public:
 	virtual void PostReconstructNode() override;
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 	virtual bool CanSplitPin(const UEdGraphPin* Pin) const override;
-	virtual bool IsNodePure() const override { return false; }
+	virtual bool IsNodePure() const override { return true; }
 
 	bool IsValueTypeResolved() const { return bValueTypeResolved; }
 	EWidgetTransitionValueType GetValueType() const { return ValueType; }

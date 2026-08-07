@@ -19,7 +19,7 @@ namespace
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionStorageLayoutTest, "ElasticUMG.WidgetTransition.Runtime.StorageLayout", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionStorageLayoutTest::RunTest(const FString& Parameters)
 {
-	AddInfo(FormatBytes(TEXT("FWidgetTransition"), sizeof(FWidgetTransition), alignof(FWidgetTransition)));
+	AddInfo(FormatBytes(TEXT("FActiveWidgetTransition"), sizeof(FActiveWidgetTransition), alignof(FActiveWidgetTransition)));
 	AddInfo(FormatBytes(TEXT("FWidgetTransitionPropertyBinding"), sizeof(FWidgetTransitionPropertyBinding), alignof(FWidgetTransitionPropertyBinding)));
 	AddInfo(FormatBytes(TEXT("FTransitionValue"), sizeof(FTransitionValue), alignof(FTransitionValue)));
 	AddInfo(FormatBytes(TEXT("FWidgetTransitionEasingValue"), sizeof(FWidgetTransitionEasingValue), alignof(FWidgetTransitionEasingValue)));
@@ -30,7 +30,7 @@ bool FWidgetTransitionStorageLayoutTest::RunTest(const FString& Parameters)
 	AddInfo(FormatBytes(TEXT("FOnFloatWidgetTransitionUpdate"), sizeof(FOnFloatWidgetTransitionUpdate), alignof(FOnFloatWidgetTransitionUpdate)));
 	AddInfo(FormatBytes(TEXT("FOnWidgetTransitionEvent"), sizeof(FOnWidgetTransitionEvent), alignof(FOnWidgetTransitionEvent)));
 
-	TestTrue(TEXT("Transition storage is non-empty"), sizeof(FWidgetTransition) > 0);
+	TestTrue(TEXT("Transition storage is non-empty"), sizeof(FActiveWidgetTransition) > 0);
 	return true;
 }
 
@@ -43,6 +43,24 @@ bool FWidgetTransitionEasingTest::RunTest(const FString& Parameters)
 
 	const float Midpoint = FWidgetTransitionEasing::EvaluateCubicBezier(Easing.ControlPoint1, Easing.ControlPoint2, 0.5f);
 	TestTrue(TEXT("Cubic Bezier midpoint stays normalized"), Midpoint > 0.0f && Midpoint < 1.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionBuilderTest, "ElasticUMG.WidgetTransition.Runtime.SpecBuilders", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetTransitionBuilderTest::RunTest(const FString& Parameters)
+{
+	UImage* Widget = NewObject<UImage>(GetTransientPackage());
+	FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateVectorWidgetTransition(Widget, TEXT("RenderTransform.Translation"), FVector2D(120.0, -40.0), true, FVector2D(-10.0, 20.0));
+	Transition = UWidgetTransitionFunctionLibrary::WithDelay(MoveTemp(Transition), 0.4f, false);
+	Transition = UWidgetTransitionFunctionLibrary::WithRepeat(MoveTemp(Transition), 2, true);
+	Transition = UWidgetTransitionFunctionLibrary::WithSpring(MoveTemp(Transition), 0.8f, 0.25f);
+
+	TestEqual(TEXT("Builder retains selected value type"), Transition.ValueType, EWidgetTransitionValueType::Vector2D);
+	TestTrue(TEXT("Builder keeps an explicit From value"), Transition.bUseFrom && Transition.FromValue.IsType<FVector2D>());
+	TestTrue(TEXT("Builder keeps the target value"), Transition.ToValue.IsType<FVector2D>() && Transition.ToValue.Get<FVector2D>().Equals(FVector2D(120.0, -40.0)));
+	TestTrue(TEXT("Delay builder stores delayed-property policy"), FMath::IsNearlyEqual(Transition.Delay, 0.4f) && !Transition.bApplyValueBeforeDelay);
+	TestTrue(TEXT("Repeat builder stores yoyo"), Transition.RepeatCount == 2 && Transition.bYoYo);
+	TestTrue(TEXT("Spring builder enables supported type"), Transition.bUseSpring && FMath::IsNearlyEqual(Transition.SpringSpeed, 0.8f));
 	return true;
 }
 
@@ -133,12 +151,9 @@ bool FWidgetTransitionMetadataTest::RunTest(const FString& Parameters)
 	}
 
 	const UFunction* FloatFunction = UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateFloatWidgetTransition));
-	const FProperty* Delay = FloatFunction ? FindFProperty<FProperty>(FloatFunction, TEXT("Delay")) : nullptr;
-	const FProperty* OnStarted = FloatFunction ? FindFProperty<FProperty>(FloatFunction, TEXT("OnStarted")) : nullptr;
-	TestNotNull(TEXT("Delay parameter exists"), Delay);
-	TestNotNull(TEXT("OnStarted parameter exists"), OnStarted);
-	if (Delay) TestEqual(TEXT("Delay belongs to Basic tab"), Delay->GetMetaData(TEXT("ElasticUMGTab")), FString(TEXT("Basic")));
-	if (OnStarted) TestEqual(TEXT("On Started has an editor role"), OnStarted->GetMetaData(TEXT("ElasticUMGRole")), FString(TEXT("OnStarted")));
+	const FProperty* FromValue = FloatFunction ? FindFProperty<FProperty>(FloatFunction, TEXT("FromValue")) : nullptr;
+	TestNotNull(TEXT("From Value parameter exists"), FromValue);
+	if (FromValue) TestEqual(TEXT("From Value has an editor role"), FromValue->GetMetaData(TEXT("ElasticUMGRole")), FString(TEXT("FromValue")));
 	if (FloatFunction) TestEqual(TEXT("Float supports both transition modes"), FloatFunction->GetMetaData(TEXT("ElasticUMGModes")), FString(TEXT("Interpolation,Spring")));
 	return true;
 }

@@ -39,6 +39,7 @@ namespace WidgetTransitionNode
 	static const FName OnFinishedPinName(TEXT("OnFinished"));
 	static const FName WorldContextPinName(TEXT("WorldContextObject"));
 	static const FName UseFromPinName(TEXT("bUseFrom"));
+	static const FName TransitionPinName(TEXT("Transition"));
 
 	/** Finds the typed runtime entry point from UFUNCTION metadata rather than a hard-coded name table. */
 	static UFunction* GetTransitionFunction(EWidgetTransitionValueType ValueType)
@@ -306,17 +307,12 @@ void UK2Node_WidgetTransition::UpdateAdvancedPinVisibility(bool bHasAdvancedPins
 void UK2Node_WidgetTransition::AllocateDefaultPins()
 {
 	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
-	// Keep this ordered: it is the complete pin visibility policy for the node.
-	ShowExecutionPins(Schema);
+	// This node only chooses the strongly typed endpoint builder. Common options
+	// are composed by the pure With* nodes and execution happens in Start Widget Transition.
 	ShowWidgetSelectionPins(Schema);
 	ShowValueTypePinWhenWidgetSelectionIsHidden(Schema);
 	ShowTransitionValuePins(Schema);
-	ShowTimingAndEasingPins(Schema);
-	ShowRepeatPin(Schema);
-	const bool bHasSpringPins = ShowSpringPins(Schema);
-	const bool bHasUpdatePin = ShowUpdatePin(Schema);
-	const bool bHasAdvancedPins = bHasSpringPins || bHasUpdatePin || ShowAdvancedPins(Schema);
-	UpdateAdvancedPinVisibility(bHasAdvancedPins);
+	CreatePin(EGPD_Output, Schema->PC_Struct, FWidgetTransition::StaticStruct(), WidgetTransitionNode::TransitionPinName);
 }
 
 FText UK2Node_WidgetTransition::GetNodeTitle(ENodeTitleType::Type) const { return NSLOCTEXT("ElasticUMG", "CreateWidgetTransition", "Create Widget Transition"); }
@@ -358,24 +354,12 @@ void UK2Node_WidgetTransition::ExpandNode(FKismetCompilerContext& CompilerContex
 	{
 		if (UEdGraphPin* SourcePin = FindPin(PinName)) if (UEdGraphPin* DestinationPin = CallNode->FindPin(PinName)) CompilerContext.MovePinLinksToIntermediate(*SourcePin, *DestinationPin);
 	};
-	MoveLinks(UEdGraphSchema_K2::PN_Execute); MoveLinks(UEdGraphSchema_K2::PN_Then); MoveLinks(WidgetTransitionNode::WorldContextPinName);
 	MoveLinks(WidgetTransitionNode::WidgetPinName); MoveLinks(WidgetTransitionNode::WidgetPropertyPinName); MoveLinks(WidgetTransitionNode::FromValuePinName);
-	MoveLinks(WidgetTransitionNode::ToValuePinName); MoveLinks(WidgetTransitionNode::TimePinName); MoveLinks(WidgetTransitionNode::DelayPinName); MoveLinks(WidgetTransitionNode::ApplyValueBeforeDelayPinName);
-	// The easing pin is normally a literal struct (a preset resolved by this node), not a wire.
-	// MovePinLinksToIntermediate only guarantees connections, so preserve its literal explicitly.
-	if (UEdGraphPin* SourceEasingPin = FindPin(WidgetTransitionNode::EasingPinName))
+	MoveLinks(WidgetTransitionNode::ToValuePinName);
+	if (UEdGraphPin* SourcePin = FindPin(WidgetTransitionNode::TransitionPinName))
 	{
-		if (UEdGraphPin* DestinationEasingPin = CallNode->FindPin(WidgetTransitionNode::EasingPinName))
-		{
-			const bool bWasLinked = !SourceEasingPin->LinkedTo.IsEmpty();
-			const FString EasingDefaultValue = SourceEasingPin->DefaultValue;
-			CompilerContext.MovePinLinksToIntermediate(*SourceEasingPin, *DestinationEasingPin);
-			if (!bWasLinked) DestinationEasingPin->DefaultValue = EasingDefaultValue;
-		}
+		if (UEdGraphPin* DestinationPin = CallNode->GetReturnValuePin()) CompilerContext.MovePinLinksToIntermediate(*SourcePin, *DestinationPin);
 	}
-	MoveLinks(WidgetTransitionNode::RepeatCountPinName);
-	MoveLinks(WidgetTransitionNode::SpringSpeedPinName); MoveLinks(WidgetTransitionNode::SpringBouncePinName); MoveLinks(WidgetTransitionNode::YoYoPinName); MoveLinks(WidgetTransitionNode::RemoveFromParentPinName); MoveLinks(WidgetTransitionNode::OnUpdatePinName);
-	MoveLinks(WidgetTransitionNode::OnStartedPinName); MoveLinks(WidgetTransitionNode::OnFinishedPinName);
 	CallNode->FindPinChecked(WidgetTransitionNode::UseFromPinName)->DefaultValue = bUseFrom ? TEXT("true") : TEXT("false");
 	if (UEdGraphPin* SpringPin = CallNode->FindPin(WidgetTransitionNode::UseSpringPinName)) SpringPin->DefaultValue = IsOptionalPinVisible(EWidgetTransitionOptionalPin::Spring) ? TEXT("true") : TEXT("false");
 	BreakAllNodeLinks();

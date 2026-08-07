@@ -121,7 +121,7 @@ static void ClearTransitionsForWidget(UWidgetTransitionSubsystem& Subsystem, UWi
 	}
 }
 
-static void StartSprings(FWidgetTransition& Transition)
+static void StartSprings(FActiveWidgetTransition& Transition)
 {
 	if (!Transition.bSpring) return;
 	const float Frequency = 4.0f * FMath::Pow(6.0f, FMath::Clamp(Transition.SpringSpeed, 0.0f, 1.0f));
@@ -146,7 +146,7 @@ static void StartSprings(FWidgetTransition& Transition)
 	}
 }
 
-static bool RestartTransition(FWidgetTransition& Transition)
+static bool RestartTransition(FActiveWidgetTransition& Transition)
 {
 	if (Transition.RepeatCount != -1 && Transition.CompletedRepeats >= Transition.RepeatCount) return false;
 	++Transition.CompletedRepeats;
@@ -228,74 +228,124 @@ static void TickTransitions(UWidgetTransitionSubsystem& Subsystem, float DeltaTi
 	}
 }
 
-static void CreateWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, FTransitionValue ToValue, float Time, float Delay, bool bApplyValueBeforeDelay, FWidgetTransitionEasingValue Easing, int32 RepeatCount, bool bYoYo, bool bRemoveFromParent, bool bUseSpring, float SpringSpeed, float SpringBounce, bool bUseFrom, FTransitionValue FromValue, EWidgetTransitionValueType ExpectedType, FOnFloatWidgetTransitionUpdate FloatOnUpdate, FOnBoolWidgetTransitionUpdate BoolOnUpdate, FOnVectorWidgetTransitionUpdate VectorOnUpdate, FOnColorWidgetTransitionUpdate ColorOnUpdate, FOnWidgetTransitionEvent OnStarted, FOnWidgetTransitionEvent OnFinished)
+static FWidgetTransition MakeTransition(UWidget* Widget, const FString& WidgetProperty, FTransitionValue ToValue, EWidgetTransitionValueType ValueType, bool bUseFrom, FTransitionValue FromValue)
+{
+	FWidgetTransition Transition;
+	Transition.Widget = Widget;
+	Transition.WidgetProperty = FName(*WidgetProperty);
+	Transition.ToValue = MoveTemp(ToValue);
+	Transition.FromValue = MoveTemp(FromValue);
+	Transition.ValueType = ValueType;
+	Transition.bUseFrom = bUseFrom;
+	return Transition;
+}
+
+void UWidgetTransitionFunctionLibrary::StartWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Description)
 {
 	const UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
 	UWidgetTransitionSubsystem* Subsystem = World ? World->GetSubsystem<UWidgetTransitionSubsystem>() : nullptr;
+	UWidget* Widget = Description.Widget.Get();
 	if (!IsValid(Widget) || !Subsystem) return;
-	const FName PropertyPath(*WidgetProperty);
-	FWidgetTransition Transition; Transition.Widget = Widget; Transition.WidgetProperty = PropertyPath; Transition.ToValue = MoveTemp(ToValue); Transition.Time = Time; Transition.Delay = Delay; Transition.Easing = MoveTemp(Easing);
-	Transition.RepeatCount = FMath::Max(-1, RepeatCount); Transition.bFrom = bUseFrom; Transition.bChangeFromPropertyAfterDelay = !bApplyValueBeforeDelay; Transition.bYoYo = bYoYo; Transition.bRemoveFromParent = bRemoveFromParent; Transition.bSpring = bUseSpring;
-	Transition.SpringSpeed = SpringSpeed; Transition.SpringBounce = SpringBounce;
-	if (!Transition.PropertyBinding.Resolve(Widget, WidgetProperty) || Transition.PropertyBinding.ValueType != ExpectedType || (!bUseFrom && !Transition.PropertyBinding.Read(Widget, Transition.FromValue))) return;
-	if (bUseFrom) Transition.FromValue = MoveTemp(FromValue);
+	FActiveWidgetTransition Transition;
+	Transition.Widget = Widget; Transition.WidgetProperty = Description.WidgetProperty; Transition.ToValue = MoveTemp(Description.ToValue); Transition.Time = Description.Time; Transition.Delay = Description.Delay; Transition.Easing = MoveTemp(Description.Easing);
+	Transition.RepeatCount = FMath::Max(-1, Description.RepeatCount); Transition.bFrom = Description.bUseFrom; Transition.bChangeFromPropertyAfterDelay = !Description.bApplyValueBeforeDelay; Transition.bYoYo = Description.bYoYo; Transition.bRemoveFromParent = Description.bRemoveFromParent; Transition.bSpring = Description.bUseSpring;
+	Transition.SpringSpeed = Description.SpringSpeed; Transition.SpringBounce = Description.SpringBounce;
+	if (!Transition.PropertyBinding.Resolve(Widget, Description.WidgetProperty.ToString()) || Transition.PropertyBinding.ValueType != Description.ValueType || (!Description.bUseFrom && !Transition.PropertyBinding.Read(Widget, Transition.FromValue))) return;
+	if (Description.bUseFrom) Transition.FromValue = MoveTemp(Description.FromValue);
 	if (Transition.Delay > 0.0f && !Transition.bChangeFromPropertyAfterDelay) Transition.PropertyBinding.Apply(Widget, Transition.FromValue);
 	if (Transition.PropertyBinding.ValueType == EWidgetTransitionValueType::Bool || Transition.PropertyBinding.ValueType == EWidgetTransitionValueType::LinearColor) Transition.bSpring = false;
-	if (FloatOnUpdate.IsBound())
-	{
-		Transition.UpdateCallback = MakeUnique<FWidgetTransitionUpdateCallback>();
-		Transition.UpdateCallback->Emplace<FOnFloatWidgetTransitionUpdate>(MoveTemp(FloatOnUpdate));
-	}
-	else if (BoolOnUpdate.IsBound())
-	{
-		Transition.UpdateCallback = MakeUnique<FWidgetTransitionUpdateCallback>();
-		Transition.UpdateCallback->Emplace<FOnBoolWidgetTransitionUpdate>(MoveTemp(BoolOnUpdate));
-	}
-	else if (VectorOnUpdate.IsBound())
-	{
-		Transition.UpdateCallback = MakeUnique<FWidgetTransitionUpdateCallback>();
-		Transition.UpdateCallback->Emplace<FOnVectorWidgetTransitionUpdate>(MoveTemp(VectorOnUpdate));
-	}
-	else if (ColorOnUpdate.IsBound())
-	{
-		Transition.UpdateCallback = MakeUnique<FWidgetTransitionUpdateCallback>();
-		Transition.UpdateCallback->Emplace<FOnColorWidgetTransitionUpdate>(MoveTemp(ColorOnUpdate));
-	}
+	if (!Description.UpdateCallback.IsType<FEmptyVariantState>()) Transition.UpdateCallback = MakeUnique<FWidgetTransitionUpdateCallback>(MoveTemp(Description.UpdateCallback));
 	Transition.TransitionId = Subsystem->NextTransitionId++;
 	if (Subsystem->NextTransitionId == 0) ++Subsystem->NextTransitionId;
-	FWidgetTransitionEvents Events; Events.OnStarted = MoveTemp(OnStarted); Events.OnFinished = MoveTemp(OnFinished);
 	StartSprings(Transition);
 	for (auto It = Subsystem->Transitions.CreateIterator(); It; ++It)
 	{
-		if (It->Widget == Widget && It->WidgetProperty == PropertyPath)
+		if (It->Widget == Widget && It->WidgetProperty == Description.WidgetProperty)
 		{
 			Subsystem->EventCallbacks.Remove(It->TransitionId);
 			It.RemoveCurrent();
 		}
 	}
-	if (Events.HasBoundEvents()) Subsystem->EventCallbacks.Add(Transition.TransitionId, MoveTemp(Events));
+	if (Description.Events.HasBoundEvents()) Subsystem->EventCallbacks.Add(Transition.TransitionId, MoveTemp(Description.Events));
 	Subsystem->Transitions.Emplace(MoveTemp(Transition));
 }
 
-void UWidgetTransitionFunctionLibrary::CreateFloatWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, float ToValue, FOnFloatWidgetTransitionUpdate OnUpdate, FOnWidgetTransitionEvent OnStarted, FOnWidgetTransitionEvent OnFinished, float Time, float Delay, bool bApplyValueBeforeDelay, FWidgetTransitionEasingValue Easing, int32 RepeatCount, bool bYoYo, bool bRemoveFromParent, bool bUseSpring, float SpringSpeed, float SpringBounce, bool bUseFrom, float FromValue)
+FWidgetTransition UWidgetTransitionFunctionLibrary::CreateFloatWidgetTransition(UWidget* Widget, const FString& WidgetProperty, float ToValue, bool bUseFrom, float FromValue)
 {
-	CreateWidgetTransition(WorldContextObject, Widget, WidgetProperty, MakeTransitionValue(ToValue), Time, Delay, bApplyValueBeforeDelay, MoveTemp(Easing), RepeatCount, bYoYo, bRemoveFromParent, bUseSpring, SpringSpeed, SpringBounce, bUseFrom, MakeTransitionValue(FromValue), EWidgetTransitionValueType::Float, MoveTemp(OnUpdate), FOnBoolWidgetTransitionUpdate(), FOnVectorWidgetTransitionUpdate(), FOnColorWidgetTransitionUpdate(), MoveTemp(OnStarted), MoveTemp(OnFinished));
+	return MakeTransition(Widget, WidgetProperty, MakeTransitionValue(ToValue), EWidgetTransitionValueType::Float, bUseFrom, MakeTransitionValue(FromValue));
 }
 
-void UWidgetTransitionFunctionLibrary::CreateBoolWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, bool ToValue, FOnBoolWidgetTransitionUpdate OnUpdate, FOnWidgetTransitionEvent OnStarted, FOnWidgetTransitionEvent OnFinished, float Time, float Delay, bool bApplyValueBeforeDelay, FWidgetTransitionEasingValue Easing, int32 RepeatCount, bool bYoYo, bool bRemoveFromParent, bool bUseFrom, bool FromValue)
+FWidgetTransition UWidgetTransitionFunctionLibrary::CreateBoolWidgetTransition(UWidget* Widget, const FString& WidgetProperty, bool ToValue, bool bUseFrom, bool FromValue)
 {
-	CreateWidgetTransition(WorldContextObject, Widget, WidgetProperty, MakeTransitionValue(ToValue), Time, Delay, bApplyValueBeforeDelay, MoveTemp(Easing), RepeatCount, bYoYo, bRemoveFromParent, false, 0.0f, 0.0f, bUseFrom, MakeTransitionValue(FromValue), EWidgetTransitionValueType::Bool, FOnFloatWidgetTransitionUpdate(), MoveTemp(OnUpdate), FOnVectorWidgetTransitionUpdate(), FOnColorWidgetTransitionUpdate(), MoveTemp(OnStarted), MoveTemp(OnFinished));
+	return MakeTransition(Widget, WidgetProperty, MakeTransitionValue(ToValue), EWidgetTransitionValueType::Bool, bUseFrom, MakeTransitionValue(FromValue));
 }
 
-void UWidgetTransitionFunctionLibrary::CreateVectorWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, FVector2D ToValue, FOnVectorWidgetTransitionUpdate OnUpdate, FOnWidgetTransitionEvent OnStarted, FOnWidgetTransitionEvent OnFinished, float Time, float Delay, bool bApplyValueBeforeDelay, FWidgetTransitionEasingValue Easing, int32 RepeatCount, bool bYoYo, bool bRemoveFromParent, bool bUseSpring, float SpringSpeed, float SpringBounce, bool bUseFrom, FVector2D FromValue)
+FWidgetTransition UWidgetTransitionFunctionLibrary::CreateVectorWidgetTransition(UWidget* Widget, const FString& WidgetProperty, FVector2D ToValue, bool bUseFrom, FVector2D FromValue)
 {
-	CreateWidgetTransition(WorldContextObject, Widget, WidgetProperty, MakeTransitionValue(ToValue), Time, Delay, bApplyValueBeforeDelay, MoveTemp(Easing), RepeatCount, bYoYo, bRemoveFromParent, bUseSpring, SpringSpeed, SpringBounce, bUseFrom, MakeTransitionValue(FromValue), EWidgetTransitionValueType::Vector2D, FOnFloatWidgetTransitionUpdate(), FOnBoolWidgetTransitionUpdate(), MoveTemp(OnUpdate), FOnColorWidgetTransitionUpdate(), MoveTemp(OnStarted), MoveTemp(OnFinished));
+	return MakeTransition(Widget, WidgetProperty, MakeTransitionValue(ToValue), EWidgetTransitionValueType::Vector2D, bUseFrom, MakeTransitionValue(FromValue));
 }
 
-void UWidgetTransitionFunctionLibrary::CreateColorWidgetTransition(const UObject* WorldContextObject, UWidget* Widget, const FString& WidgetProperty, FLinearColor ToValue, FOnColorWidgetTransitionUpdate OnUpdate, FOnWidgetTransitionEvent OnStarted, FOnWidgetTransitionEvent OnFinished, float Time, float Delay, bool bApplyValueBeforeDelay, FWidgetTransitionEasingValue Easing, int32 RepeatCount, bool bYoYo, bool bRemoveFromParent, bool bUseFrom, FLinearColor FromValue)
+FWidgetTransition UWidgetTransitionFunctionLibrary::CreateColorWidgetTransition(UWidget* Widget, const FString& WidgetProperty, FLinearColor ToValue, bool bUseFrom, FLinearColor FromValue)
 {
-	CreateWidgetTransition(WorldContextObject, Widget, WidgetProperty, MakeTransitionValue(ToValue), Time, Delay, bApplyValueBeforeDelay, MoveTemp(Easing), RepeatCount, bYoYo, bRemoveFromParent, false, 0.0f, 0.0f, bUseFrom, MakeTransitionValue(FromValue), EWidgetTransitionValueType::LinearColor, FOnFloatWidgetTransitionUpdate(), FOnBoolWidgetTransitionUpdate(), FOnVectorWidgetTransitionUpdate(), MoveTemp(OnUpdate), MoveTemp(OnStarted), MoveTemp(OnFinished));
+	return MakeTransition(Widget, WidgetProperty, MakeTransitionValue(ToValue), EWidgetTransitionValueType::LinearColor, bUseFrom, MakeTransitionValue(FromValue));
 }
+
+FWidgetTransition UWidgetTransitionFunctionLibrary::WithDelay(FWidgetTransition Transition, float Delay, bool bApplyValueBeforeDelay)
+{
+	Transition.Delay = FMath::Max(0.0f, Delay);
+	Transition.bApplyValueBeforeDelay = bApplyValueBeforeDelay;
+	return Transition;
+}
+
+FWidgetTransition UWidgetTransitionFunctionLibrary::WithEasing(FWidgetTransition Transition, FWidgetTransitionEasingValue Easing)
+{
+	Transition.Easing = MoveTemp(Easing);
+	Transition.bUseSpring = false;
+	return Transition;
+}
+
+FWidgetTransition UWidgetTransitionFunctionLibrary::WithRepeat(FWidgetTransition Transition, int32 RepeatCount, bool bYoYo)
+{
+	Transition.RepeatCount = FMath::Max(-1, RepeatCount);
+	Transition.bYoYo = bYoYo;
+	return Transition;
+}
+
+FWidgetTransition UWidgetTransitionFunctionLibrary::WithSpring(FWidgetTransition Transition, float SpringSpeed, float SpringBounce)
+{
+	if (Transition.ValueType == EWidgetTransitionValueType::Float || Transition.ValueType == EWidgetTransitionValueType::Vector2D)
+	{
+		Transition.bUseSpring = true;
+		Transition.SpringSpeed = FMath::Clamp(SpringSpeed, 0.0f, 1.0f);
+		Transition.SpringBounce = FMath::Clamp(SpringBounce, 0.0f, 1.0f);
+	}
+	return Transition;
+}
+
+FWidgetTransition UWidgetTransitionFunctionLibrary::WithRemoveFromParent(FWidgetTransition Transition, bool bRemoveFromParent)
+{
+	Transition.bRemoveFromParent = bRemoveFromParent;
+	return Transition;
+}
+
+FWidgetTransition UWidgetTransitionFunctionLibrary::WithEvents(FWidgetTransition Transition, FOnWidgetTransitionEvent OnStarted, FOnWidgetTransitionEvent OnFinished)
+{
+	Transition.Events.OnStarted = MoveTemp(OnStarted);
+	Transition.Events.OnFinished = MoveTemp(OnFinished);
+	return Transition;
+}
+
+template <typename TDelegate>
+static FWidgetTransition WithUpdate(FWidgetTransition Transition, EWidgetTransitionValueType ExpectedType, TDelegate OnUpdate)
+{
+	if (Transition.ValueType == ExpectedType) Transition.UpdateCallback.Emplace<TDelegate>(MoveTemp(OnUpdate));
+	return Transition;
+}
+
+FWidgetTransition UWidgetTransitionFunctionLibrary::WithFloatUpdate(FWidgetTransition Transition, FOnFloatWidgetTransitionUpdate OnUpdate) { return WithUpdate(MoveTemp(Transition), EWidgetTransitionValueType::Float, MoveTemp(OnUpdate)); }
+FWidgetTransition UWidgetTransitionFunctionLibrary::WithBoolUpdate(FWidgetTransition Transition, FOnBoolWidgetTransitionUpdate OnUpdate) { return WithUpdate(MoveTemp(Transition), EWidgetTransitionValueType::Bool, MoveTemp(OnUpdate)); }
+FWidgetTransition UWidgetTransitionFunctionLibrary::WithVectorUpdate(FWidgetTransition Transition, FOnVectorWidgetTransitionUpdate OnUpdate) { return WithUpdate(MoveTemp(Transition), EWidgetTransitionValueType::Vector2D, MoveTemp(OnUpdate)); }
+FWidgetTransition UWidgetTransitionFunctionLibrary::WithColorUpdate(FWidgetTransition Transition, FOnColorWidgetTransitionUpdate OnUpdate) { return WithUpdate(MoveTemp(Transition), EWidgetTransitionValueType::LinearColor, MoveTemp(OnUpdate)); }
 
 void UWidgetTransitionFunctionLibrary::ClearAllWidgetTransitions(const UObject* WorldContextObject, UWidget* Widget)
 {

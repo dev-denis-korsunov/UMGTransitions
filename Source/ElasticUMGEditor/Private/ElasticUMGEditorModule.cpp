@@ -558,42 +558,9 @@ namespace ElasticUMGEditor
 			TransitionNode = InArgs._TransitionNode;
 			TSharedRef<SHorizontalBox> BasicButtons = SNew(SHorizontalBox);
 			for (const FPinOption& Option : GetOptions(TEXT("Basic"))) AddOption(BasicButtons, Option);
-			TSharedRef<SHorizontalBox> ModeButtons = SNew(SHorizontalBox);
-			ModeButtons->AddSlot().AutoWidth().Padding(FMargin(0.0f, 0.0f, 2.0f, 0.0f))
-			[
-				SNew(SCheckBox)
-				.Style(FAppStyle::Get(), "ToggleButtonCheckbox")
-				.Cursor(EMouseCursor::Hand)
-				.ToolTipText(NSLOCTEXT("ElasticUMG", "EasingOption", "Interpolation: select a configured cubic Bezier curve"))
-				.IsChecked_Lambda([this]() { return TransitionNode.IsValid() && !TransitionNode->IsOptionalPinVisible(EWidgetTransitionOptionalPin::Spring) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-				.OnCheckStateChanged_Lambda([this](ECheckBoxState State) { if (TransitionNode.IsValid() && State == ECheckBoxState::Checked) TransitionNode->SetTransitionMode(false); })
-				.Padding(FMargin(4.0f, 5.0f))
-				[
-					SNew(STextBlock).Text(NSLOCTEXT("ElasticUMG", "InterpolationOptionLabel", "In"))
-				]
-			];
-			ModeButtons->AddSlot().AutoWidth()
-			[
-				SNew(SBox)
-				.Visibility_Lambda([this]() { return TransitionNode.IsValid() && TransitionNode->SupportsTransitionMode(TEXT("Spring")) ? EVisibility::Visible : EVisibility::Collapsed; })
-				[
-					SNew(SCheckBox)
-					.Style(FAppStyle::Get(), "ToggleButtonCheckbox")
-					.Cursor(EMouseCursor::Hand)
-					.ToolTipText(NSLOCTEXT("ElasticUMG", "SpringOption", "Spring: use physical spring motion"))
-					.IsChecked_Lambda([this]() { return TransitionNode.IsValid() && TransitionNode->IsOptionalPinVisible(EWidgetTransitionOptionalPin::Spring) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-					.OnCheckStateChanged_Lambda([this](ECheckBoxState State) { if (TransitionNode.IsValid() && State == ECheckBoxState::Checked) TransitionNode->SetTransitionMode(true); })
-					.Padding(FMargin(4.0f, 5.0f))
-					[
-						SNew(STextBlock).Text(NSLOCTEXT("ElasticUMG", "SpringOptionLabel", "Sp"))
-					]
-				]
-			];
 			ChildSlot
 			[
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth()[ModeButtons]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(5.0f, 2.0f))[CreateGroupSeparator()]
 				+ SHorizontalBox::Slot().AutoWidth()[BasicButtons]
 			];
 		}
