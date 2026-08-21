@@ -1,29 +1,28 @@
 #include "EdGraphUtilities.h"
-#include "K2Node_WidgetTransition.h"
+#include "WidgetTransition.h"
 #include "WidgetTransitionSettings.h"
-#include "K2Node_VariableGet.h"
-#include "EdGraphSchema_K2.h"
-#include "KismetPins/SGraphPinString.h"
-#include "KismetNodes/SGraphNodeK2Default.h"
-#include "Styling/AppStyle.h"
-#include "WidgetBlueprint.h"
+
 #include "Blueprint/WidgetTree.h"
 #include "Components/PanelSlot.h"
 #include "EdGraph/EdGraphPin.h"
-#include "ScopedTransaction.h"
-#include "PropertyEditorModule.h"
+#include "EdGraphSchema_K2.h"
+#include "Framework/Application/SlateApplication.h"
 #include "IPropertyTypeCustomization.h"
-#include "DetailWidgetRow.h"
-#include "IDetailChildrenBuilder.h"
-#include "PropertyHandle.h"
-#include "ISettingsModule.h"
+#include "K2Node_CallFunction.h"
+#include "K2Node_VariableGet.h"
+#include "KismetPins/SGraphPinString.h"
 #include "Modules/ModuleManager.h"
-#include "Widgets/Input/SComboBox.h"
-#include "Widgets/Input/SCheckBox.h"
-#include "Widgets/Images/SImage.h"
-#include "Widgets/SLeafWidget.h"
+#include "PropertyEditorModule.h"
 #include "Rendering/DrawElements.h"
-#include "Widgets/SBoxPanel.h"
+#include "ScopedTransaction.h"
+#include "ISettingsModule.h"
+#include "Styling/AppStyle.h"
+#include "WidgetBlueprint.h"
+#include "Widgets/Images/SImage.h"
+#include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SComboBox.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/SLeafWidget.h"
 #include "Widgets/Text/STextBlock.h"
 
 namespace ElasticUMGEditor
@@ -31,703 +30,214 @@ namespace ElasticUMGEditor
 	struct FWidgetPropertyPickerOption
 	{
 		FString Label;
-		FString PropertyPath;
-		FLinearColor TypeColor = FLinearColor::White;
-		bool bIsHeader = false;
+		FString Path;
+		FLinearColor Color = FLinearColor::White;
+		bool bHeader = false;
 	};
 
-	static bool IsBindableFloatProperty(const FProperty* Property)
+	static bool IsFloat(const FProperty* Property) { return Property && (Property->IsA<FFloatProperty>() || Property->IsA<FDoubleProperty>()); }
+	static bool IsBindable(const FProperty* Property)
 	{
-		return Property && (Property->IsA<FFloatProperty>() || Property->IsA<FDoubleProperty>());
+		const FStructProperty* Struct = CastField<FStructProperty>(Property);
+		return IsFloat(Property) || (Struct && (Struct->Struct == TBaseStructure<FVector2D>::Get() || Struct->Struct == TBaseStructure<FLinearColor>::Get()));
 	}
-
-	static bool IsTypedTransitionNode(const UEdGraphPin* Pin)
-	{
-		return Pin && Cast<UK2Node_WidgetTransition>(Pin->GetOwningNode());
-	}
-
-	static UWidget* GetDesignerWidget(const UEdGraphPin* PropertyPathPin);
-	static UClass* GetWidgetClass(const UEdGraphPin* PropertyPathPin);
-
-	static bool IsTransitionBindableProperty(const FProperty* Property)
-	{
-		const FStructProperty* StructProperty = CastField<FStructProperty>(Property);
-		return IsBindableFloatProperty(Property)
-			|| (Property && Property->IsA<FBoolProperty>())
-			|| (StructProperty && (StructProperty->Struct == TBaseStructure<FVector2D>::Get() || StructProperty->Struct == TBaseStructure<FLinearColor>::Get()));
-	}
-
-	static FLinearColor GetPropertyTypeColor(const FProperty* Property)
-	{
-		FEdGraphPinType PinType;
-		const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
-		return Property && Schema && Schema->ConvertPropertyToPinType(Property, PinType)
-			? Schema->GetPinTypeColor(PinType)
-			: FLinearColor::White;
-	}
-
-	static bool HasTransitionBindableDescendant(const UStruct* Struct, int32 Depth)
+	static bool HasBindableDescendant(const UStruct* Struct, int32 Depth)
 	{
 		if (!Struct || Depth > 8) return false;
 		for (TFieldIterator<FProperty> It(Struct, EFieldIterationFlags::None); It; ++It)
 		{
-			const FProperty* Property = *It;
-			if (IsTransitionBindableProperty(Property)) return true;
-			if (const FStructProperty* StructProperty = CastField<FStructProperty>(Property))
-			{
-				if (HasTransitionBindableDescendant(StructProperty->Struct, Depth + 1)) return true;
-			}
+			if (IsBindable(*It)) return true;
+			if (const FStructProperty* Nested = CastField<FStructProperty>(*It)) if (HasBindableDescendant(Nested->Struct, Depth + 1)) return true;
 		}
 		return false;
 	}
-
-	static void AddBindableProperties(const UStruct* Struct, const FString& Prefix, int32 Depth, TArray<TSharedPtr<FWidgetPropertyPickerOption>>& OutOptions)
+	static FLinearColor PinColor(const FProperty* Property)
+	{
+		FEdGraphPinType Type;
+		const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+		return Property && Schema && Schema->ConvertPropertyToPinType(Property, Type) ? Schema->GetPinTypeColor(Type) : FLinearColor::White;
+	}
+	static void AddOptions(const UStruct* Struct, const FString& Prefix, int32 Depth, TArray<TSharedPtr<FWidgetPropertyPickerOption>>& Options)
 	{
 		if (!Struct || Depth > 8) return;
 		for (TFieldIterator<FProperty> It(Struct, EFieldIterationFlags::None); It; ++It)
 		{
 			const FProperty* Property = *It;
-			const FString PropertyPath = Prefix + Property->GetName();
-			FString DisplayName = Property->GetName();
-			if (Property->IsA<FBoolProperty>() && DisplayName.Len() > 1 && DisplayName[0] == TEXT('b') && FChar::IsUpper(DisplayName[1]))
+			const FString Path = Prefix + Property->GetName();
+			FString Label = Property->GetName();
+			if (IsBindable(Property)) Options.Add(MakeShared<FWidgetPropertyPickerOption>(FWidgetPropertyPickerOption{ Prefix + Label, Path, PinColor(Property) }));
+			if (const FStructProperty* Nested = CastField<FStructProperty>(Property); Nested && HasBindableDescendant(Nested->Struct, Depth + 1))
 			{
-				DisplayName.RightChopInline(1);
-			}
-			if (IsTransitionBindableProperty(Property))
-			{
-				OutOptions.Add(MakeShared<FWidgetPropertyPickerOption>(FWidgetPropertyPickerOption{ Prefix + DisplayName, PropertyPath, GetPropertyTypeColor(Property), false }));
-			}
-			if (const FStructProperty* StructProperty = CastField<FStructProperty>(Property))
-			{
-				if (HasTransitionBindableDescendant(StructProperty->Struct, Depth + 1))
-				{
-					if (!IsTransitionBindableProperty(Property))
-					{
-						OutOptions.Add(MakeShared<FWidgetPropertyPickerOption>(FWidgetPropertyPickerOption{ Prefix + DisplayName, FString(), FLinearColor::White, true }));
-					}
-					AddBindableProperties(StructProperty->Struct, PropertyPath + TEXT("."), Depth + 1, OutOptions);
-				}
+				if (!IsBindable(Property)) Options.Add(MakeShared<FWidgetPropertyPickerOption>(FWidgetPropertyPickerOption{ Prefix + Label, FString(), FLinearColor::White, true }));
+				AddOptions(Nested->Struct, Path + TEXT("."), Depth + 1, Options);
 			}
 		}
 	}
-
-	static void AddBindableProperties(UClass* Class, const FString& Prefix, int32 Depth, TArray<TSharedPtr<FWidgetPropertyPickerOption>>& OutOptions)
+	static const UFunction* GetFunction(const UEdGraphPin* Pin)
 	{
-		TArray<UClass*> ClassHierarchy;
-		for (UClass* CurrentClass = Class; CurrentClass && CurrentClass != UObject::StaticClass(); CurrentClass = CurrentClass->GetSuperClass())
-		{
-			ClassHierarchy.Insert(CurrentClass, 0);
-		}
-
-		for (UClass* CurrentClass : ClassHierarchy)
-		{
-			AddBindableProperties(static_cast<const UStruct*>(CurrentClass), Prefix, Depth, OutOptions);
-		}
+		const UK2Node_CallFunction* Call = Pin ? Cast<UK2Node_CallFunction>(Pin->GetOwningNode()) : nullptr;
+		return Call ? Call->GetTargetFunction() : nullptr;
 	}
-
-	static EWidgetTransitionValueType GetPropertyValueType(const UEdGraphPin* PropertyPathPin, const FString& PropertyPath)
+	static bool IsBindingPin(const UEdGraphPin* Pin)
 	{
-		const UWidget* DesignerWidget = GetDesignerWidget(PropertyPathPin);
-		const UStruct* CurrentStruct = GetWidgetClass(PropertyPathPin);
-		FString RelativePath = PropertyPath;
-		if (PropertyPath.StartsWith(TEXT("Slot.")))
-		{
-			CurrentStruct = DesignerWidget && DesignerWidget->Slot ? DesignerWidget->Slot->GetClass() : nullptr;
-			RelativePath = PropertyPath.RightChop(5);
-		}
-
-		TArray<FString> Segments;
-		RelativePath.ParseIntoArray(Segments, TEXT("."), true);
-		for (int32 Index = 0; CurrentStruct && Index < Segments.Num(); ++Index)
-		{
-			const FProperty* Property = FindFProperty<FProperty>(CurrentStruct, *Segments[Index]);
-			if (!Property) break;
-			if (Index + 1 < Segments.Num())
-			{
-				const FStructProperty* StructProperty = CastField<FStructProperty>(Property);
-				CurrentStruct = StructProperty ? StructProperty->Struct : nullptr;
-				continue;
-			}
-			if (IsBindableFloatProperty(Property)) return EWidgetTransitionValueType::Float;
-			if (Property->IsA<FBoolProperty>()) return EWidgetTransitionValueType::Bool;
-			if (const FStructProperty* StructProperty = CastField<FStructProperty>(Property))
-			{
-				if (StructProperty->Struct == TBaseStructure<FVector2D>::Get()) return EWidgetTransitionValueType::Vector2D;
-				if (StructProperty->Struct == TBaseStructure<FLinearColor>::Get()) return EWidgetTransitionValueType::LinearColor;
-			}
-		}
-		return EWidgetTransitionValueType::Float;
+		const UFunction* Function = GetFunction(Pin);
+		return Function && Function->HasMetaData(TEXT("ElasticUMGTransitionBinding")) && Pin->PinName == TEXT("WidgetProperty");
 	}
-
-	static UEdGraphPin* GetWidgetSourcePin(const UEdGraphPin* PropertyPathPin)
+	static bool IsEasingPin(const UEdGraphPin* Pin)
 	{
-		if (!PropertyPathPin || !PropertyPathPin->GetOwningNode())
-		{
-			return nullptr;
-		}
-
-		UEdGraphPin* WidgetPin = PropertyPathPin->GetOwningNode()->FindPin(TEXT("Widget"));
+		const UFunction* Function = GetFunction(Pin);
+		return Function && Function->GetFName() == GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, WithEasing) && Pin->PinName == TEXT("Easing");
+	}
+	static UEdGraphPin* GetWidgetSourcePin(const UEdGraphPin* PropertyPin)
+	{
+		UEdGraphPin* WidgetPin = PropertyPin && PropertyPin->GetOwningNode() ? PropertyPin->GetOwningNode()->FindPin(TEXT("Widget")) : nullptr;
 		return WidgetPin && !WidgetPin->LinkedTo.IsEmpty() ? FEdGraphUtilities::GetNetFromPin(WidgetPin->LinkedTo[0]) : nullptr;
 	}
-
-	static UWidget* GetDesignerWidget(const UEdGraphPin* PropertyPathPin)
+	static UWidget* GetDesignerWidget(const UEdGraphPin* PropertyPin)
 	{
-		UEdGraphPin* SourcePin = GetWidgetSourcePin(PropertyPathPin);
-		const UK2Node_VariableGet* VariableGet = SourcePin ? Cast<UK2Node_VariableGet>(SourcePin->GetOwningNode()) : nullptr;
-		UWidgetBlueprint* WidgetBlueprint = SourcePin && SourcePin->GetOwningNode()
-			? SourcePin->GetOwningNode()->GetTypedOuter<UWidgetBlueprint>()
-			: nullptr;
-		return VariableGet && WidgetBlueprint && WidgetBlueprint->WidgetTree
-			? WidgetBlueprint->WidgetTree->FindWidget(VariableGet->GetVarName())
-			: nullptr;
+		UEdGraphPin* Source = GetWidgetSourcePin(PropertyPin);
+		const UK2Node_VariableGet* Get = Source ? Cast<UK2Node_VariableGet>(Source->GetOwningNode()) : nullptr;
+		UWidgetBlueprint* Blueprint = Source && Source->GetOwningNode() ? Source->GetOwningNode()->GetTypedOuter<UWidgetBlueprint>() : nullptr;
+		return Get && Blueprint && Blueprint->WidgetTree ? Blueprint->WidgetTree->FindWidget(Get->GetVarName()) : nullptr;
 	}
-
-	static UClass* GetWidgetClass(const UEdGraphPin* PropertyPathPin)
+	static UClass* GetWidgetClass(const UEdGraphPin* PropertyPin)
 	{
-		if (UEdGraphPin* SourcePin = GetWidgetSourcePin(PropertyPathPin))
-		{
-			return Cast<UClass>(SourcePin->PinType.PinSubCategoryObject.Get());
-		}
-
+		if (UEdGraphPin* Source = GetWidgetSourcePin(PropertyPin)) return Cast<UClass>(Source->PinType.PinSubCategoryObject.Get());
 		return UWidget::StaticClass();
 	}
 
-	class SWidgetPropertyPathGraphPin final : public SGraphPinString
+	class SWidgetPropertyPathPin final : public SGraphPinString
 	{
 	public:
-		SLATE_BEGIN_ARGS(SWidgetPropertyPathGraphPin) {}
-		SLATE_END_ARGS()
-
-		void Construct(const FArguments& InArgs, UEdGraphPin* InGraphPinObj)
-		{
-			SGraphPinString::Construct(SGraphPinString::FArguments(), InGraphPinObj);
-		}
-
+		SLATE_BEGIN_ARGS(SWidgetPropertyPathPin) {} SLATE_END_ARGS()
+		void Construct(const FArguments&, UEdGraphPin* Pin) { SGraphPinString::Construct(SGraphPinString::FArguments(), Pin); }
 	protected:
 		virtual TSharedRef<SWidget> GetDefaultValueWidget() override
 		{
-			RefreshOptions();
-			return SNew(SComboBox<TSharedPtr<FWidgetPropertyPickerOption>>)
-				.OptionsSource(&Options)
-				.OnComboBoxOpening(this, &SWidgetPropertyPathGraphPin::RefreshOptions)
-				.OnGenerateWidget(this, &SWidgetPropertyPathGraphPin::MakeOptionWidget)
-				.OnSelectionChanged(this, &SWidgetPropertyPathGraphPin::SelectOption)
-				.IsEnabled(this, &SGraphPin::GetDefaultValueIsEditable)
-				.Content()
-				[
-					SNew(STextBlock)
-					.Text(this, &SWidgetPropertyPathGraphPin::GetCurrentValue)
-					.Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
-				];
+			Refresh();
+			return SNew(SComboBox<TSharedPtr<FWidgetPropertyPickerOption>>).OptionsSource(&Options).OnComboBoxOpening(this, &SWidgetPropertyPathPin::Refresh)
+				.OnGenerateWidget(this, &SWidgetPropertyPathPin::MakeOption).OnSelectionChanged(this, &SWidgetPropertyPathPin::Select)
+				.Content()[SNew(STextBlock).Text(this, &SWidgetPropertyPathPin::CurrentText).Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))];
 		}
-
 	private:
-		void RefreshOptions()
+		void Refresh()
 		{
 			Options.Reset();
-			const UK2Node_WidgetTransition* TransitionNode = Cast<UK2Node_WidgetTransition>(GraphPinObj->GetOwningNode());
-			if (!TransitionNode)
-			{
-				return;
-			}
-			UClass* WidgetClass = ElasticUMGEditor::GetWidgetClass(GraphPinObj);
-			UWidget* DesignerWidget = GetDesignerWidget(GraphPinObj);
-			UClass* SlotClass = DesignerWidget && DesignerWidget->Slot ? DesignerWidget->Slot->GetClass() : nullptr;
-			const FString CacheKey = FString::Printf(TEXT("%u:%u"), WidgetClass ? WidgetClass->GetUniqueID() : 0, SlotClass ? SlotClass->GetUniqueID() : 0);
-			static TMap<FString, TArray<TSharedPtr<FWidgetPropertyPickerOption>>> CachedOptions;
-			if (const TArray<TSharedPtr<FWidgetPropertyPickerOption>>* Cached = CachedOptions.Find(CacheKey))
-			{
-				Options = *Cached;
-				return;
-			}
-
-			AddBindableProperties(WidgetClass, FString(), 0, Options);
-			if (SlotClass)
+			AddOptions(ElasticUMGEditor::GetWidgetClass(GraphPinObj), FString(), 0, Options);
+			if (UWidget* Widget = GetDesignerWidget(GraphPinObj); Widget && Widget->Slot)
 			{
 				Options.Add(MakeShared<FWidgetPropertyPickerOption>(FWidgetPropertyPickerOption{ TEXT("Slot"), FString(), FLinearColor::White, true }));
-				AddBindableProperties(SlotClass, TEXT("Slot."), 0, Options);
+				AddOptions(Widget->Slot->GetClass(), TEXT("Slot."), 0, Options);
 			}
-			CachedOptions.Add(CacheKey, Options);
 		}
-
-		TSharedRef<SWidget> MakeOptionWidget(TSharedPtr<FWidgetPropertyPickerOption> Option) const
+		TSharedRef<SWidget> MakeOption(TSharedPtr<FWidgetPropertyPickerOption> Option) const
 		{
-			if (!Option.IsValid() || Option->bIsHeader)
-			{
-				return SNew(SBorder)
-					.BorderImage(FAppStyle::GetBrush("NoBorder"))
-					.Cursor(EMouseCursor::Default)
-					.OnMouseButtonDown_Lambda([](const FGeometry&, const FPointerEvent&) { return FReply::Handled(); })
-					[
-						SNew(STextBlock)
-						.Text(FText::FromString(Option.IsValid() ? Option->Label : FString()))
-						.Font(FAppStyle::GetFontStyle("PropertyWindow.BoldFont"))
-					];
-			}
+			if (!Option.IsValid() || Option->bHeader) return SNew(STextBlock).Text(FText::FromString(Option.IsValid() ? Option->Label : FString())).Font(FAppStyle::GetFontStyle("PropertyWindow.BoldFont"));
 			return SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot()
-				.FillWidth(1.0f)
-				.VAlign(VAlign_Center)
-				[
-					SNew(STextBlock)
-					.Text(FText::FromString(Option.IsValid() ? Option->Label : FString()))
-					.Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
-				]
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.VAlign(VAlign_Center)
-				.Padding(FMargin(8.0f, 0.0f, 2.0f, 0.0f))
-				[
-					SNew(SImage)
-					.Image(FAppStyle::GetBrush("Kismet.VariableList.TypeIcon"))
-					.ColorAndOpacity(Option.IsValid() ? Option->TypeColor : FLinearColor::White)
-				];
+				+ SHorizontalBox::Slot().FillWidth(1.0f)[SNew(STextBlock).Text(FText::FromString(Option->Label))]
+				+ SHorizontalBox::Slot().AutoWidth().Padding(8.0f, 0.0f, 2.0f, 0.0f)[SNew(SImage).Image(FAppStyle::GetBrush("Kismet.VariableList.TypeIcon")).ColorAndOpacity(Option->Color)];
 		}
-
-		void SelectOption(TSharedPtr<FWidgetPropertyPickerOption> Option, ESelectInfo::Type)
+		void Select(TSharedPtr<FWidgetPropertyPickerOption> Option, ESelectInfo::Type)
 		{
-			if (!Option.IsValid() || Option->bIsHeader || GraphPinObj->GetDefaultAsString() == Option->PropertyPath)
-			{
-				return;
-			}
-
+			if (!Option.IsValid() || Option->bHeader || GraphPinObj->GetDefaultAsString() == Option->Path) return;
 			const FScopedTransaction Transaction(NSLOCTEXT("ElasticUMG", "SetWidgetPropertyPath", "Set Widget Property Path"));
 			GraphPinObj->Modify();
-			GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, Option->PropertyPath);
-			if (UK2Node_WidgetTransition* TransitionNode = Cast<UK2Node_WidgetTransition>(GraphPinObj->GetOwningNode()))
-			{
-				TransitionNode->SetPropertyValueType(GetPropertyValueType(GraphPinObj, Option->PropertyPath));
-			}
+			GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, Option->Path);
 		}
-
-		FText GetCurrentValue() const
-		{
-			const FString Value = GraphPinObj->GetDefaultAsString();
-			return Value.IsEmpty() ? NSLOCTEXT("ElasticUMG", "SelectWidgetProperty", "Select widget property") : FText::FromString(Value);
-		}
-
+		FText CurrentText() const { const FString Value = GraphPinObj->GetDefaultAsString(); return Value.IsEmpty() ? NSLOCTEXT("ElasticUMG", "SelectWidgetProperty", "Select widget property") : FText::FromString(Value); }
 		TArray<TSharedPtr<FWidgetPropertyPickerOption>> Options;
 	};
 
-	class SWidgetTransitionEasingPreview final : public SLeafWidget
+	class SEasingGraph final : public SLeafWidget
 	{
 	public:
-		SLATE_BEGIN_ARGS(SWidgetTransitionEasingPreview) {}
-			SLATE_ARGUMENT(FName, EasingName)
-			SLATE_ARGUMENT(UEdGraphPin*, EasingPin)
-		SLATE_END_ARGS()
-
-		void Construct(const FArguments& InArgs)
+		SLATE_BEGIN_ARGS(SEasingGraph) {} SLATE_END_ARGS()
+		void Construct(const FArguments&, UEdGraphPin* Pin) { EasingPin = Pin; }
+		virtual FVector2D ComputeDesiredSize(float) const override { return FVector2D(720.0f, 224.0f); }
+		virtual int32 OnPaint(const FPaintArgs&, const FGeometry& Geometry, const FSlateRect&, FSlateWindowElementList& Elements, int32 Layer, const FWidgetStyle&, bool) const override
 		{
-			EasingName = InArgs._EasingName;
-			EasingPin = InArgs._EasingPin;
-			StartTime = FPlatformTime::Seconds();
-			RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateSP(this, &SWidgetTransitionEasingPreview::AdvancePreview));
+			FWidgetTransitionEasingValue Value; Read(Value);
+			const float Side = Size(Geometry); const FVector2D Origin(4.0f, 4.0f);
+			const auto ToPoint = [Origin, Side](FVector2D Point) { return FVector2D(Origin.X + Point.X * Side, Origin.Y + (1.3f - Point.Y) * Side); };
+			const FVector2D Start = ToPoint(FVector2D::ZeroVector), End = ToPoint(FVector2D(1.0f, 1.0f));
+			const FVector2D Handle1 = VisualHandle(Start, ToPoint(Value.ControlPoint1) - Start, Side / 3.0f, FVector2D(1.0f, 0.0f));
+			const FVector2D Handle2 = VisualHandle(End, ToPoint(Value.ControlPoint2) - End, Side / 3.0f, FVector2D(-1.0f, 0.0f));
+			const FVector2D Outer = Origin + FVector2D(Side, Side * 1.6f);
+			FSlateDrawElement::MakeLines(Elements, Layer, Geometry.ToPaintGeometry(), { Origin, FVector2D(Outer.X, Origin.Y), Outer, FVector2D(Origin.X, Outer.Y), Origin }, ESlateDrawEffect::None, FLinearColor(0.30f, 0.30f, 0.30f), true, 1.0f);
+			FSlateDrawElement::MakeLines(Elements, Layer, Geometry.ToPaintGeometry(), { Start, FVector2D(End.X, Start.Y), End, FVector2D(Start.X, End.Y), Start }, ESlateDrawEffect::None, FLinearColor(0.42f, 0.42f, 0.42f), true, 1.0f);
+			FSlateDrawElement::MakeLines(Elements, Layer + 1, Geometry.ToPaintGeometry(), { Start, Handle1 }, ESlateDrawEffect::None, FLinearColor(0.45f, 0.55f, 0.65f), true, 1.0f);
+			FSlateDrawElement::MakeLines(Elements, Layer + 1, Geometry.ToPaintGeometry(), { End, Handle2 }, ESlateDrawEffect::None, FLinearColor(0.45f, 0.55f, 0.65f), true, 1.0f);
+			const FVector2D Marker(5.0f, 5.0f);
+			FSlateDrawElement::MakeBox(Elements, Layer + 2, Geometry.ToPaintGeometry(Handle1 - Marker, Marker * 2.0f), FAppStyle::GetBrush("Icons.Circle"), ESlateDrawEffect::None, FLinearColor(0.35f, 0.75f, 1.0f));
+			FSlateDrawElement::MakeBox(Elements, Layer + 2, Geometry.ToPaintGeometry(Handle2 - Marker, Marker * 2.0f), FAppStyle::GetBrush("Icons.Circle"), ESlateDrawEffect::None, FLinearColor(0.35f, 0.75f, 1.0f));
+			TArray<FVector2D> Curve; Curve.Reserve(33);
+			for (int32 Index = 0; Index <= 32; ++Index) { const float T = Index / 32.0f, U = 1.0f - T; Curve.Add(ToPoint(3.0f * U * U * T * Value.ControlPoint1 + 3.0f * U * T * T * Value.ControlPoint2 + T * T * T * FVector2D(1.0f, 1.0f))); }
+			FSlateDrawElement::MakeLines(Elements, Layer + 2, Geometry.ToPaintGeometry(), Curve, ESlateDrawEffect::None, bHovering ? FLinearColor(1.0f, 0.45f, 0.05f) : FLinearColor(0.25f, 0.65f, 1.0f), true, bHovering ? 4.0f : 2.0f);
+			return Layer + 2;
 		}
-
-		virtual FVector2D ComputeDesiredSize(float) const override { return FVector2D(180.0f, 40.0f); }
-
-		virtual int32 OnPaint(const FPaintArgs&, const FGeometry& AllottedGeometry, const FSlateRect&, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle&, bool) const override
+		virtual void OnMouseEnter(const FGeometry& G, const FPointerEvent& E) override { bHovering = true; SLeafWidget::OnMouseEnter(G, E); }
+		virtual void OnMouseLeave(const FPointerEvent& E) override { if (!bDragging) bHovering = false; SLeafWidget::OnMouseLeave(E); }
+		virtual FReply OnMouseButtonDown(const FGeometry&, const FPointerEvent& Event) override
 		{
-			const FVector2D Size = AllottedGeometry.GetLocalSize();
-			const UWidgetTransitionSettings* Settings = GetDefault<UWidgetTransitionSettings>();
-			const float Duration = FMath::Max(Settings->PreviewDuration, 0.1f);
-			const float Progress = FMath::Fmod(static_cast<float>(FPlatformTime::Seconds() - StartTime), Duration) / Duration;
-			float EasedProgress = Settings->EvaluateEasing(EasingName, Progress);
-			if (EasingName == TEXT("Custom"))
-			{
-				if (const UK2Node_WidgetTransition* Node = EasingPin ? Cast<UK2Node_WidgetTransition>(EasingPin->GetOwningNode()) : nullptr)
-				{
-					FVector2D Point1(0.25f, 0.1f), Point2(0.25f, 1.0f);
-					if (const UEdGraphPin* Pin = Node->FindPin(TEXT("EasingControlPoint1"))) Point1.InitFromString(Pin->GetDefaultAsString());
-					if (const UEdGraphPin* Pin = Node->FindPin(TEXT("EasingControlPoint2"))) Point2.InitFromString(Pin->GetDefaultAsString());
-					EasedProgress = FWidgetTransitionEasing::EvaluateCubicBezier(Point1, Point2, Progress);
-				}
-			}
-			const float Radius = 6.0f;
-			const float Left = Radius + 4.0f;
-			const float Right = FMath::Max(Left, Size.X - Radius - 4.0f);
-			const FVector2D Center(FMath::Lerp(Left, Right, EasedProgress), Size.Y * 0.5f);
-			FSlateDrawElement::MakeLines(OutDrawElements, LayerId, AllottedGeometry.ToPaintGeometry(), TArray<FVector2D>{ FVector2D(Left, Center.Y), FVector2D(Right, Center.Y) }, ESlateDrawEffect::None, FLinearColor(0.35f, 0.35f, 0.35f), true, 1.0f);
-			FSlateDrawElement::MakeBox(OutDrawElements, LayerId + 1, AllottedGeometry.ToPaintGeometry(Center - FVector2D(Radius), FVector2D(Radius * 2.0f)), FAppStyle::GetBrush("Icons.Circle"), ESlateDrawEffect::None, FLinearColor(0.45f, 0.75f, 1.0f));
-			return LayerId + 1;
+			if (Event.GetEffectingButton() != EKeys::LeftMouseButton || !EasingPin) return FReply::Unhandled();
+			Transaction = MakeUnique<FScopedTransaction>(NSLOCTEXT("ElasticUMG", "SculptTransitionEasing", "Sculpt Transition Easing"));
+			EasingPin->Modify(); bDragging = true; return FReply::Handled().CaptureMouse(AsShared());
 		}
-
+		virtual FReply OnMouseMove(const FGeometry& Geometry, const FPointerEvent& Event) override
+		{
+			if (!bDragging || !EasingPin) return FReply::Unhandled();
+			const float Side = Size(Geometry); if (Side <= UE_SMALL_NUMBER) return FReply::Handled();
+			const FVector2D Delta(Event.GetCursorDelta().X / Side, -Event.GetCursorDelta().Y / Side); if (Delta.IsNearlyZero()) return FReply::Handled();
+			FWidgetTransitionEasingValue Value; Read(Value);
+			const FVector2D Local = Geometry.AbsoluteToLocal(Event.GetScreenSpacePosition());
+			const FVector2D Origin(4.0f, 4.0f); const auto ToPoint = [Origin, Side](FVector2D Point) { return FVector2D(Origin.X + Point.X * Side, Origin.Y + (1.3f - Point.Y) * Side); };
+			const FVector2D H1 = VisualHandle(ToPoint(FVector2D::ZeroVector), ToPoint(Value.ControlPoint1) - ToPoint(FVector2D::ZeroVector), Side / 3.0f, FVector2D(1.0f, 0.0f));
+			const FVector2D H2 = VisualHandle(ToPoint(FVector2D(1.0f, 1.0f)), ToPoint(Value.ControlPoint2) - ToPoint(FVector2D(1.0f, 1.0f)), Side / 3.0f, FVector2D(-1.0f, 0.0f));
+			const float Radius = Side * .75f;
+			const auto Influence = [Radius, Local](FVector2D Handle) { return FMath::Clamp((1.0f - FVector2D::Distance(Local, Handle) / Radius) * 1.5f, 0.0f, 1.0f); };
+			const float I1 = Influence(H1), I2 = Influence(H2);
+			Value.ControlPoint1 += Delta * I1 * FMath::Max(Value.ControlPoint1.Size() * 3.0f, 1.0f);
+			Value.ControlPoint2 += Delta * I2 * FMath::Max((Value.ControlPoint2 - FVector2D(1.0f, 1.0f)).Size() * 3.0f, 1.0f);
+			Write(Value); return FReply::Handled();
+		}
+		virtual FReply OnMouseButtonUp(const FGeometry&, const FPointerEvent& Event) override { if (!bDragging || Event.GetEffectingButton() != EKeys::LeftMouseButton) return FReply::Unhandled(); bDragging = false; Transaction.Reset(); return FReply::Handled().ReleaseMouseCapture(); }
+		virtual void OnMouseCaptureLost(const FCaptureLostEvent& Event) override { bDragging = false; bHovering = false; Transaction.Reset(); SLeafWidget::OnMouseCaptureLost(Event); }
 	private:
-		EActiveTimerReturnType AdvancePreview(double, float)
+		static float Size(const FGeometry& Geometry) { const FVector2D Size = Geometry.GetLocalSize(); return FMath::Min(Size.X - 8.0f, (Size.Y - 8.0f) / 1.6f); }
+		static FVector2D VisualHandle(FVector2D Start, FVector2D Direction, float Length, FVector2D Fallback) { const FVector2D Normal = Direction.GetSafeNormal(); return Start + (Normal.IsNearlyZero() ? Fallback : Normal) * Length; }
+		void Read(FWidgetTransitionEasingValue& Value) const { if (EasingPin) FWidgetTransitionEasingValue::StaticStruct()->ImportText(*EasingPin->GetDefaultAsString(), &Value, nullptr, PPF_None, nullptr, TEXT("Easing")); }
+		void Write(FWidgetTransitionEasingValue Value) const
 		{
-			Invalidate(EInvalidateWidgetReason::Paint);
-			return EActiveTimerReturnType::Continue;
+			Value.ControlPoint1.X = FMath::Clamp(Value.ControlPoint1.X, 0.0f, 1.0f); Value.ControlPoint1.Y = FMath::Clamp(Value.ControlPoint1.Y, -2.0f, 2.0f);
+			Value.ControlPoint2.X = FMath::Max(0.0f, Value.ControlPoint2.X); Value.ControlPoint2.Y = FMath::Clamp(Value.ControlPoint2.Y, -2.0f, 2.0f);
+			EasingPin->GetSchema()->TrySetDefaultValue(*EasingPin, FString::Printf(TEXT("(ControlPoint1=(X=%g,Y=%g),ControlPoint2=(X=%g,Y=%g))"), Value.ControlPoint1.X, Value.ControlPoint1.Y, Value.ControlPoint2.X, Value.ControlPoint2.Y));
 		}
-
-		FName EasingName;
-		UEdGraphPin* EasingPin = nullptr;
-		double StartTime = 0.0;
+		UEdGraphPin* EasingPin = nullptr; TUniquePtr<FScopedTransaction> Transaction; bool bDragging = false; bool bHovering = false;
 	};
 
-	class SWidgetTransitionEasingTemplatePreview final : public SLeafWidget
+	class SEasingPin final : public SGraphPin
 	{
 	public:
-		SLATE_BEGIN_ARGS(SWidgetTransitionEasingTemplatePreview) {}
-			SLATE_ARGUMENT(TSharedPtr<IPropertyHandle>, ControlPoint1)
-			SLATE_ARGUMENT(TSharedPtr<IPropertyHandle>, ControlPoint2)
-		SLATE_END_ARGS()
-
-		void Construct(const FArguments& InArgs) { ControlPoint1 = InArgs._ControlPoint1; ControlPoint2 = InArgs._ControlPoint2; }
-		virtual FVector2D ComputeDesiredSize(float) const override { return FVector2D(130.0f, 96.0f); }
-
-		virtual int32 OnPaint(const FPaintArgs&, const FGeometry& Geometry, const FSlateRect&, FSlateWindowElementList& Elements, int32 LayerId, const FWidgetStyle&, bool) const override
-		{
-			FVector2D Point1(0.25f, 0.1f), Point2(0.25f, 1.0f);
-			if (ControlPoint1.IsValid()) ControlPoint1->GetValue(Point1);
-			if (ControlPoint2.IsValid()) ControlPoint2->GetValue(Point2);
-			const FVector2D Size = Geometry.GetLocalSize();
-			const float GraphSize = FMath::Min(Size.X - 12.0f, Size.Y - 12.0f);
-			TArray<FVector2D> Values; Values.Reserve(33);
-			float MinY = 0.0f, MaxY = 1.0f;
-			for (int32 Index = 0; Index <= 32; ++Index) { const float T = static_cast<float>(Index) / 32.0f; const float U = 1.0f - T; const FVector2D Value = 3.0f * U * U * T * Point1 + 3.0f * U * T * T * Point2 + T * T * T * FVector2D(1.0f, 1.0f); Values.Add(Value); MinY = FMath::Min(MinY, Value.Y); MaxY = FMath::Max(MaxY, Value.Y); }
-			const float Padding = (MaxY - MinY) * 0.05f;
-			MinY -= Padding; MaxY += Padding;
-			const FVector2D Origin(6.0f, 6.0f);
-			const auto ToPoint = [Origin, GraphSize, MinY, MaxY](FVector2D Value) { return FVector2D(Origin.X + Value.X * GraphSize, Origin.Y + (1.0f - (Value.Y - MinY) / (MaxY - MinY)) * GraphSize); };
-			FSlateDrawElement::MakeLines(Elements, LayerId, Geometry.ToPaintGeometry(), TArray<FVector2D>{ Origin, Origin + FVector2D(GraphSize, 0.0f), Origin + FVector2D(GraphSize, GraphSize), Origin + FVector2D(0.0f, GraphSize), Origin }, ESlateDrawEffect::None, FLinearColor(0.3f, 0.3f, 0.3f), true, 1.0f);
-			TArray<FVector2D> Curve; Curve.Reserve(Values.Num()); for (const FVector2D& Value : Values) Curve.Add(ToPoint(Value));
-			FSlateDrawElement::MakeLines(Elements, LayerId + 1, Geometry.ToPaintGeometry(), Curve, ESlateDrawEffect::None, FLinearColor(0.25f, 0.65f, 1.0f), true, 2.0f);
-			return LayerId + 1;
-		}
-
-	private:
-		TSharedPtr<IPropertyHandle> ControlPoint1;
-		TSharedPtr<IPropertyHandle> ControlPoint2;
-	};
-
-	class SWidgetTransitionNodeEasingCurvePreview final : public SLeafWidget
-	{
-	public:
-		SLATE_BEGIN_ARGS(SWidgetTransitionNodeEasingCurvePreview) {}
-			SLATE_ARGUMENT(UK2Node_WidgetTransition*, TransitionNode)
-		SLATE_END_ARGS()
-		void Construct(const FArguments& InArgs) { TransitionNode = InArgs._TransitionNode; }
-		virtual FVector2D ComputeDesiredSize(float) const override { return FVector2D(130.0f, 96.0f); }
-		virtual int32 OnPaint(const FPaintArgs&, const FGeometry& Geometry, const FSlateRect&, FSlateWindowElementList& Elements, int32 LayerId, const FWidgetStyle&, bool) const override
-		{
-			const FWidgetTransitionEasingValue Value = TransitionNode.IsValid() ? TransitionNode->GetDisplayedEasingValue() : FWidgetTransitionEasingValue();
-			const FVector2D Point1 = Value.ControlPoint1, Point2 = Value.ControlPoint2;
-			const FVector2D Size = Geometry.GetLocalSize(); const float GraphSize = FMath::Min(Size.X - 12.0f, (Size.Y - 12.0f) / 1.4f); const FVector2D Origin(6.0f, 6.0f + GraphSize * 0.2f);
-			TArray<FVector2D> Values; Values.Reserve(33); float MinY = 0.0f, MaxY = 1.0f;
-			for (int32 Index = 0; Index <= 32; ++Index) { const float T = static_cast<float>(Index) / 32.0f; const float U = 1.0f - T; const FVector2D CurveValue = 3.0f * U * U * T * Point1 + 3.0f * U * T * T * Point2 + T * T * T * FVector2D(1.0f, 1.0f); Values.Add(CurveValue); MinY = FMath::Min(MinY, CurveValue.Y); MaxY = FMath::Max(MaxY, CurveValue.Y); }
-			const float Padding = FMath::Max((MaxY - MinY) * 0.05f, KINDA_SMALL_NUMBER); MinY -= Padding; MaxY += Padding;
-			const auto ToPoint = [Origin, GraphSize, MinY, MaxY](FVector2D CurveValue) { return FVector2D(Origin.X + CurveValue.X * GraphSize, Origin.Y + (1.0f - (CurveValue.Y - MinY) / (MaxY - MinY)) * GraphSize); };
-			FSlateDrawElement::MakeLines(Elements, LayerId, Geometry.ToPaintGeometry(), TArray<FVector2D>{ Origin, Origin + FVector2D(GraphSize, 0.0f), Origin + FVector2D(GraphSize, GraphSize), Origin + FVector2D(0.0f, GraphSize), Origin }, ESlateDrawEffect::None, FLinearColor(0.3f, 0.3f, 0.3f), true, 1.0f);
-			TArray<FVector2D> Curve; Curve.Reserve(Values.Num()); for (const FVector2D& CurveValue : Values) Curve.Add(ToPoint(CurveValue));
-			const bool bEditable = TransitionNode.IsValid() && TransitionNode->IsCustomEasingSelected();
-			FSlateDrawElement::MakeLines(Elements, LayerId + 1, Geometry.ToPaintGeometry(), Curve, ESlateDrawEffect::None, bEditable ? FLinearColor(0.25f, 0.65f, 1.0f) : FLinearColor(0.42f, 0.42f, 0.42f), true, 2.0f); return LayerId + 1;
-		}
-	private: TWeakObjectPtr<UK2Node_WidgetTransition> TransitionNode;
-	};
-
-	class FWidgetTransitionEasingCustomization final : public IPropertyTypeCustomization
-	{
-	public:
-		static TSharedRef<IPropertyTypeCustomization> MakeInstance() { return MakeShared<FWidgetTransitionEasingCustomization>(); }
-
-		virtual void CustomizeHeader(TSharedRef<IPropertyHandle> StructHandle, FDetailWidgetRow& HeaderRow, IPropertyTypeCustomizationUtils&) override
-		{
-			HeaderRow.NameContent()[StructHandle->CreatePropertyNameWidget()]
-			.ValueContent()[StructHandle->CreatePropertyValueWidget()];
-		}
-
-		virtual void CustomizeChildren(TSharedRef<IPropertyHandle> StructHandle, IDetailChildrenBuilder& ChildrenBuilder, IPropertyTypeCustomizationUtils&) override
-		{
-			TSharedPtr<IPropertyHandle> Name = StructHandle->GetChildHandle(GET_MEMBER_NAME_CHECKED(FWidgetTransitionEasing, Name));
-			TSharedPtr<IPropertyHandle> ControlPoint1 = StructHandle->GetChildHandle(GET_MEMBER_NAME_CHECKED(FWidgetTransitionEasing, ControlPoint1));
-			TSharedPtr<IPropertyHandle> ControlPoint2 = StructHandle->GetChildHandle(GET_MEMBER_NAME_CHECKED(FWidgetTransitionEasing, ControlPoint2));
-			if (Name.IsValid()) ChildrenBuilder.AddProperty(Name.ToSharedRef());
-			if (ControlPoint1.IsValid()) ChildrenBuilder.AddProperty(ControlPoint1.ToSharedRef());
-			if (ControlPoint2.IsValid()) ChildrenBuilder.AddProperty(ControlPoint2.ToSharedRef());
-			ChildrenBuilder.AddCustomRow(NSLOCTEXT("ElasticUMG", "EasingPreview", "Preview"))
-			.NameContent()[SNew(STextBlock).Text(NSLOCTEXT("ElasticUMG", "EasingPreview", "Preview"))]
-			.ValueContent().MinDesiredWidth(130.0f)[SNew(SWidgetTransitionEasingTemplatePreview).ControlPoint1(ControlPoint1).ControlPoint2(ControlPoint2)];
-		}
-	};
-
-	class SWidgetTransitionEasingGraphPin final : public SGraphPin
-	{
-	public:
-		SLATE_BEGIN_ARGS(SWidgetTransitionEasingGraphPin) {}
-		SLATE_END_ARGS()
-
-		void Construct(const FArguments& InArgs, UEdGraphPin* InGraphPinObj)
-		{
-			SGraphPin::Construct(SGraphPin::FArguments(), InGraphPinObj);
-		}
-
+		SLATE_BEGIN_ARGS(SEasingPin) {} SLATE_END_ARGS()
+		void Construct(const FArguments&, UEdGraphPin* Pin) { SGraphPin::Construct(SGraphPin::FArguments(), Pin); }
 	protected:
 		virtual TSharedRef<SWidget> GetDefaultValueWidget() override
 		{
-			RefreshOptions();
 			return SNew(SVerticalBox)
-				+ SVerticalBox::Slot().AutoHeight()
-				[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot()
-				.FillWidth(1.0f)
-				[
-					SNew(SComboBox<TSharedPtr<FString>>)
-					.OptionsSource(&Options)
-					.OnComboBoxOpening(this, &SWidgetTransitionEasingGraphPin::RefreshOptions)
-					.OnGenerateWidget(this, &SWidgetTransitionEasingGraphPin::MakeOptionWidget)
-					.OnSelectionChanged(this, &SWidgetTransitionEasingGraphPin::SelectOption)
-					.IsEnabled(true)
-					.Content()
-					[
-						SNew(STextBlock)
-						.Text(this, &SWidgetTransitionEasingGraphPin::GetCurrentValue)
-						.Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
-					]
-				]
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.Padding(FMargin(4.0f, 0.0f, 0.0f, 0.0f))
-				[
-					SNew(SButton)
-					.ButtonStyle(FAppStyle::Get(), "HoverHintOnly")
-					.ToolTipText(NSLOCTEXT("ElasticUMG", "OpenEasingSettings", "Open Elastic UMG easing settings"))
-					.OnClicked_Lambda([]()
-					{
-						FModuleManager::LoadModuleChecked<ISettingsModule>("Settings").ShowViewer(TEXT("Project"), TEXT("Plugins"), TEXT("ElasticUMG"));
-						return FReply::Handled();
-					})
-					[
-						SNew(SImage).Image(FAppStyle::GetBrush("Icons.Settings"))
-					]
-				]
-				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.0f, 4.0f, 0.0f, 0.0f))
-				[
-					SNew(SWidgetTransitionNodeEasingCurvePreview).TransitionNode(Cast<UK2Node_WidgetTransition>(GraphPinObj->GetOwningNode()))
-				];
+				+ SVerticalBox::Slot().AutoHeight()[SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f)[SNew(STextBlock).Text(NSLOCTEXT("ElasticUMG", "InlineEasing", "Custom cubic Bézier"))]
+					+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f)[SNew(SButton).ButtonStyle(FAppStyle::Get(), "HoverHintOnly").ToolTipText(NSLOCTEXT("ElasticUMG", "OpenEasingSettings", "Open Elastic UMG easing settings")).OnClicked_Lambda([] { FModuleManager::LoadModuleChecked<ISettingsModule>("Settings").ShowViewer(TEXT("Project"), TEXT("Plugins"), TEXT("ElasticUMG")); return FReply::Handled(); })[SNew(SImage).Image(FAppStyle::GetBrush("Icons.Settings"))]]]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f)[SNew(SEasingGraph, GraphPinObj)];
 		}
-
-	private:
-		void RefreshOptions()
-		{
-			Options.Reset();
-			Options.Add(MakeShared<FString>(TEXT("None")));
-			Options.Add(MakeShared<FString>(TEXT("Custom")));
-			for (const FWidgetTransitionEasing& Easing : GetDefault<UWidgetTransitionSettings>()->EasingFunctions)
-			{
-				if (!Easing.Name.IsNone()) Options.Add(MakeShared<FString>(Easing.Name.ToString()));
-			}
-		}
-
-		TSharedRef<SWidget> MakeOptionWidget(TSharedPtr<FString> Option) const
-		{
-			return SNew(STextBlock).Text(FText::FromString(Option.IsValid() ? *Option : FString()));
-		}
-
-		void SelectOption(TSharedPtr<FString> Option, ESelectInfo::Type)
-		{
-			if (!Option.IsValid()) return;
-			const FName NewValue = *Option == TEXT("None") ? NAME_None : FName(**Option);
-			UK2Node_WidgetTransition* TransitionNode = Cast<UK2Node_WidgetTransition>(GraphPinObj->GetOwningNode());
-			if (!TransitionNode || TransitionNode->GetSelectedEasingPreset() == NewValue) return;
-			const FScopedTransaction Transaction(NSLOCTEXT("ElasticUMG", "SetTransitionEasing", "Set Transition Easing"));
-			TransitionNode->SetSelectedEasingPreset(NewValue);
-		}
-
-		FText GetCurrentValue() const
-		{
-			const UK2Node_WidgetTransition* TransitionNode = Cast<UK2Node_WidgetTransition>(GraphPinObj->GetOwningNode());
-			const FName Value = TransitionNode ? TransitionNode->GetSelectedEasingPreset() : NAME_None;
-			return FText::FromString(Value.IsNone() ? TEXT("None") : Value.ToString());
-		}
-
-		TArray<TSharedPtr<FString>> Options;
 	};
 
-	class SWidgetTransitionOptionalPins final : public SCompoundWidget
-	{
-	public:
-		SLATE_BEGIN_ARGS(SWidgetTransitionOptionalPins) {}
-			SLATE_ARGUMENT(UK2Node_WidgetTransition*, TransitionNode)
-		SLATE_END_ARGS()
-
-		void Construct(const FArguments& InArgs)
-		{
-			TransitionNode = InArgs._TransitionNode;
-			TSharedRef<SHorizontalBox> BasicButtons = SNew(SHorizontalBox);
-			for (const FPinOption& Option : GetOptions(TEXT("Basic"))) AddOption(BasicButtons, Option);
-			ChildSlot
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth()[BasicButtons]
-			];
-		}
-
-	private:
-		struct FPinOption { EWidgetTransitionOptionalPin Pin; FText Label; FText Tooltip; };
-
-		static TSharedRef<SWidget> CreateGroupSeparator()
-		{
-			return SNew(SBox)
-				.WidthOverride(2.0f)
-				[
-					SNew(SBorder)
-					.BorderImage(FAppStyle::Get().GetBrush("WhiteBrush"))
-					.BorderBackgroundColor(FLinearColor(0.12f, 0.12f, 0.12f, 0.9f))
-					.Padding(0.0f)
-				];
-		}
-
-		void AddOption(const TSharedRef<SHorizontalBox>& Buttons, const FPinOption& Option)
-		{
-			Buttons->AddSlot().AutoWidth().Padding(FMargin(0.0f, 0.0f, 2.0f, 0.0f))
-			[
-				SNew(SCheckBox).Style(FAppStyle::Get(), "ToggleButtonCheckbox").Cursor(EMouseCursor::Hand).ToolTipText(Option.Tooltip)
-				.IsChecked(this, &SWidgetTransitionOptionalPins::GetOptionState, Option.Pin).OnCheckStateChanged(this, &SWidgetTransitionOptionalPins::SetOptionState, Option.Pin).Padding(FMargin(4.0f, 5.0f))
-				[SNew(STextBlock).Text(Option.Label)]
-			];
-		}
-
-		static TOptional<EWidgetTransitionOptionalPin> GetOptionalPin(const FString& Name)
-		{
-			if (Name == TEXT("WidgetAndProperty")) return EWidgetTransitionOptionalPin::WidgetAndProperty;
-			if (Name == TEXT("From")) return EWidgetTransitionOptionalPin::From;
-			if (Name == TEXT("Delay")) return EWidgetTransitionOptionalPin::Delay;
-			return {};
-		}
-
-		/** Reads the compact tab buttons from the canonical typed function's UPARAM metadata. */
-		static TArray<FPinOption> GetOptions(const FString& Tab)
-		{
-			TArray<FPinOption> Options;
-			const UFunction* Function = UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateFloatWidgetTransition));
-			if (!Function) return Options;
-			for (TFieldIterator<FProperty> It(Function); It; ++It)
-			{
-				const FProperty* Property = *It;
-				if (Property->GetMetaData(TEXT("ElasticUMGTab")) != Tab) continue;
-				const TOptional<EWidgetTransitionOptionalPin> Pin = GetOptionalPin(Property->GetMetaData(TEXT("ElasticUMGOption")));
-				if (!Pin.IsSet()) continue;
-				Options.Add({ Pin.GetValue(), FText::FromString(Property->GetMetaData(TEXT("ElasticUMGLabel"))), FText::FromString(Property->GetMetaData(TEXT("ElasticUMGTooltip"))) });
-			}
-			return Options;
-		}
-
-		ECheckBoxState GetOptionState(EWidgetTransitionOptionalPin Option) const
-		{
-			return TransitionNode.IsValid() && TransitionNode->IsOptionalPinVisible(Option) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-		}
-
-		void SetOptionState(ECheckBoxState State, EWidgetTransitionOptionalPin Option)
-		{
-			if (TransitionNode.IsValid())
-			{
-				const FScopedTransaction Transaction(NSLOCTEXT("ElasticUMG", "ToggleTransitionOptionalPin", "Toggle Transition Optional Pin"));
-				UK2Node_WidgetTransition* Node = TransitionNode.Get();
-				const int32 NewOptionalPins = State == ECheckBoxState::Checked
-					? Node->GetOptionalPins() | static_cast<int32>(Option)
-					: Node->GetOptionalPins() & ~static_cast<int32>(Option);
-				Node->SetOptionalPins(NewOptionalPins);
-			}
-		}
-
-		TWeakObjectPtr<UK2Node_WidgetTransition> TransitionNode;
-	};
-
-	class SWidgetTransitionGraphNode final : public SGraphNodeK2Default
-	{
-	public:
-		SLATE_BEGIN_ARGS(SWidgetTransitionGraphNode) {}
-		SLATE_END_ARGS()
-
-		void Construct(const FArguments& InArgs, UK2Node_WidgetTransition* InNode)
-		{
-			TransitionNode = InNode;
-			SGraphNodeK2Default::Construct(SGraphNodeK2Default::FArguments(), InNode);
-		}
-
-	protected:
-		virtual TSharedRef<SWidget> CreateNodeContentArea() override
-		{
-			return SNew(SBorder)
-				.BorderImage(FAppStyle::GetBrush("NoBorder"))
-				.HAlign(HAlign_Fill)
-				.VAlign(VAlign_Fill)
-				.Padding(FMargin(0.0f, 3.0f))
-				[
-					SNew(SVerticalBox)
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					.HAlign(HAlign_Center)
-					.Padding(FMargin(4.0f, 0.0f, 4.0f, 2.0f))
-					[
-						SNew(SWidgetTransitionOptionalPins).TransitionNode(TransitionNode.Get())
-					]
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					[
-						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot()
-						.HAlign(HAlign_Left)
-						.FillWidth(1.0f)
-						[
-							SAssignNew(LeftNodeBox, SVerticalBox)
-						]
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.HAlign(HAlign_Right)
-						[
-							SAssignNew(RightNodeBox, SVerticalBox)
-						]
-					]
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					.HAlign(HAlign_Center)
-					.Padding(FMargin(0.0f, 2.0f, 0.0f, 2.0f))
-					[
-						SNew(SBox)
-						.Visibility_Lambda([Node = TransitionNode]()
-						{
-							const UEdGraphPin* EasingPin = Node.IsValid() ? Node->FindPin(TEXT("Easing")) : nullptr;
-							return EasingPin && EasingPin->SubPins.Num() > 0 ? EVisibility::Visible : EVisibility::Collapsed;
-						})
-						[
-							SNew(SWidgetTransitionNodeEasingCurvePreview).TransitionNode(TransitionNode.Get())
-						]
-					]
-				];
-		}
-
-	private:
-		TWeakObjectPtr<UK2Node_WidgetTransition> TransitionNode;
-	};
-
-	class FWidgetPropertyPathPinFactory final : public FGraphPanelPinFactory
+	class FTransitionPinFactory final : public FGraphPanelPinFactory
 	{
 	public:
 		virtual TSharedPtr<SGraphPin> CreatePin(UEdGraphPin* Pin) const override
 		{
-			const bool bIsTypedTransitionNode = IsTypedTransitionNode(Pin);
-			if (bIsTypedTransitionNode && Pin->PinName == TEXT("WidgetProperty"))
-			{
-				return SNew(SWidgetPropertyPathGraphPin, Pin);
-			}
-			if (bIsTypedTransitionNode && Pin->PinName == TEXT("Easing"))
-			{
-				return SNew(SWidgetTransitionEasingGraphPin, Pin);
-			}
-			return nullptr;
-		}
-	};
-
-	class FWidgetTransitionNodeFactory final : public FGraphPanelNodeFactory
-	{
-	public:
-		virtual TSharedPtr<SGraphNode> CreateNode(UEdGraphNode* Node) const override
-		{
-			if (UK2Node_WidgetTransition* TransitionNode = Cast<UK2Node_WidgetTransition>(Node)) return SNew(SWidgetTransitionGraphNode, TransitionNode);
+			if (IsBindingPin(Pin)) return SNew(SWidgetPropertyPathPin, Pin);
+			if (IsEasingPin(Pin)) return SNew(SEasingPin, Pin);
 			return nullptr;
 		}
 	};
@@ -738,37 +248,15 @@ class FElasticUMGEditorModule final : public IModuleInterface
 public:
 	virtual void StartupModule() override
 	{
-		FPropertyEditorModule& PropertyEditor = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
-		PropertyEditor.RegisterCustomPropertyTypeLayout(TEXT("WidgetTransitionEasing"), FOnGetPropertyTypeCustomizationInstance::CreateStatic(&ElasticUMGEditor::FWidgetTransitionEasingCustomization::MakeInstance));
-		PropertyEditor.NotifyCustomizationModuleChanged();
-		PinFactory = MakeShared<ElasticUMGEditor::FWidgetPropertyPathPinFactory>();
+		PinFactory = MakeShared<ElasticUMGEditor::FTransitionPinFactory>();
 		FEdGraphUtilities::RegisterVisualPinFactory(PinFactory);
-		NodeFactory = MakeShared<ElasticUMGEditor::FWidgetTransitionNodeFactory>();
-		FEdGraphUtilities::RegisterVisualNodeFactory(NodeFactory);
 	}
-
 	virtual void ShutdownModule() override
 	{
-		if (FModuleManager::Get().IsModuleLoaded("PropertyEditor"))
-		{
-			FPropertyEditorModule& PropertyEditor = FModuleManager::GetModuleChecked<FPropertyEditorModule>("PropertyEditor");
-			PropertyEditor.UnregisterCustomPropertyTypeLayout(TEXT("WidgetTransitionEasing"));
-		}
-		if (PinFactory.IsValid())
-		{
-			FEdGraphUtilities::UnregisterVisualPinFactory(PinFactory);
-			PinFactory.Reset();
-		}
-		if (NodeFactory.IsValid())
-		{
-			FEdGraphUtilities::UnregisterVisualNodeFactory(NodeFactory);
-			NodeFactory.Reset();
-		}
+		if (PinFactory.IsValid()) { FEdGraphUtilities::UnregisterVisualPinFactory(PinFactory); PinFactory.Reset(); }
 	}
-
 private:
 	TSharedPtr<FGraphPanelPinFactory> PinFactory;
-	TSharedPtr<FGraphPanelNodeFactory> NodeFactory;
 };
 
 IMPLEMENT_MODULE(FElasticUMGEditorModule, ElasticUMGEditor)
