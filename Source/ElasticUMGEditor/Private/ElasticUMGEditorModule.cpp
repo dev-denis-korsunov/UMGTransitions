@@ -61,6 +61,19 @@ namespace ElasticUMGEditor
 			}
 		}
 	}
+	/** Enumerate inherited UWidget fields explicitly: the per-struct walker intentionally does not include super fields. */
+	static void AddProperties(UClass* Class, const FString& Prefix, int32 Depth, TArray<TSharedPtr<FPropertyOption>>& OutOptions)
+	{
+		TArray<UClass*> Hierarchy;
+		for (UClass* Current = Class; Current && Current != UObject::StaticClass(); Current = Current->GetSuperClass())
+		{
+			Hierarchy.Insert(Current, 0);
+		}
+		for (UClass* Current : Hierarchy)
+		{
+			AddProperties(static_cast<const UStruct*>(Current), Prefix, Depth, OutOptions);
+		}
+	}
 	static bool IsBindingPropertyPin(const UEdGraphPin* Pin)
 	{
 		const UK2Node_CallFunction* Node = Pin ? Cast<UK2Node_CallFunction>(Pin->GetOwningNode()) : nullptr;

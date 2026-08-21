@@ -143,27 +143,9 @@ class ELASTICUMG_API UWidgetTransitionFunctionLibrary final : public UBlueprintF
 	GENERATED_BODY()
 
 public:
-	/** Starts a one-channel descriptor. Bind it before adding it to the subsystem. */
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Create Float Widget Transition", ElasticUMGTransition = "true", ElasticUMGValueType = "Float"))
-	static FWidgetTransition CreateFloatWidgetTransition(float ToValue, float Delay = 0.0f, float Time = 0.2f);
-
-	/** Starts a two-channel descriptor. Bind it before adding it to the subsystem. */
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Create Vector2D Widget Transition", ElasticUMGTransition = "true", ElasticUMGValueType = "Vector2D"))
-	static FWidgetTransition CreateVectorWidgetTransition(FVector2D ToValue, float Delay = 0.0f, float Time = 0.2f);
-
-	/** Starts a four-channel descriptor. Bind it before adding it to the subsystem. */
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Create Color Widget Transition", ElasticUMGTransition = "true", ElasticUMGValueType = "LinearColor"))
-	static FWidgetTransition CreateColorWidgetTransition(FLinearColor ToValue, float Delay = 0.0f, float Time = 0.2f);
-
 	/** Sets the target widget and its transitionable property path. */
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Bind Widget Transition", ElasticUMGTransitionBinding = "true"))
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Bind", ElasticUMGTransitionBinding = "true"))
 	static FWidgetTransition Bind(FWidgetTransition Transition, UWidget* Widget, UPARAM(meta = (ElasticUMGRole = "WidgetProperty")) const FString& WidgetProperty);
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "From Float"))
-	static FWidgetTransition FromFloat(FWidgetTransition Transition, float FromValue);
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "From Vector2D"))
-	static FWidgetTransition FromVector(FWidgetTransition Transition, FVector2D FromValue);
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "From Color"))
-	static FWidgetTransition FromColor(FWidgetTransition Transition, FLinearColor FromValue);
 
 	UFUNCTION(BlueprintPure, Category = "Widget Transition")
 	static FWidgetTransition Delay(FWidgetTransition Transition, float Delay, bool bApplyValueBeforeDelay = true);
@@ -190,6 +172,21 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject"))
 	static void ClearAllWidgetTransitions(const UObject* WorldContextObject, UWidget* Widget);
+
+private:
+	/** Internal compiler targets for the two dynamic custom nodes. */
+	UFUNCTION(BlueprintPure, meta = (BlueprintInternalUseOnly = "true"))
+	static FWidgetTransition CreateFloatWidgetTransition(float ToValue, float Delay = 0.0f, float Time = 0.2f);
+	UFUNCTION(BlueprintPure, meta = (BlueprintInternalUseOnly = "true"))
+	static FWidgetTransition CreateVectorWidgetTransition(FVector2D ToValue, float Delay = 0.0f, float Time = 0.2f);
+	UFUNCTION(BlueprintPure, meta = (BlueprintInternalUseOnly = "true"))
+	static FWidgetTransition CreateColorWidgetTransition(FLinearColor ToValue, float Delay = 0.0f, float Time = 0.2f);
+	UFUNCTION(BlueprintPure, meta = (BlueprintInternalUseOnly = "true"))
+	static FWidgetTransition FromFloat(FWidgetTransition Transition, float FromValue);
+	UFUNCTION(BlueprintPure, meta = (BlueprintInternalUseOnly = "true"))
+	static FWidgetTransition FromVector(FWidgetTransition Transition, FVector2D FromValue);
+	UFUNCTION(BlueprintPure, meta = (BlueprintInternalUseOnly = "true"))
+	static FWidgetTransition FromColor(FWidgetTransition Transition, FLinearColor FromValue);
 };
 
 UCLASS()

@@ -35,8 +35,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionBuilderTest, "ElasticUMG.Widge
 bool FWidgetTransitionBuilderTest::RunTest(const FString&)
 {
 	UImage* Widget = NewObject<UImage>(GetTransientPackage());
-	FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateFloatWidgetTransition(0.8f, 0.4f, 0.25f);
-	Transition = UWidgetTransitionFunctionLibrary::FromVector(MoveTemp(Transition), FVector2D(0.2, 0.4));
+	FWidgetTransition Transition;
+	Transition.ToValue.Channels.X = 0.8f;
+	Transition.ToValue.Type = EWidgetTransitionValueType::Float;
+	Transition.FromValue.Channels = FVector4f(0.2f, 0.4f, 0.0f, 0.0f);
+	Transition.FromValue.Type = EWidgetTransitionValueType::Vector2D;
+	Transition.bUseFrom = true;
+	Transition.Delay = 0.4f;
+	Transition.Time = 0.25f;
 	Transition = UWidgetTransitionFunctionLibrary::Bind(MoveTemp(Transition), Widget, TEXT("RenderTransform.Scale"));
 	Transition = UWidgetTransitionFunctionLibrary::Repeat(MoveTemp(Transition), 2, true);
 	Transition = UWidgetTransitionFunctionLibrary::Spring(MoveTemp(Transition), 0.8f, 0.25f);
@@ -78,19 +84,10 @@ bool FWidgetTransitionSpringTest::RunTest(const FString&)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionMetadataTest, "ElasticUMG.WidgetTransition.Editor.Metadata", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionMetadataTest::RunTest(const FString&)
 {
-	const FName Names[] = {
-		GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateFloatWidgetTransition),
-		GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateVectorWidgetTransition),
-		GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateColorWidgetTransition),
-	};
-	for (const FName Name : Names)
-	{
-		const UFunction* Function = UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(Name);
-		TestNotNull(*Name.ToString(), Function);
-		if (Function) TestFalse(*Name.ToString(), Function->HasMetaData(TEXT("BlueprintInternalUseOnly")));
-	}
 	const UFunction* Binding = UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, Bind));
 	TestTrue(TEXT("Binding function opts into the custom property pin"), Binding && Binding->HasMetaData(TEXT("ElasticUMGTransitionBinding")));
+	const UFunction* InternalCreate = UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(TEXT("CreateFloatWidgetTransition"));
+	TestTrue(TEXT("Typed create shim is hidden from the Blueprint palette"), InternalCreate && InternalCreate->HasMetaData(TEXT("BlueprintInternalUseOnly")));
 	return true;
 }
 
