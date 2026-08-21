@@ -51,6 +51,8 @@ bool FWidgetTransitionBuilderTest::RunTest(const FString&)
 	TestTrue(TEXT("From modifier is enabled"), Transition.bUseFrom);
 	TestTrue(TEXT("Binding is retained"), Transition.Widget == Widget && Transition.WidgetProperty == TEXT("RenderTransform.Scale"));
 	TestTrue(TEXT("Repeat and spring modifiers are retained"), Transition.RepeatCount == 2 && Transition.bYoYo && Transition.bUseSpring);
+	Transition = UWidgetTransitionFunctionLibrary::BindMaterialParameter(MoveTemp(Transition), Widget, TEXT("Progress"));
+	TestTrue(TEXT("Material binding retains its virtual channel"), Transition.BindingKind == EWidgetTransitionBindingKind::Material && Transition.MaterialParameter == TEXT("Progress"));
 	return true;
 }
 

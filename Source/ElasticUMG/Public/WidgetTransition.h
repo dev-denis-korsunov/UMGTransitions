@@ -12,6 +12,7 @@
 #include "WidgetTransition.generated.h"
 
 class UWidget;
+class UMaterialInstanceDynamic;
 
 DECLARE_DYNAMIC_DELEGATE_ThreeParams(FOnWidgetTransitionUpdate, UWidget*, Widget, float, NormalizedProgress, float, EasedProgress);
 DECLARE_DYNAMIC_DELEGATE_OneParam(FOnWidgetTransitionEvent, UWidget*, Widget);
@@ -31,6 +32,14 @@ enum class EWidgetTransitionValueType : uint8
 	Float,
 	Vector2D,
 	LinearColor,
+};
+
+enum class EWidgetTransitionBindingKind : uint8
+{
+	Property,
+	Material,
+	MaterialScalar,
+	MaterialVector,
 };
 
 /**
@@ -63,9 +72,17 @@ struct ELASTICUMG_API FWidgetTransitionPropertyBinding
 	bool bUsesDouble = false;
 	/** Value type used to read and write the resolved property. */
 	EWidgetTransitionValueType ValueType = EWidgetTransitionValueType::Float;
+	/** Resolved adapter kind. */
+	EWidgetTransitionBindingKind Kind = EWidgetTransitionBindingKind::Property;
+	/** Cached dynamic material for a virtual material channel. */
+	TWeakObjectPtr<UMaterialInstanceDynamic> MaterialInstance;
+	/** Material parameter addressed by the cached material adapter. */
+	FName MaterialParameter;
 
 	/** Resolves a widget property and caches the resulting property path. */
 	bool Resolve(UWidget* InWidget, const FString& InPropertyPath);
+	/** Resolves and determines the channel layout of a material parameter for a supported widget adapter. */
+	bool ResolveMaterial(UWidget* InWidget, FName InParameter);
 	/** Clears the cached property path and resolution state. */
 	void Invalidate();
 	/** Number of float channels exposed by the resolved property. */
@@ -88,6 +105,8 @@ struct ELASTICUMG_API FWidgetTransition
 
 	TWeakObjectPtr<UWidget> Widget;
 	FName WidgetProperty;
+	EWidgetTransitionBindingKind BindingKind = EWidgetTransitionBindingKind::Property;
+	FName MaterialParameter;
 	FWidgetTransitionValue FromValue;
 	FWidgetTransitionValue ToValue;
 	FCurveTableRowHandle Easing;
@@ -145,7 +164,10 @@ class ELASTICUMG_API UWidgetTransitionFunctionLibrary final : public UBlueprintF
 public:
 	/** Sets the target widget and its transitionable property path. */
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Bind", ElasticUMGTransitionBinding = "true"))
-	static FWidgetTransition Bind(FWidgetTransition Transition, UWidget* Widget, UPARAM(meta = (ElasticUMGRole = "WidgetProperty")) const FString& WidgetProperty);
+	static FWidgetTransition Bind(FWidgetTransition Transition, UWidget* Widget, UPARAM(meta = (ElasticUMGRole = "WidgetProperty")) FName WidgetProperty);
+	/** Binds a material parameter on an Image or Border brush material. The adapter determines its channel layout. */
+	UFUNCTION(BlueprintPure, Category = "Widget Transition")
+	static FWidgetTransition BindMaterialParameter(FWidgetTransition Transition, UWidget* Widget, FName ParameterName);
 
 	UFUNCTION(BlueprintPure, Category = "Widget Transition")
 	static FWidgetTransition Delay(FWidgetTransition Transition, float Delay, bool bApplyValueBeforeDelay = true);

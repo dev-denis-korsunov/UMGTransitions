@@ -1,7 +1,10 @@
 #include "WidgetTransition.h"
 
 #include "Components/Widget.h"
+#include "Components/Border.h"
+#include "Components/Image.h"
 #include "Engine/Engine.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "PropertyPathHelpers.h"
 #include "UObject/UnrealType.h"
 
@@ -149,6 +152,9 @@ namespace WidgetTransition
 
 bool FWidgetTransitionPropertyBinding::Resolve(UWidget* InWidget, const FString& InPropertyPath)
 {
+	Kind = EWidgetTransitionBindingKind::Property;
+	MaterialInstance.Reset();
+	MaterialParameter = NAME_None;
 	CachedPropertyPath = FDynamicPropertyPath(InPropertyPath);
 	bResolved = IsValid(InWidget) && CachedPropertyPath.IsValid() && CachedPropertyPath.Resolve(InWidget);
 	bUsesDouble = false;
@@ -164,6 +170,34 @@ bool FWidgetTransitionPropertyBinding::Resolve(UWidget* InWidget, const FString&
 	return bResolved;
 }
 
+bool FWidgetTransitionPropertyBinding::ResolveMaterial(UWidget* InWidget, FName InParameter)
+{
+	Invalidate();
+	UMaterialInstanceDynamic* DynamicMaterial = nullptr;
+	if (UImage* Image = Cast<UImage>(InWidget)) DynamicMaterial = Image->GetDynamicMaterial();
+	else if (UBorder* Border = Cast<UBorder>(InWidget)) DynamicMaterial = Border->GetDynamicMaterial();
+	if (!IsValid(DynamicMaterial) || InParameter.IsNone()) return false;
+	TArray<FMaterialParameterInfo> Parameters;
+	TArray<FGuid> ParameterIds;
+	DynamicMaterial->GetAllScalarParameterInfo(Parameters, ParameterIds);
+	const bool bIsScalar = Parameters.ContainsByPredicate([InParameter](const FMaterialParameterInfo& Info) { return Info.Association == EMaterialParameterAssociation::GlobalParameter && Info.Name == InParameter; });
+	if (!bIsScalar)
+	{
+		Parameters.Reset();
+		ParameterIds.Reset();
+		DynamicMaterial->GetAllVectorParameterInfo(Parameters, ParameterIds);
+	}
+	const bool bIsVector = !bIsScalar && Parameters.ContainsByPredicate([InParameter](const FMaterialParameterInfo& Info) { return Info.Association == EMaterialParameterAssociation::GlobalParameter && Info.Name == InParameter; });
+	if (!bIsScalar && !bIsVector) return false;
+	Kind = bIsScalar ? EWidgetTransitionBindingKind::MaterialScalar : EWidgetTransitionBindingKind::MaterialVector;
+	MaterialInstance = DynamicMaterial;
+	MaterialParameter = InParameter;
+	ValueType = bIsScalar ? EWidgetTransitionValueType::Float : EWidgetTransitionValueType::LinearColor;
+	ChannelCount = bIsScalar ? 1 : 4;
+	bResolved = true;
+	return true;
+}
+
 void FWidgetTransitionPropertyBinding::Invalidate()
 {
 	CachedPropertyPath = FDynamicPropertyPath();
@@ -171,11 +205,22 @@ void FWidgetTransitionPropertyBinding::Invalidate()
 	bUsesDouble = false;
 	ChannelCount = 0;
 	ValueType = EWidgetTransitionValueType::Float;
+	Kind = EWidgetTransitionBindingKind::Property;
+	MaterialInstance.Reset();
+	MaterialParameter = NAME_None;
 }
 
 bool FWidgetTransitionPropertyBinding::Apply(UWidget* Widget, const FVector4f& Value) const
 {
 	if (!bResolved || !IsValid(Widget)) return false;
+	if (Kind == EWidgetTransitionBindingKind::MaterialScalar || Kind == EWidgetTransitionBindingKind::MaterialVector)
+	{
+		UMaterialInstanceDynamic* DynamicMaterial = MaterialInstance.Get();
+		if (!IsValid(DynamicMaterial)) return false;
+		if (Kind == EWidgetTransitionBindingKind::MaterialScalar) DynamicMaterial->SetScalarParameterValue(MaterialParameter, Value.X);
+		else DynamicMaterial->SetVectorParameterValue(MaterialParameter, FLinearColor(Value.X, Value.Y, Value.Z, Value.W));
+		return true;
+	}
 	switch (ValueType)
 	{
 	case EWidgetTransitionValueType::Float:
@@ -192,6 +237,22 @@ bool FWidgetTransitionPropertyBinding::Apply(UWidget* Widget, const FVector4f& V
 bool FWidgetTransitionPropertyBinding::Read(UWidget* Widget, FVector4f& OutValue) const
 {
 	if (!bResolved || !IsValid(Widget)) return false;
+	if (Kind == EWidgetTransitionBindingKind::MaterialScalar || Kind == EWidgetTransitionBindingKind::MaterialVector)
+	{
+		UMaterialInstanceDynamic* DynamicMaterial = MaterialInstance.Get();
+		if (!IsValid(DynamicMaterial)) return false;
+		if (Kind == EWidgetTransitionBindingKind::MaterialScalar)
+		{
+			const float Value = DynamicMaterial->K2_GetScalarParameterValue(MaterialParameter);
+			OutValue = FVector4f(Value, Value, Value, Value);
+		}
+		else
+		{
+			const FLinearColor Value = DynamicMaterial->K2_GetVectorParameterValue(MaterialParameter);
+			OutValue = FVector4f(Value.R, Value.G, Value.B, Value.A);
+		}
+		return true;
+	}
 	switch (ValueType)
 	{
 	case EWidgetTransitionValueType::Float:
@@ -237,7 +298,10 @@ void UWidgetTransitionFunctionLibrary::StartWidgetTransition(const UObject* Worl
 	Transition.SpringSpeed = Description.SpringSpeed;
 	Transition.SpringBounce = Description.SpringBounce;
 	Transition.OnUpdate = MoveTemp(Description.OnUpdate);
-	if (!Transition.PropertyBinding.Resolve(Widget, Description.WidgetProperty.ToString())) return;
+	const bool bResolved = Description.BindingKind == EWidgetTransitionBindingKind::Property
+		? Transition.PropertyBinding.Resolve(Widget, Description.WidgetProperty.ToString())
+		: Transition.PropertyBinding.ResolveMaterial(Widget, Description.MaterialParameter);
+	if (!bResolved) return;
 	if (!WidgetTransition::NormalizeValue(Description.ToValue, Transition.PropertyBinding.ChannelCount, Transition.ToValue))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Widget Transition: target value type is incompatible with '%s'."), *Description.WidgetProperty.ToString());
@@ -272,8 +336,28 @@ void UWidgetTransitionFunctionLibrary::StartWidgetTransition(const UObject* Worl
 FWidgetTransition UWidgetTransitionFunctionLibrary::CreateFloatWidgetTransition(float ToValue, float Delay, float Time) { FWidgetTransition Transition; Transition.ToValue = WidgetTransition::MakeValue(ToValue); Transition.Delay = FMath::Max(0.0f, Delay); Transition.Time = FMath::Max(0.0f, Time); return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::CreateVectorWidgetTransition(FVector2D ToValue, float Delay, float Time) { FWidgetTransition Transition; Transition.ToValue = WidgetTransition::MakeValue(ToValue); Transition.Delay = FMath::Max(0.0f, Delay); Transition.Time = FMath::Max(0.0f, Time); return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::CreateColorWidgetTransition(FLinearColor ToValue, float Delay, float Time) { FWidgetTransition Transition; Transition.ToValue = WidgetTransition::MakeValue(ToValue); Transition.Delay = FMath::Max(0.0f, Delay); Transition.Time = FMath::Max(0.0f, Time); return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::Bind(FWidgetTransition Transition, UWidget* Widget, const FString& WidgetProperty) { Transition.Widget = Widget; Transition.WidgetProperty = FName(*WidgetProperty); return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::FromFloat(FWidgetTransition Transition, float FromValue) { Transition.FromValue = WidgetTransition::MakeValue(FromValue); Transition.bUseFrom = true; return Transition; }
+FWidgetTransition UWidgetTransitionFunctionLibrary::Bind(FWidgetTransition Transition, UWidget* Widget, FName WidgetProperty)
+{
+	Transition.Widget = Widget;
+	Transition.BindingKind = EWidgetTransitionBindingKind::Property;
+	Transition.MaterialParameter = NAME_None;
+	Transition.WidgetProperty = WidgetProperty;
+	return Transition;
+}
+FWidgetTransition UWidgetTransitionFunctionLibrary::BindMaterialParameter(FWidgetTransition Transition, UWidget* Widget, FName ParameterName)
+{
+	Transition.Widget = Widget;
+	Transition.BindingKind = EWidgetTransitionBindingKind::Material;
+	Transition.MaterialParameter = ParameterName;
+	Transition.WidgetProperty = FName(*FString::Printf(TEXT("Material.%s"), *ParameterName.ToString()));
+	return Transition;
+}
+FWidgetTransition UWidgetTransitionFunctionLibrary::FromFloat(FWidgetTransition Transition, float FromValue)
+{
+	Transition.FromValue = WidgetTransition::MakeValue(FromValue); 
+	Transition.bUseFrom = true; 
+	return Transition;
+}
 FWidgetTransition UWidgetTransitionFunctionLibrary::FromVector(FWidgetTransition Transition, FVector2D FromValue) { Transition.FromValue = WidgetTransition::MakeValue(FromValue); Transition.bUseFrom = true; return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::FromColor(FWidgetTransition Transition, FLinearColor FromValue) { Transition.FromValue = WidgetTransition::MakeValue(FromValue); Transition.bUseFrom = true; return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::Delay(FWidgetTransition Transition, float Delay, bool bApplyValueBeforeDelay) { Transition.Delay = FMath::Max(0.0f, Delay); Transition.bApplyValueBeforeDelay = bApplyValueBeforeDelay; return Transition; }
