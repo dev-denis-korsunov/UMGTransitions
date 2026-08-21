@@ -26,9 +26,8 @@ bool FWidgetTransitionStorageLayoutTest::RunTest(const FString&)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionEasingTest, "ElasticUMG.WidgetTransition.Runtime.Easing.Endpoints", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionEasingTest::RunTest(const FString&)
 {
-	const FWidgetTransitionEasingValue Easing;
-	TestEqual(TEXT("Cubic Bezier starts at zero"), FWidgetTransitionEasing::EvaluateCubicBezier(Easing.ControlPoint1, Easing.ControlPoint2, 0.0f), 0.0f);
-	TestEqual(TEXT("Cubic Bezier ends at one"), FWidgetTransitionEasing::EvaluateCubicBezier(Easing.ControlPoint1, Easing.ControlPoint2, 1.0f), 1.0f);
+	const FCurveTableRowHandle Easing;
+	TestTrue(TEXT("Default easing handle is null and selects linear interpolation"), Easing.IsNull());
 	return true;
 }
 
@@ -37,10 +36,10 @@ bool FWidgetTransitionBuilderTest::RunTest(const FString&)
 {
 	UImage* Widget = NewObject<UImage>(GetTransientPackage());
 	FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateFloatWidgetTransition(0.8f, 0.4f, 0.25f);
-	Transition = UWidgetTransitionFunctionLibrary::WithVectorFrom(MoveTemp(Transition), FVector2D(0.2, 0.4));
-	Transition = UWidgetTransitionFunctionLibrary::WithBinding(MoveTemp(Transition), Widget, TEXT("RenderTransform.Scale"));
-	Transition = UWidgetTransitionFunctionLibrary::WithRepeat(MoveTemp(Transition), 2, true);
-	Transition = UWidgetTransitionFunctionLibrary::WithSpring(MoveTemp(Transition), 0.8f, 0.25f);
+	Transition = UWidgetTransitionFunctionLibrary::FromVector(MoveTemp(Transition), FVector2D(0.2, 0.4));
+	Transition = UWidgetTransitionFunctionLibrary::Bind(MoveTemp(Transition), Widget, TEXT("RenderTransform.Scale"));
+	Transition = UWidgetTransitionFunctionLibrary::Repeat(MoveTemp(Transition), 2, true);
+	Transition = UWidgetTransitionFunctionLibrary::Spring(MoveTemp(Transition), 0.8f, 0.25f);
 	TestEqual(TEXT("Target retains semantic Float type"), Transition.ToValue.Type, EWidgetTransitionValueType::Float);
 	TestEqual(TEXT("From retains independent Vector2D type"), Transition.FromValue.Type, EWidgetTransitionValueType::Vector2D);
 	TestTrue(TEXT("From modifier is enabled"), Transition.bUseFrom);
@@ -90,7 +89,7 @@ bool FWidgetTransitionMetadataTest::RunTest(const FString&)
 		TestNotNull(*Name.ToString(), Function);
 		if (Function) TestFalse(*Name.ToString(), Function->HasMetaData(TEXT("BlueprintInternalUseOnly")));
 	}
-	const UFunction* Binding = UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, WithBinding));
+	const UFunction* Binding = UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, Bind));
 	TestTrue(TEXT("Binding function opts into the custom property pin"), Binding && Binding->HasMetaData(TEXT("ElasticUMGTransitionBinding")));
 	return true;
 }

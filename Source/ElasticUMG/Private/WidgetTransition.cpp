@@ -115,7 +115,7 @@ namespace WidgetTransition
 			}
 			bool bEnd = !It->bSpring && (It->Time <= 0.0f || It->CurrentTime >= It->Delay + It->Time);
 			const float Alpha = It->Time <= 0.0f ? 1.0f : FMath::Clamp((It->CurrentTime - It->Delay) / It->Time, 0.0f, 1.0f);
-			const float EasedAlpha = FWidgetTransitionEasing::EvaluateCubicBezier(It->Easing.ControlPoint1, It->Easing.ControlPoint2, Alpha);
+			const float EasedAlpha = It->Easing.IsNull() ? Alpha : It->Easing.Eval(Alpha, TEXT("Widget Transition"));
 			FVector4f Value = FMath::Lerp(It->FromValue, It->ToValue, EasedAlpha);
 			if (It->bSpring && It->SpringState.IsValid())
 			{
@@ -272,19 +272,19 @@ void UWidgetTransitionFunctionLibrary::StartWidgetTransition(const UObject* Worl
 FWidgetTransition UWidgetTransitionFunctionLibrary::CreateFloatWidgetTransition(float ToValue, float Delay, float Time) { FWidgetTransition Transition; Transition.ToValue = WidgetTransition::MakeValue(ToValue); Transition.Delay = FMath::Max(0.0f, Delay); Transition.Time = FMath::Max(0.0f, Time); return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::CreateVectorWidgetTransition(FVector2D ToValue, float Delay, float Time) { FWidgetTransition Transition; Transition.ToValue = WidgetTransition::MakeValue(ToValue); Transition.Delay = FMath::Max(0.0f, Delay); Transition.Time = FMath::Max(0.0f, Time); return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::CreateColorWidgetTransition(FLinearColor ToValue, float Delay, float Time) { FWidgetTransition Transition; Transition.ToValue = WidgetTransition::MakeValue(ToValue); Transition.Delay = FMath::Max(0.0f, Delay); Transition.Time = FMath::Max(0.0f, Time); return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::WithBinding(FWidgetTransition Transition, UWidget* Widget, const FString& WidgetProperty) { Transition.Widget = Widget; Transition.WidgetProperty = FName(*WidgetProperty); return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::WithFloatFrom(FWidgetTransition Transition, float FromValue) { Transition.FromValue = WidgetTransition::MakeValue(FromValue); Transition.bUseFrom = true; return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::WithVectorFrom(FWidgetTransition Transition, FVector2D FromValue) { Transition.FromValue = WidgetTransition::MakeValue(FromValue); Transition.bUseFrom = true; return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::WithColorFrom(FWidgetTransition Transition, FLinearColor FromValue) { Transition.FromValue = WidgetTransition::MakeValue(FromValue); Transition.bUseFrom = true; return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::WithDelay(FWidgetTransition Transition, float Delay, bool bApplyValueBeforeDelay) { Transition.Delay = FMath::Max(0.0f, Delay); Transition.bApplyValueBeforeDelay = bApplyValueBeforeDelay; return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::WithEasing(FWidgetTransition Transition, FWidgetTransitionEasingValue Easing) { Transition.Easing = MoveTemp(Easing); Transition.bUseSpring = false; return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::WithRepeat(FWidgetTransition Transition, int32 RepeatCount, bool bYoYo) { Transition.RepeatCount = FMath::Max(-1, RepeatCount); Transition.bYoYo = bYoYo; return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::WithSpring(FWidgetTransition Transition, float SpringSpeed, float SpringBounce) { Transition.bUseSpring = true; Transition.SpringSpeed = FMath::Clamp(SpringSpeed, 0.0f, 1.0f); Transition.SpringBounce = FMath::Clamp(SpringBounce, 0.0f, 1.0f); return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::WithRemoveFromParent(FWidgetTransition Transition, bool bRemoveFromParent) { Transition.bRemoveFromParent = bRemoveFromParent; return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::WithEvents(FWidgetTransition Transition, FOnWidgetTransitionEvent OnStarted, FOnWidgetTransitionEvent OnFinished) { Transition.Events.OnStarted = MoveTemp(OnStarted); Transition.Events.OnFinished = MoveTemp(OnFinished); return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::WithOnStart(FWidgetTransition Transition, FOnWidgetTransitionEvent OnStarted) { Transition.Events.OnStarted = MoveTemp(OnStarted); return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::WithOnFinish(FWidgetTransition Transition, FOnWidgetTransitionEvent OnFinished) { Transition.Events.OnFinished = MoveTemp(OnFinished); return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::WithUpdate(FWidgetTransition Transition, FOnWidgetTransitionUpdate OnUpdate) { Transition.OnUpdate = MoveTemp(OnUpdate); return Transition; }
+FWidgetTransition UWidgetTransitionFunctionLibrary::Bind(FWidgetTransition Transition, UWidget* Widget, const FString& WidgetProperty) { Transition.Widget = Widget; Transition.WidgetProperty = FName(*WidgetProperty); return Transition; }
+FWidgetTransition UWidgetTransitionFunctionLibrary::FromFloat(FWidgetTransition Transition, float FromValue) { Transition.FromValue = WidgetTransition::MakeValue(FromValue); Transition.bUseFrom = true; return Transition; }
+FWidgetTransition UWidgetTransitionFunctionLibrary::FromVector(FWidgetTransition Transition, FVector2D FromValue) { Transition.FromValue = WidgetTransition::MakeValue(FromValue); Transition.bUseFrom = true; return Transition; }
+FWidgetTransition UWidgetTransitionFunctionLibrary::FromColor(FWidgetTransition Transition, FLinearColor FromValue) { Transition.FromValue = WidgetTransition::MakeValue(FromValue); Transition.bUseFrom = true; return Transition; }
+FWidgetTransition UWidgetTransitionFunctionLibrary::Delay(FWidgetTransition Transition, float Delay, bool bApplyValueBeforeDelay) { Transition.Delay = FMath::Max(0.0f, Delay); Transition.bApplyValueBeforeDelay = bApplyValueBeforeDelay; return Transition; }
+FWidgetTransition UWidgetTransitionFunctionLibrary::Easing(FWidgetTransition Transition, FCurveTableRowHandle Easing) { Transition.Easing = MoveTemp(Easing); Transition.bUseSpring = false; return Transition; }
+FWidgetTransition UWidgetTransitionFunctionLibrary::Repeat(FWidgetTransition Transition, int32 RepeatCount, bool bYoYo) { Transition.RepeatCount = FMath::Max(-1, RepeatCount); Transition.bYoYo = bYoYo; return Transition; }
+FWidgetTransition UWidgetTransitionFunctionLibrary::Spring(FWidgetTransition Transition, float SpringSpeed, float SpringBounce) { Transition.bUseSpring = true; Transition.SpringSpeed = FMath::Clamp(SpringSpeed, 0.0f, 1.0f); Transition.SpringBounce = FMath::Clamp(SpringBounce, 0.0f, 1.0f); return Transition; }
+FWidgetTransition UWidgetTransitionFunctionLibrary::RemoveFromParent(FWidgetTransition Transition, bool bRemoveFromParent) { Transition.bRemoveFromParent = bRemoveFromParent; return Transition; }
+FWidgetTransition UWidgetTransitionFunctionLibrary::Events(FWidgetTransition Transition, FOnWidgetTransitionEvent OnStarted, FOnWidgetTransitionEvent OnFinished) { Transition.Events.OnStarted = MoveTemp(OnStarted); Transition.Events.OnFinished = MoveTemp(OnFinished); return Transition; }
+FWidgetTransition UWidgetTransitionFunctionLibrary::OnStart(FWidgetTransition Transition, FOnWidgetTransitionEvent OnStarted) { Transition.Events.OnStarted = MoveTemp(OnStarted); return Transition; }
+FWidgetTransition UWidgetTransitionFunctionLibrary::OnFinish(FWidgetTransition Transition, FOnWidgetTransitionEvent OnFinished) { Transition.Events.OnFinished = MoveTemp(OnFinished); return Transition; }
+FWidgetTransition UWidgetTransitionFunctionLibrary::OnUpdate(FWidgetTransition Transition, FOnWidgetTransitionUpdate OnUpdate) { Transition.OnUpdate = MoveTemp(OnUpdate); return Transition; }
 
 void UWidgetTransitionFunctionLibrary::ClearAllWidgetTransitions(const UObject* WorldContextObject, UWidget* Widget)
 {

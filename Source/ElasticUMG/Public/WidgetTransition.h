@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Binding/DynamicPropertyPath.h"
+#include "Engine/CurveTable.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "Misc/TVariant.h"
 #include "Spring.h"
@@ -89,7 +90,7 @@ struct ELASTICUMG_API FWidgetTransition
 	FName WidgetProperty;
 	FWidgetTransitionValue FromValue;
 	FWidgetTransitionValue ToValue;
-	FWidgetTransitionEasingValue Easing;
+	FCurveTableRowHandle Easing;
 	FWidgetTransitionEvents Events;
 	FOnWidgetTransitionUpdate OnUpdate;
 	float Time = 0.2f;
@@ -112,7 +113,7 @@ struct FActiveWidgetTransition
 	FWidgetTransitionPropertyBinding PropertyBinding;
 	FVector4f FromValue = FVector4f::Zero();
 	FVector4f ToValue = FVector4f::Zero();
-	FWidgetTransitionEasingValue Easing;
+	FCurveTableRowHandle Easing;
 	float Time = 0.2f;
 	float Delay = 0.0f;
 	float CurrentTime = 0.0f;
@@ -156,32 +157,32 @@ public:
 
 	/** Sets the target widget and its transitionable property path. */
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Bind Widget Transition", ElasticUMGTransitionBinding = "true"))
-	static FWidgetTransition WithBinding(FWidgetTransition Transition, UWidget* Widget, UPARAM(meta = (ElasticUMGRole = "WidgetProperty")) const FString& WidgetProperty);
+	static FWidgetTransition Bind(FWidgetTransition Transition, UWidget* Widget, UPARAM(meta = (ElasticUMGRole = "WidgetProperty")) const FString& WidgetProperty);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "From Float"))
-	static FWidgetTransition WithFloatFrom(FWidgetTransition Transition, float FromValue);
+	static FWidgetTransition FromFloat(FWidgetTransition Transition, float FromValue);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "From Vector2D"))
-	static FWidgetTransition WithVectorFrom(FWidgetTransition Transition, FVector2D FromValue);
+	static FWidgetTransition FromVector(FWidgetTransition Transition, FVector2D FromValue);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "From Color"))
-	static FWidgetTransition WithColorFrom(FWidgetTransition Transition, FLinearColor FromValue);
+	static FWidgetTransition FromColor(FWidgetTransition Transition, FLinearColor FromValue);
 
 	UFUNCTION(BlueprintPure, Category = "Widget Transition")
-	static FWidgetTransition WithDelay(FWidgetTransition Transition, float Delay, bool bApplyValueBeforeDelay = true);
+	static FWidgetTransition Delay(FWidgetTransition Transition, float Delay, bool bApplyValueBeforeDelay = true);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition")
-	static FWidgetTransition WithEasing(FWidgetTransition Transition, FWidgetTransitionEasingValue Easing);
+	static FWidgetTransition Easing(FWidgetTransition Transition, FCurveTableRowHandle Easing);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition")
-	static FWidgetTransition WithRepeat(FWidgetTransition Transition, int32 RepeatCount, bool bYoYo = false);
+	static FWidgetTransition Repeat(FWidgetTransition Transition, int32 RepeatCount, bool bYoYo = false);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition")
-	static FWidgetTransition WithSpring(FWidgetTransition Transition, float SpringSpeed = 0.65f, float SpringBounce = 0.45f);
+	static FWidgetTransition Spring(FWidgetTransition Transition, float SpringSpeed = 0.65f, float SpringBounce = 0.45f);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition")
-	static FWidgetTransition WithRemoveFromParent(FWidgetTransition Transition, bool bRemoveFromParent = true);
+	static FWidgetTransition RemoveFromParent(FWidgetTransition Transition, bool bRemoveFromParent = true);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition")
-	static FWidgetTransition WithEvents(FWidgetTransition Transition, FOnWidgetTransitionEvent OnStarted, FOnWidgetTransitionEvent OnFinished);
+	static FWidgetTransition Events(FWidgetTransition Transition, FOnWidgetTransitionEvent OnStarted, FOnWidgetTransitionEvent OnFinished);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "On Start"))
-	static FWidgetTransition WithOnStart(FWidgetTransition Transition, FOnWidgetTransitionEvent OnStarted);
+	static FWidgetTransition OnStart(FWidgetTransition Transition, FOnWidgetTransitionEvent OnStarted);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "On Finish"))
-	static FWidgetTransition WithOnFinish(FWidgetTransition Transition, FOnWidgetTransitionEvent OnFinished);
+	static FWidgetTransition OnFinish(FWidgetTransition Transition, FOnWidgetTransitionEvent OnFinished);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition")
-	static FWidgetTransition WithUpdate(FWidgetTransition Transition, FOnWidgetTransitionUpdate OnUpdate);
+	static FWidgetTransition OnUpdate(FWidgetTransition Transition, FOnWidgetTransitionUpdate OnUpdate);
 
 	/** Converts a transition description to compact runtime data and starts it. */
 	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (DisplayName = "Add Widget Transition", WorldContext = "WorldContextObject"))
