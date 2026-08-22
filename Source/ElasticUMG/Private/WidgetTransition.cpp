@@ -388,5 +388,37 @@ void UWidgetTransitionFunctionLibrary::ClearAllWidgetTransitions(const UObject* 
 	if (IsValid(Widget) && Subsystem) WidgetTransition::ClearTransitionsForWidget(*Subsystem, Widget);
 }
 
+UWidgetTransitionAsyncAction* UWidgetTransitionAsyncAction::AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition)
+{
+	UWidgetTransitionAsyncAction* Action = NewObject<UWidgetTransitionAsyncAction>();
+	Action->PendingTransition = MoveTemp(Transition);
+	Action->WorldContextObject = WorldContextObject;
+	Action->RegisterWithGameInstance(WorldContextObject);
+	return Action;
+}
+
+void UWidgetTransitionAsyncAction::Activate()
+{
+	const UObject* Context = WorldContextObject.Get();
+	if (!IsValid(Context) || !PendingTransition.Widget.IsValid())
+	{
+		Finished.Broadcast(PendingTransition.Widget.Get());
+		SetReadyToDestroy();
+		return;
+	}
+	PendingTransition.Events.OnStarted.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleStarted);
+	PendingTransition.Events.OnFinished.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleFinished);
+	PendingTransition.OnUpdate.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleUpdated);
+	UWidgetTransitionFunctionLibrary::StartWidgetTransition(Context, MoveTemp(PendingTransition));
+}
+
+void UWidgetTransitionAsyncAction::HandleStarted(UWidget* Widget) { Started.Broadcast(Widget); }
+void UWidgetTransitionAsyncAction::HandleUpdated(UWidget* Widget, float NormalizedProgress, float EasedProgress) { Updated.Broadcast(Widget, NormalizedProgress, EasedProgress); }
+void UWidgetTransitionAsyncAction::HandleFinished(UWidget* Widget)
+{
+	Finished.Broadcast(Widget);
+	SetReadyToDestroy();
+}
+
 ETickableTickType UWidgetTransitionSubsystem::GetTickableTickType() const { return IsTemplate() ? ETickableTickType::Never : ETickableTickType::Always; }
 void UWidgetTransitionSubsystem::Tick(float DeltaTime) { Super::Tick(DeltaTime); WidgetTransition::TickTransitions(*this, DeltaTime); }

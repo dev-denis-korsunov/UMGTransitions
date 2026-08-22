@@ -4,6 +4,7 @@
 #include "Binding/DynamicPropertyPath.h"
 #include "Engine/CurveTable.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
+#include "Kismet/BlueprintAsyncActionBase.h"
 #include "Misc/TVariant.h"
 #include "Spring.h"
 #include "Subsystems/WorldSubsystem.h"
@@ -16,6 +17,8 @@ class UMaterialInstanceDynamic;
 
 DECLARE_DYNAMIC_DELEGATE_ThreeParams(FOnWidgetTransitionUpdate, UWidget*, Widget, float, NormalizedProgress, float, EasedProgress);
 DECLARE_DYNAMIC_DELEGATE_OneParam(FOnWidgetTransitionEvent, UWidget*, Widget);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWidgetTransitionAsyncEvent, UWidget*, Widget);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnWidgetTransitionAsyncUpdate, UWidget*, Widget, float, NormalizedProgress, float, EasedProgress);
 
 /** Rare lifecycle callbacks stored by the transition subsystem rather than each active transition. */
 struct FWidgetTransitionEvents
@@ -212,6 +215,37 @@ private:
 	static FWidgetTransition FromVector(FWidgetTransition Transition, FVector2D FromValue);
 	UFUNCTION(BlueprintPure, meta = (BlueprintInternalUseOnly = "true"))
 	static FWidgetTransition FromColor(FWidgetTransition Transition, FLinearColor FromValue);
+};
+
+/** Blueprint async action which exposes transition lifecycle callbacks as execution outputs. */
+UCLASS()
+class ELASTICUMG_API UWidgetTransitionAsyncAction final : public UBlueprintAsyncActionBase
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(BlueprintAssignable)
+	FOnWidgetTransitionAsyncEvent Started;
+	UPROPERTY(BlueprintAssignable)
+	FOnWidgetTransitionAsyncUpdate Updated;
+	UPROPERTY(BlueprintAssignable)
+	FOnWidgetTransitionAsyncEvent Finished;
+
+	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Add Widget Transition Async"), Category = "Widget Transition")
+	static UWidgetTransitionAsyncAction* AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition);
+
+	virtual void Activate() override;
+
+private:
+	UFUNCTION()
+	void HandleStarted(UWidget* Widget);
+	UFUNCTION()
+	void HandleUpdated(UWidget* Widget, float NormalizedProgress, float EasedProgress);
+	UFUNCTION()
+	void HandleFinished(UWidget* Widget);
+
+	FWidgetTransition PendingTransition;
+	TWeakObjectPtr<const UObject> WorldContextObject;
 };
 
 UCLASS()
