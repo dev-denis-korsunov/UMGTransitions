@@ -45,12 +45,12 @@ bool FWidgetTransitionBuilderTest::RunTest(const FString&)
 	Transition.Time = 0.25f;
 	Transition = UWidgetTransitionFunctionLibrary::Bind(MoveTemp(Transition), Widget, TEXT("RenderTransform.Scale"));
 	Transition = UWidgetTransitionFunctionLibrary::Repeat(MoveTemp(Transition), 2, true);
-	Transition = UWidgetTransitionFunctionLibrary::Spring(MoveTemp(Transition), 0.8f, 0.25f);
+	Transition = UWidgetTransitionFunctionLibrary::Spring(MoveTemp(Transition), 0.8f, 0.25f, true);
 	TestEqual(TEXT("Target retains semantic Float type"), Transition.ToValue.Type, EWidgetTransitionValueType::Float);
 	TestEqual(TEXT("From retains independent Vector2D type"), Transition.FromValue.Type, EWidgetTransitionValueType::Vector2D);
 	TestTrue(TEXT("From modifier is enabled"), Transition.bUseFrom);
 	TestTrue(TEXT("Binding is retained"), Transition.Widget == Widget && Transition.WidgetProperty == TEXT("RenderTransform.Scale"));
-	TestTrue(TEXT("Repeat and spring modifiers are retained"), Transition.RepeatCount == 2 && Transition.bYoYo && Transition.bUseSpring);
+	TestTrue(TEXT("Repeat and spring modifiers are retained"), Transition.RepeatCount == 2 && Transition.bYoYo && Transition.bUseSpring && Transition.bFitSpringToTime);
 	Transition = UWidgetTransitionFunctionLibrary::BindMaterialParameter(MoveTemp(Transition), Widget, TEXT("Progress"));
 	TestTrue(TEXT("Material binding retains its virtual channel"), Transition.BindingKind == EWidgetTransitionBindingKind::Material && Transition.MaterialParameter == TEXT("Progress"));
 	return true;

@@ -122,6 +122,8 @@ struct ELASTICUMG_API FWidgetTransition
 	bool bYoYo = false;
 	bool bRemoveFromParent = false;
 	bool bUseSpring = false;
+	/** Derives spring frequency from Time so the simulation settles within its requested duration. */
+	bool bFitSpringToTime = false;
 };
 
 	/** Runtime transition with normalized 1, 2, or 4 channel data. */
@@ -150,6 +152,7 @@ struct FActiveWidgetTransition
 	uint16 bSpring : 1 = false;
 	uint16 bYoYo : 1 = false;
 	uint16 bStarted : 1 = false;
+	uint16 bFitSpringToTime : 1 = false;
 	/** Stable key for rare lifecycle callbacks in UWidgetTransitionSubsystem::EventCallbacks. */
 	uint64 TransitionId = 0;
 	TUniquePtr<FWidgetTransitionSpringState> SpringState;
@@ -176,7 +179,7 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Widget Transition")
 	static FWidgetTransition Repeat(FWidgetTransition Transition, int32 RepeatCount, bool bYoYo = false);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition")
-	static FWidgetTransition Spring(FWidgetTransition Transition, float SpringSpeed = 0.65f, float SpringBounce = 0.45f);
+	static FWidgetTransition Spring(FWidgetTransition Transition, float SpringSpeed = 0.65f, float SpringBounce = 0.45f, bool bFitSimulationToTime = false);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition")
 	static FWidgetTransition RemoveFromParent(FWidgetTransition Transition, bool bRemoveFromParent = true);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition")

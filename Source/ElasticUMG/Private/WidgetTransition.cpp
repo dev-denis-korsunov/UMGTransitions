@@ -72,9 +72,13 @@ namespace WidgetTransition
 	static void StartSprings(FActiveWidgetTransition& Transition)
 	{
 		if (!Transition.bSpring || !IsSpringCompatible(Transition.PropertyBinding.ChannelCount)) return;
-		const float Frequency = 4.0f * FMath::Pow(6.0f, FMath::Clamp(Transition.SpringSpeed, 0.0f, 1.0f));
-		const float SpringFactor = Frequency * Frequency;
 		const float DampingRatio = FMath::Lerp(1.0f, 0.15f, FMath::Clamp(Transition.SpringBounce, 0.0f, 1.0f));
+		// e^(-zeta * omega * Time) <= 0.001: choose omega so the envelope
+		// reaches the same relative tolerance used by FSpring* completion tests.
+		const float Frequency = Transition.bFitSpringToTime && Transition.Time > UE_SMALL_NUMBER
+			? (-FMath::Loge(0.001f) / (DampingRatio * Transition.Time)) * FMath::Lerp(1.0f, 3.0f, FMath::Clamp(Transition.SpringSpeed, 0.0f, 1.0f))
+			: 4.0f * FMath::Pow(6.0f, FMath::Clamp(Transition.SpringSpeed, 0.0f, 1.0f));
+		const float SpringFactor = Frequency * Frequency;
 		const float DampingFactor = 2.0f * DampingRatio * Frequency;
 		Transition.SpringState = MakeUnique<FWidgetTransitionSpringState>();
 		if (Transition.PropertyBinding.ChannelCount == 1)
@@ -120,7 +124,8 @@ namespace WidgetTransition
 			const float Alpha = It->Time <= 0.0f ? 1.0f : FMath::Clamp((It->CurrentTime - It->Delay) / It->Time, 0.0f, 1.0f);
 			const float EasedAlpha = It->Easing.IsNull() ? Alpha : It->Easing.Eval(Alpha, TEXT("Widget Transition"));
 			FVector4f Value = FMath::Lerp(It->FromValue, It->ToValue, EasedAlpha);
-			if (It->bSpring && It->SpringState.IsValid())
+			const bool bReachedSpringDeadline = It->bSpring && It->bFitSpringToTime && It->CurrentTime >= It->Delay + It->Time;
+			if (It->bSpring && It->SpringState.IsValid() && !bReachedSpringDeadline)
 			{
 				if (FSpringFloat* Spring = It->SpringState->Spring.TryGet<FSpringFloat>())
 				{
@@ -136,6 +141,11 @@ namespace WidgetTransition
 					Value.Y = SpringValue.Y;
 					bEnd = VectorSpring->IsCompleted();
 				}
+			}
+			if (bReachedSpringDeadline)
+			{
+				Value = It->ToValue;
+				bEnd = true;
 			}
 			It->PropertyBinding.Apply(It->Widget.Get(), Value);
 			It->OnUpdate.ExecuteIfBound(It->Widget.Get(), Alpha, EasedAlpha);
@@ -295,6 +305,7 @@ void UWidgetTransitionFunctionLibrary::StartWidgetTransition(const UObject* Worl
 	Transition.bYoYo = Description.bYoYo;
 	Transition.bRemoveFromParent = Description.bRemoveFromParent;
 	Transition.bSpring = Description.bUseSpring;
+	Transition.bFitSpringToTime = Description.bFitSpringToTime;
 	Transition.SpringSpeed = Description.SpringSpeed;
 	Transition.SpringBounce = Description.SpringBounce;
 	Transition.OnUpdate = MoveTemp(Description.OnUpdate);
@@ -363,7 +374,7 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::FromColor(FWidgetTransition 
 FWidgetTransition UWidgetTransitionFunctionLibrary::Delay(FWidgetTransition Transition, float Delay, bool bApplyValueBeforeDelay) { Transition.Delay = FMath::Max(0.0f, Delay); Transition.bApplyValueBeforeDelay = bApplyValueBeforeDelay; return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::Easing(FWidgetTransition Transition, FCurveTableRowHandle Easing) { Transition.Easing = MoveTemp(Easing); Transition.bUseSpring = false; return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::Repeat(FWidgetTransition Transition, int32 RepeatCount, bool bYoYo) { Transition.RepeatCount = FMath::Max(-1, RepeatCount); Transition.bYoYo = bYoYo; return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::Spring(FWidgetTransition Transition, float SpringSpeed, float SpringBounce) { Transition.bUseSpring = true; Transition.SpringSpeed = FMath::Clamp(SpringSpeed, 0.0f, 1.0f); Transition.SpringBounce = FMath::Clamp(SpringBounce, 0.0f, 1.0f); return Transition; }
+FWidgetTransition UWidgetTransitionFunctionLibrary::Spring(FWidgetTransition Transition, float SpringSpeed, float SpringBounce, bool bFitSimulationToTime) { Transition.bUseSpring = true; Transition.SpringSpeed = FMath::Clamp(SpringSpeed, 0.0f, 1.0f); Transition.SpringBounce = FMath::Clamp(SpringBounce, 0.0f, 1.0f); Transition.bFitSpringToTime = bFitSimulationToTime; return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::RemoveFromParent(FWidgetTransition Transition, bool bRemoveFromParent) { Transition.bRemoveFromParent = bRemoveFromParent; return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::Events(FWidgetTransition Transition, FOnWidgetTransitionEvent OnStarted, FOnWidgetTransitionEvent OnFinished) { Transition.Events.OnStarted = MoveTemp(OnStarted); Transition.Events.OnFinished = MoveTemp(OnFinished); return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::OnStart(FWidgetTransition Transition, FOnWidgetTransitionEvent OnStarted) { Transition.Events.OnStarted = MoveTemp(OnStarted); return Transition; }
