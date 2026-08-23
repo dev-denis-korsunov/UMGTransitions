@@ -390,7 +390,6 @@ float UWidgetTransitionFunctionLibrary::AsFloat(FWidgetTransitionValue Value) { 
 FVector2D UWidgetTransitionFunctionLibrary::AsVector2D(FWidgetTransitionValue Value) { return FVector2D(Value.Channels.X, Value.Channels.Y); }
 FLinearColor UWidgetTransitionFunctionLibrary::AsColor(FWidgetTransitionValue Value) { return FLinearColor(Value.Channels.X, Value.Channels.Y, Value.Channels.Z, Value.Channels.W); }
 
-FWidgetTransition UWidgetTransitionFunctionLibrary::Delay(FWidgetTransition Transition, float Delay, bool bApplyValueBeforeDelay) { Transition.Delay = FMath::Max(0.0f, Delay); Transition.bApplyValueBeforeDelay = bApplyValueBeforeDelay; return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::Easing(FWidgetTransition Transition, UCurveTable* CurveTable, FName RowName)
 {
 	Transition.Easing.CurveTable = CurveTable;
@@ -402,10 +401,6 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::Repeat(FWidgetTransition Tra
 FWidgetTransition UWidgetTransitionFunctionLibrary::YoYo(FWidgetTransition Transition, bool bYoYo) { Transition.bYoYo = bYoYo; return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::Spring(FWidgetTransition Transition, float SpringSpeed, float SpringBounce, bool bFitSimulationToTime) { Transition.bUseSpring = true; Transition.SpringSpeed = FMath::Clamp(SpringSpeed, 0.0f, 1.0f); Transition.SpringBounce = FMath::Clamp(SpringBounce, 0.0f, 1.0f); Transition.bFitSpringToTime = bFitSimulationToTime; return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::RemoveFromParent(FWidgetTransition Transition, bool bRemoveFromParent) { Transition.bRemoveFromParent = bRemoveFromParent; return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::Events(FWidgetTransition Transition, FOnWidgetTransitionEvent OnStarted, FOnWidgetTransitionEvent OnFinished) { Transition.Events.OnStarted = MoveTemp(OnStarted); Transition.Events.OnFinished = MoveTemp(OnFinished); return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::OnStart(FWidgetTransition Transition, FOnWidgetTransitionEvent OnStarted) { Transition.Events.OnStarted = MoveTemp(OnStarted); return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::OnFinish(FWidgetTransition Transition, FOnWidgetTransitionEvent OnFinished) { Transition.Events.OnFinished = MoveTemp(OnFinished); return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::OnUpdate(FWidgetTransition Transition, FOnWidgetTransitionUpdate OnUpdate) { Transition.OnUpdate = MoveTemp(OnUpdate); return Transition; }
 
 void UWidgetTransitionFunctionLibrary::ClearAllWidgetTransitions(const UObject* WorldContextObject, UWidget* Widget)
 {

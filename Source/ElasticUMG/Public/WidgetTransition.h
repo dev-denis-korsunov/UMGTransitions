@@ -184,8 +184,6 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (CPP_Default_bUseFrom = "true", ReturnDisplayName = "Transition"))
 	static FWidgetTransition From(FWidgetTransition Transition, bool bUseFrom, FWidgetTransitionValue FromValue);
 
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
-	static FWidgetTransition Delay(FWidgetTransition Transition, float Delay, bool bApplyValueBeforeDelay = true);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DataTablePin = "CurveTable", ReturnDisplayName = "Transition"))
 	static FWidgetTransition Easing(FWidgetTransition Transition, UCurveTable* CurveTable, FName RowName);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
@@ -196,15 +194,6 @@ public:
 	static FWidgetTransition Spring(FWidgetTransition Transition, float SpringSpeed = 0.65f, float SpringBounce = 0.45f, bool bFitSimulationToTime = false);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
 	static FWidgetTransition RemoveFromParent(FWidgetTransition Transition, bool bRemoveFromParent = true);
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
-	static FWidgetTransition Events(FWidgetTransition Transition, FOnWidgetTransitionEvent OnStarted, FOnWidgetTransitionEvent OnFinished);
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "On Start", ReturnDisplayName = "Transition"))
-	static FWidgetTransition OnStart(FWidgetTransition Transition, FOnWidgetTransitionEvent OnStarted);
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "On Finish", ReturnDisplayName = "Transition"))
-	static FWidgetTransition OnFinish(FWidgetTransition Transition, FOnWidgetTransitionEvent OnFinished);
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
-	static FWidgetTransition OnUpdate(FWidgetTransition Transition, FOnWidgetTransitionUpdate OnUpdate);
-
 	/** Makes a scalar transition endpoint. */
 	UFUNCTION(BlueprintPure, Category = "Widget Transition|Transition Value", meta = (DisplayName = "Make Float Transition Value", ReturnDisplayName = "Transition Value"))
 	static FWidgetTransitionValue MakeFloatTransitionValue(float Value);
