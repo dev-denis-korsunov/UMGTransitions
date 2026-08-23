@@ -5,7 +5,6 @@
 #include "Engine/CurveTable.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "Kismet/BlueprintAsyncActionBase.h"
-#include "Misc/TVariant.h"
 #include "Spring.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "WidgetTransitionSettings.h"
@@ -18,13 +17,17 @@ class UMaterialInstanceDynamic;
 DECLARE_DYNAMIC_DELEGATE_ThreeParams(FOnWidgetTransitionUpdate, UWidget*, Widget, float, NormalizedProgress, float, EasedProgress);
 DECLARE_DYNAMIC_DELEGATE_OneParam(FOnWidgetTransitionEvent, UWidget*, Widget);
 
-/** Rare lifecycle callbacks stored by the transition subsystem rather than each active transition. */
-struct FWidgetTransitionEvents
+/** Rare transition callbacks stored by the subsystem rather than each active transition. */
+struct FWidgetTransitionCallbacks
 {
 	FOnWidgetTransitionEvent OnStarted;
 	FOnWidgetTransitionEvent OnFinished;
+	FOnWidgetTransitionUpdate OnUpdated;
 
-	bool HasBoundEvents() const { return OnStarted.IsBound() || OnFinished.IsBound(); }
+	bool HasBoundCallbacks() const
+	{
+		return OnStarted.IsBound() || OnFinished.IsBound() || OnUpdated.IsBound();
+	}
 };
 
 UENUM(BlueprintType)
@@ -123,8 +126,6 @@ struct ELASTICUMG_API FWidgetTransition
 	FWidgetTransitionValue FromValue;
 	FWidgetTransitionValue ToValue;
 	FCurveTableRowHandle Easing;
-	FWidgetTransitionEvents Events;
-	FOnWidgetTransitionUpdate OnUpdate;
 	float Time = 0.2f;
 	float Delay = 0.0f;
 	float SpringSpeed = 0.65f;
@@ -162,12 +163,13 @@ struct FActiveWidgetTransition
 	uint16 bYoYo : 1 = false;
 	uint16 bStarted : 1 = false;
 	uint16 bFitSpringToTime : 1 = false;
+	/** Whether this transition has rare callbacks stored in the subsystem. */
+	uint16 bHasCallbacks : 1 = false;
 	/** Whether this transition writes its sampled value to a widget property. */
 	uint16 bBound : 1 = false;
-	/** Stable key for rare lifecycle callbacks in UWidgetTransitionSubsystem::EventCallbacks. */
+	/** Stable key for rare callbacks in UWidgetTransitionSubsystem::Callbacks. */
 	uint64 TransitionId = 0;
 	TUniquePtr<FWidgetTransitionSpringState> SpringState;
-	FOnWidgetTransitionUpdate OnUpdate;
 };
 
 UCLASS()
@@ -258,6 +260,7 @@ private:
 	FWidgetTransitionValue EventStartValue;
 	FWidgetTransitionValue EventTargetValue;
 	FWidgetTransitionPropertyBinding EventBinding;
+	FWidgetTransitionCallbacks Callbacks;
 	TWeakObjectPtr<const UObject> WorldContextObject;
 };
 
@@ -273,8 +276,8 @@ public:
 	virtual bool IsTickableInEditor() const override { return true; }
 
 	TSparseArray<FActiveWidgetTransition> Transitions;
-	/** Lifecycle callbacks for the small subset of transitions that bind Start or Finished. */
-	TMap<uint64, FWidgetTransitionEvents> EventCallbacks;
+	/** Callbacks for the small subset of transitions that bind lifecycle or update events. */
+	TMap<uint64, FWidgetTransitionCallbacks> Callbacks;
 	/** Monotonic key source; a sparse-array index cannot be used because indices are reused. */
 	uint64 NextTransitionId = 1;
 };

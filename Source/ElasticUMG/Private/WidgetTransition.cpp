@@ -93,7 +93,7 @@ namespace WidgetTransition
 		{
 			if (It->Widget == Widget)
 			{
-				Subsystem.EventCallbacks.Remove(It->TransitionId);
+				Subsystem.Callbacks.Remove(It->TransitionId);
 				It.RemoveCurrent();
 			}
 		}
@@ -139,7 +139,7 @@ namespace WidgetTransition
 		{
 			if (It->bBound && !It->Widget.IsValid())
 			{
-				Subsystem.EventCallbacks.Remove(It->TransitionId);
+				Subsystem.Callbacks.Remove(It->TransitionId);
 				It.RemoveCurrent();
 				continue;
 			}
@@ -151,9 +151,12 @@ namespace WidgetTransition
 			if (!It->bStarted)
 			{
 				It->bStarted = true;
-				if (const FWidgetTransitionEvents* Events = Subsystem.EventCallbacks.Find(It->TransitionId))
+				if (It->bHasCallbacks)
 				{
-					Events->OnStarted.ExecuteIfBound(It->Widget.Get());
+					if (const FWidgetTransitionCallbacks* Callbacks = Subsystem.Callbacks.Find(It->TransitionId))
+					{
+						Callbacks->OnStarted.ExecuteIfBound(It->Widget.Get());
+					}
 				}
 			}
 			bool bEnd = !It->bSpring && (It->Time <= 0.0f || It->CurrentTime >= It->Delay + It->Time);
@@ -176,18 +179,27 @@ namespace WidgetTransition
 			{
 				It->PropertyBinding.Apply(It->Widget.Get(), Value);
 			}
-			It->OnUpdate.ExecuteIfBound(It->Widget.Get(), Alpha, EasedAlpha);
+			if (It->bHasCallbacks)
+			{
+				if (const FWidgetTransitionCallbacks* Callbacks = Subsystem.Callbacks.Find(It->TransitionId))
+				{
+					Callbacks->OnUpdated.ExecuteIfBound(It->Widget.Get(), Alpha, EasedAlpha);
+				}
+			}
 			if (bEnd && !RestartTransition(*It))
 			{
-				if (const FWidgetTransitionEvents* Events = Subsystem.EventCallbacks.Find(It->TransitionId))
+				if (It->bHasCallbacks)
 				{
-					Events->OnFinished.ExecuteIfBound(It->Widget.Get());
+					if (const FWidgetTransitionCallbacks* Callbacks = Subsystem.Callbacks.Find(It->TransitionId))
+					{
+						Callbacks->OnFinished.ExecuteIfBound(It->Widget.Get());
+					}
 				}
 				if (It->bRemoveFromParent && It->Widget.IsValid())
 				{
 					It->Widget->RemoveFromParent();
 				}
-				Subsystem.EventCallbacks.Remove(It->TransitionId);
+				Subsystem.Callbacks.Remove(It->TransitionId);
 				It.RemoveCurrent();
 			}
 		}
@@ -405,7 +417,7 @@ bool FWidgetTransitionPropertyBinding::Read(UWidget* Widget, FVector4f& OutValue
 
 namespace WidgetTransition
 {
-	static void StartTransition(const UObject* WorldContextObject, FWidgetTransition Description)
+	static void StartTransition(const UObject* WorldContextObject, FWidgetTransition Description, FWidgetTransitionCallbacks Callbacks = {})
 	{
 		const UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
 		UWidgetTransitionSubsystem* Subsystem = World ? World->GetSubsystem<UWidgetTransitionSubsystem>() : nullptr;
@@ -428,7 +440,7 @@ namespace WidgetTransition
 		Transition.bBound = IsValid(TargetWidget) && !Description.WidgetProperty.IsNone();
 		Transition.SpringSpeed = Description.SpringSpeed;
 		Transition.SpringBounce = Description.SpringBounce;
-		Transition.OnUpdate = MoveTemp(Description.OnUpdate);
+		Transition.bHasCallbacks = Callbacks.HasBoundCallbacks();
 		if (Transition.bBound)
 		{
 			const bool bResolved = IsMaterialBinding(Description.WidgetProperty)
@@ -481,13 +493,13 @@ namespace WidgetTransition
 		{
 			if (It->Widget == TargetWidget && It->WidgetProperty == Description.WidgetProperty)
 			{
-				Subsystem->EventCallbacks.Remove(It->TransitionId);
+				Subsystem->Callbacks.Remove(It->TransitionId);
 				It.RemoveCurrent();
 			}
 		}
-		if (Description.Events.HasBoundEvents())
+		if (Transition.bHasCallbacks)
 		{
-			Subsystem->EventCallbacks.Add(Transition.TransitionId, MoveTemp(Description.Events));
+			Subsystem->Callbacks.Add(Transition.TransitionId, MoveTemp(Callbacks));
 		}
 		Subsystem->Transitions.Emplace(MoveTemp(Transition));
 	}
@@ -631,10 +643,10 @@ void UWidgetTransitionAsyncAction::Activate()
 		RefreshEventValue(Widget);
 		EventStartValue = EventValue;
 	}
-	PendingTransition.Events.OnStarted.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleStarted);
-	PendingTransition.Events.OnFinished.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleFinished);
-	PendingTransition.OnUpdate.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleUpdated);
-	UWidgetTransitionFunctionLibrary::AddWidgetTransition(Context, MoveTemp(PendingTransition));
+	Callbacks.OnStarted.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleStarted);
+	Callbacks.OnFinished.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleFinished);
+	Callbacks.OnUpdated.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleUpdated);
+	WidgetTransition::StartTransition(Context, MoveTemp(PendingTransition), MoveTemp(Callbacks));
 }
 
 void UWidgetTransitionAsyncAction::RefreshEventValue(UWidget* Widget)
