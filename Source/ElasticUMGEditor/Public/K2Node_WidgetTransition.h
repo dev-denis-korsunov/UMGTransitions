@@ -10,7 +10,7 @@ class FBlueprintActionDatabaseRegistrar;
 class FKismetCompilerContext;
 class UEdGraph;
 
-/** Creates a transition with a To Value pin reconstructed from Value Type. */
+/** Creates a transition, with optional explicit From and repeat settings. */
 UCLASS()
 class ELASTICUMGEDITOR_API UK2Node_WidgetTransition final : public UK2Node
 {
@@ -24,11 +24,18 @@ public:
 	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
 	virtual void ExpandNode(FKismetCompilerContext& CompilerContext, UEdGraph* SourceGraph) override;
 	virtual void PinDefaultValueChanged(UEdGraphPin* Pin) override;
+	virtual void ReallocatePinsDuringReconstruction(TArray<UEdGraphPin*>& OldPins) override;
 	virtual bool IsNodePure() const override { return true; }
 
 private:
 	UPROPERTY()
 	EWidgetTransitionValueType ValueType = EWidgetTransitionValueType::Float;
+
+	UPROPERTY()
+	bool bUseFrom = false;
+
+	UPROPERTY()
+	EWidgetTransitionValueType FromValueType = EWidgetTransitionValueType::Float;
 };
 
 /** Adds an independently typed explicit From endpoint to a transition. */
