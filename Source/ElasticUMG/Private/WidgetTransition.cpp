@@ -391,7 +391,13 @@ FVector2D UWidgetTransitionFunctionLibrary::AsVector2D(FWidgetTransitionValue Va
 FLinearColor UWidgetTransitionFunctionLibrary::AsColor(FWidgetTransitionValue Value) { return FLinearColor(Value.Channels.X, Value.Channels.Y, Value.Channels.Z, Value.Channels.W); }
 
 FWidgetTransition UWidgetTransitionFunctionLibrary::Delay(FWidgetTransition Transition, float Delay, bool bApplyValueBeforeDelay) { Transition.Delay = FMath::Max(0.0f, Delay); Transition.bApplyValueBeforeDelay = bApplyValueBeforeDelay; return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::Easing(FWidgetTransition Transition, FCurveTableRowHandle Easing) { Transition.Easing = MoveTemp(Easing); Transition.bUseSpring = false; return Transition; }
+FWidgetTransition UWidgetTransitionFunctionLibrary::Easing(FWidgetTransition Transition, UCurveTable* CurveTable, FName RowName)
+{
+	Transition.Easing.CurveTable = CurveTable;
+	Transition.Easing.RowName = RowName;
+	Transition.bUseSpring = false;
+	return Transition;
+}
 FWidgetTransition UWidgetTransitionFunctionLibrary::Repeat(FWidgetTransition Transition, int32 RepeatCount) { Transition.RepeatCount = FMath::Max(-1, RepeatCount); return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::YoYo(FWidgetTransition Transition, bool bYoYo) { Transition.bYoYo = bYoYo; return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::Spring(FWidgetTransition Transition, float SpringSpeed, float SpringBounce, bool bFitSimulationToTime) { Transition.bUseSpring = true; Transition.SpringSpeed = FMath::Clamp(SpringSpeed, 0.0f, 1.0f); Transition.SpringBounce = FMath::Clamp(SpringBounce, 0.0f, 1.0f); Transition.bFitSpringToTime = bFitSimulationToTime; return Transition; }

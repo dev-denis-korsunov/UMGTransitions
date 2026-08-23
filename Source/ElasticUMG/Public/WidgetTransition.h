@@ -186,8 +186,8 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Widget Transition")
 	static FWidgetTransition Delay(FWidgetTransition Transition, float Delay, bool bApplyValueBeforeDelay = true);
-	UFUNCTION(BlueprintPure, Category = "Widget Transition")
-	static FWidgetTransition Easing(FWidgetTransition Transition, FCurveTableRowHandle Easing);
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DataTablePin = "CurveTable"))
+	static FWidgetTransition Easing(FWidgetTransition Transition, UCurveTable* CurveTable, FName RowName);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition")
 	static FWidgetTransition Repeat(FWidgetTransition Transition, int32 RepeatCount);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Yo Yo"))
