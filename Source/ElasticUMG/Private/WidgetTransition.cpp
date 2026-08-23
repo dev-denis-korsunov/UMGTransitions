@@ -352,14 +352,12 @@ void UWidgetTransitionFunctionLibrary::StartWidgetTransitions(const UObject* Wor
 	for (FWidgetTransition& Transition : Transitions) WidgetTransition::StartTransition(WorldContextObject, MoveTemp(Transition));
 }
 
-FWidgetTransition UWidgetTransitionFunctionLibrary::CreateWidgetTransition(FWidgetTransitionValue ToValue, float Delay, float Time, int32 RepeatCount, bool bYoYo)
+FWidgetTransition UWidgetTransitionFunctionLibrary::CreateWidgetTransition(FWidgetTransitionValue ToValue, float Delay, float Time)
 {
 	FWidgetTransition Transition;
 	Transition.ToValue = MoveTemp(ToValue);
 	Transition.Delay = FMath::Max(0.0f, Delay);
 	Transition.Time = FMath::Max(0.0f, Time);
-	Transition.RepeatCount = FMath::Max(-1, RepeatCount);
-	Transition.bYoYo = bYoYo;
 	return Transition;
 }
 
@@ -407,7 +405,8 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::FromVector(FWidgetTransition
 FWidgetTransition UWidgetTransitionFunctionLibrary::FromColor(FWidgetTransition Transition, FLinearColor FromValue) { Transition.FromValue = WidgetTransition::MakeValue(FromValue); Transition.bUseFrom = true; return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::Delay(FWidgetTransition Transition, float Delay, bool bApplyValueBeforeDelay) { Transition.Delay = FMath::Max(0.0f, Delay); Transition.bApplyValueBeforeDelay = bApplyValueBeforeDelay; return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::Easing(FWidgetTransition Transition, FCurveTableRowHandle Easing) { Transition.Easing = MoveTemp(Easing); Transition.bUseSpring = false; return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::Repeat(FWidgetTransition Transition, int32 RepeatCount, bool bYoYo) { Transition.RepeatCount = FMath::Max(-1, RepeatCount); Transition.bYoYo = bYoYo; return Transition; }
+FWidgetTransition UWidgetTransitionFunctionLibrary::Repeat(FWidgetTransition Transition, int32 RepeatCount) { Transition.RepeatCount = FMath::Max(-1, RepeatCount); return Transition; }
+FWidgetTransition UWidgetTransitionFunctionLibrary::YoYo(FWidgetTransition Transition, bool bYoYo) { Transition.bYoYo = bYoYo; return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::Spring(FWidgetTransition Transition, float SpringSpeed, float SpringBounce, bool bFitSimulationToTime) { Transition.bUseSpring = true; Transition.SpringSpeed = FMath::Clamp(SpringSpeed, 0.0f, 1.0f); Transition.SpringBounce = FMath::Clamp(SpringBounce, 0.0f, 1.0f); Transition.bFitSpringToTime = bFitSimulationToTime; return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::RemoveFromParent(FWidgetTransition Transition, bool bRemoveFromParent) { Transition.bRemoveFromParent = bRemoveFromParent; return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::Events(FWidgetTransition Transition, FOnWidgetTransitionEvent OnStarted, FOnWidgetTransitionEvent OnFinished) { Transition.Events.OnStarted = MoveTemp(OnStarted); Transition.Events.OnFinished = MoveTemp(OnFinished); return Transition; }
@@ -426,7 +425,9 @@ UWidgetTransitionAsyncAction* UWidgetTransitionAsyncAction::AddWidgetTransition(
 {
 	UWidgetTransitionAsyncAction* Action = NewObject<UWidgetTransitionAsyncAction>();
 	Action->PendingTransition = MoveTemp(Transition);
-	Action->EventValue = Action->PendingTransition.ToValue;
+	Action->EventTargetValue = Action->PendingTransition.ToValue;
+	Action->EventStartValue = Action->PendingTransition.bUseFrom ? Action->PendingTransition.FromValue : Action->EventTargetValue;
+	Action->EventValue = Action->EventStartValue;
 	Action->WorldContextObject = WorldContextObject;
 	Action->RegisterWithGameInstance(WorldContextObject);
 	return Action;
@@ -441,6 +442,18 @@ void UWidgetTransitionAsyncAction::Activate()
 		SetReadyToDestroy();
 		return;
 	}
+	UWidget* Widget = PendingTransition.Widget.Get();
+	const bool bResolved = PendingTransition.BindingKind == EWidgetTransitionBindingKind::Property
+		? EventBinding.Resolve(Widget, PendingTransition.WidgetProperty.ToString())
+		: EventBinding.ResolveMaterial(Widget, PendingTransition.MaterialParameter);
+	if (bResolved)
+	{
+		EventValue.Type = EventBinding.ValueType;
+		EventStartValue.Type = EventBinding.ValueType;
+		EventTargetValue.Type = EventBinding.ValueType;
+		RefreshEventValue(Widget);
+		EventStartValue = EventValue;
+	}
 	PendingTransition.Events.OnStarted.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleStarted);
 	PendingTransition.Events.OnFinished.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleFinished);
 	PendingTransition.OnUpdate.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleUpdated);
@@ -449,10 +462,34 @@ void UWidgetTransitionAsyncAction::Activate()
 	UWidgetTransitionFunctionLibrary::StartWidgetTransitions(Context, MoveTemp(Transitions));
 }
 
-void UWidgetTransitionAsyncAction::HandleStarted(UWidget* Widget) { Started.Broadcast(EventValue); }
-void UWidgetTransitionAsyncAction::HandleUpdated(UWidget* Widget, float NormalizedProgress, float EasedProgress) { Updated.Broadcast(EventValue, NormalizedProgress, EasedProgress); }
+void UWidgetTransitionAsyncAction::RefreshEventValue(UWidget* Widget)
+{
+	FVector4f Channels;
+	if (EventBinding.Read(Widget, Channels))
+	{
+		EventValue.Channels = Channels;
+		return;
+	}
+	EventValue.Channels = FMath::Lerp(EventStartValue.Channels, EventTargetValue.Channels, 0.0f);
+}
+
+void UWidgetTransitionAsyncAction::HandleStarted(UWidget* Widget)
+{
+	RefreshEventValue(Widget);
+	Started.Broadcast(EventValue);
+}
+
+void UWidgetTransitionAsyncAction::HandleUpdated(UWidget* Widget, float NormalizedProgress, float EasedProgress)
+{
+	FVector4f Channels;
+	if (EventBinding.Read(Widget, Channels)) EventValue.Channels = Channels;
+	else EventValue.Channels = FMath::Lerp(EventStartValue.Channels, EventTargetValue.Channels, EasedProgress);
+	Updated.Broadcast(EventValue, NormalizedProgress, EasedProgress);
+}
+
 void UWidgetTransitionAsyncAction::HandleFinished(UWidget* Widget)
 {
+	RefreshEventValue(Widget);
 	Finished.Broadcast(EventValue);
 	SetReadyToDestroy();
 }

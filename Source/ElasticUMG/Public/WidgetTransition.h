@@ -188,7 +188,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Widget Transition")
 	static FWidgetTransition Easing(FWidgetTransition Transition, FCurveTableRowHandle Easing);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition")
-	static FWidgetTransition Repeat(FWidgetTransition Transition, int32 RepeatCount, bool bYoYo = false);
+	static FWidgetTransition Repeat(FWidgetTransition Transition, int32 RepeatCount);
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Yo Yo"))
+	static FWidgetTransition YoYo(FWidgetTransition Transition, bool bYoYo = true);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition")
 	static FWidgetTransition Spring(FWidgetTransition Transition, float SpringSpeed = 0.65f, float SpringBounce = 0.45f, bool bFitSimulationToTime = false);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition")
@@ -230,8 +232,8 @@ public:
 
 private:
 	/** Internal compiler targets for the transition Blueprint nodes. */
-	UFUNCTION(BlueprintPure, meta = (BlueprintInternalUseOnly = "true", AdvancedDisplay = "Delay,RepeatCount,bYoYo"))
-	static FWidgetTransition CreateWidgetTransition(FWidgetTransitionValue ToValue, float Delay = 0.0f, float Time = 0.2f, int32 RepeatCount = 0, bool bYoYo = false);
+	UFUNCTION(BlueprintPure, meta = (BlueprintInternalUseOnly = "true", AdvancedDisplay = "Delay"))
+	static FWidgetTransition CreateWidgetTransition(FWidgetTransitionValue ToValue, float Delay = 0.0f, float Time = 0.2f);
 	UFUNCTION(BlueprintPure, meta = (BlueprintInternalUseOnly = "true"))
 	static FWidgetTransition SetFromTransition(FWidgetTransition Transition, FWidgetTransitionValue FromValue);
 	/** Legacy compiler targets retained for existing Blueprint assets. */
@@ -275,9 +277,13 @@ private:
 	void HandleUpdated(UWidget* Widget, float NormalizedProgress, float EasedProgress);
 	UFUNCTION()
 	void HandleFinished(UWidget* Widget);
+	void RefreshEventValue(UWidget* Widget);
 
 	FWidgetTransition PendingTransition;
 	FWidgetTransitionValue EventValue;
+	FWidgetTransitionValue EventStartValue;
+	FWidgetTransitionValue EventTargetValue;
+	FWidgetTransitionPropertyBinding EventBinding;
 	TWeakObjectPtr<const UObject> WorldContextObject;
 };
 

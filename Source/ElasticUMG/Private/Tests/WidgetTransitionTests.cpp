@@ -44,7 +44,8 @@ bool FWidgetTransitionBuilderTest::RunTest(const FString&)
 	Transition.Delay = 0.4f;
 	Transition.Time = 0.25f;
 	Transition = UWidgetTransitionFunctionLibrary::Bind(MoveTemp(Transition), Widget, TEXT("RenderTransform.Scale"));
-	Transition = UWidgetTransitionFunctionLibrary::Repeat(MoveTemp(Transition), 2, true);
+	Transition = UWidgetTransitionFunctionLibrary::Repeat(MoveTemp(Transition), 2);
+	Transition = UWidgetTransitionFunctionLibrary::YoYo(MoveTemp(Transition));
 	Transition = UWidgetTransitionFunctionLibrary::Spring(MoveTemp(Transition), 0.8f, 0.25f, true);
 	TestEqual(TEXT("Target retains semantic Float type"), Transition.ToValue.Type, EWidgetTransitionValueType::Float);
 	TestEqual(TEXT("From retains independent Vector2D type"), Transition.FromValue.Type, EWidgetTransitionValueType::Vector2D);

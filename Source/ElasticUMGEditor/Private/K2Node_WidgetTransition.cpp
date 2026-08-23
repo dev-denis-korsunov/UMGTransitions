@@ -17,8 +17,6 @@ namespace WidgetTransitionNode
 	const FName WidgetPropertyPinName(TEXT("WidgetProperty"));
 	const FName DelayPinName(TEXT("Delay"));
 	const FName TimePinName(TEXT("Time"));
-	const FName RepeatCountPinName(TEXT("RepeatCount"));
-	const FName YoYoPinName(TEXT("bYoYo"));
 	const FName TransitionPinName(TEXT("Transition"));
 
 	static UFunction* GetLegacyFunction(EWidgetTransitionValueType Type, bool bFrom)
@@ -119,13 +117,7 @@ void UK2Node_WidgetTransition::AllocateDefaultPins()
 	WidgetTransitionNode::CreateTypedPin(this, EGPD_Input, WidgetTransitionNode::ToValuePinName, CreateFunction, Schema);
 	WidgetTransitionNode::CreateTypedPin(this, EGPD_Input, WidgetTransitionNode::DelayPinName, CreateFunction, Schema);
 	WidgetTransitionNode::CreateTypedPin(this, EGPD_Input, WidgetTransitionNode::TimePinName, CreateFunction, Schema);
-	WidgetTransitionNode::CreateTypedPin(this, EGPD_Input, WidgetTransitionNode::RepeatCountPinName, CreateFunction, Schema);
-	WidgetTransitionNode::CreateTypedPin(this, EGPD_Input, WidgetTransitionNode::YoYoPinName, CreateFunction, Schema);
-	UEdGraphPin* RepeatCountPin = FindPinChecked(WidgetTransitionNode::RepeatCountPinName);
-	RepeatCountPin->PinToolTip = TEXT("Number of additional plays. Use -1 to repeat indefinitely.");
 	WidgetTransitionNode::ApplyAdvancedDisplay(this, CreateFunction, FindPin(WidgetTransitionNode::DelayPinName));
-	WidgetTransitionNode::ApplyAdvancedDisplay(this, CreateFunction, RepeatCountPin);
-	WidgetTransitionNode::ApplyAdvancedDisplay(this, CreateFunction, FindPin(WidgetTransitionNode::YoYoPinName));
 	CreatePin(EGPD_Output, Schema->PC_Struct, FWidgetTransition::StaticStruct(), WidgetTransitionNode::TransitionPinName);
 }
 
@@ -142,7 +134,7 @@ void UK2Node_WidgetTransition::ReallocatePinsDuringReconstruction(TArray<UEdGrap
 	// The former per-endpoint enum pins are deliberately discarded during migration.
 	OldPins.RemoveAll([](const UEdGraphPin* Pin)
 	{
-		return Pin && (Pin->PinName == WidgetTransitionNode::ValueTypePinName || Pin->PinName == TEXT("FromValueType"));
+		return Pin && (Pin->PinName == WidgetTransitionNode::ValueTypePinName || Pin->PinName == TEXT("FromValueType") || Pin->PinName == TEXT("RepeatCount") || Pin->PinName == TEXT("bYoYo"));
 	});
 	Super::ReallocatePinsDuringReconstruction(OldPins);
 }
@@ -161,8 +153,6 @@ void UK2Node_WidgetTransition::ExpandNode(FKismetCompilerContext& CompilerContex
 	WidgetTransitionNode::MoveLinks(CompilerContext, this, Call, WidgetTransitionNode::ToValuePinName);
 	WidgetTransitionNode::MoveLinks(CompilerContext, this, Call, WidgetTransitionNode::DelayPinName);
 	WidgetTransitionNode::MoveLinks(CompilerContext, this, Call, WidgetTransitionNode::TimePinName);
-	WidgetTransitionNode::MoveLinks(CompilerContext, this, Call, WidgetTransitionNode::RepeatCountPinName);
-	WidgetTransitionNode::MoveLinks(CompilerContext, this, Call, WidgetTransitionNode::YoYoPinName);
 
 	UK2Node_CallFunction* BindCall = CompilerContext.SpawnIntermediateNode<UK2Node_CallFunction>(this, SourceGraph);
 	BindCall->SetFromFunction(UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(TEXT("Bind")));
