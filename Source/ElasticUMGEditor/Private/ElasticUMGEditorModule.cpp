@@ -87,7 +87,7 @@ namespace ElasticUMGEditor
 	{
 		const UK2Node_CallFunction* Node = Pin ? Cast<UK2Node_CallFunction>(Pin->GetOwningNode()) : nullptr;
 		const UFunction* Function = Node ? Node->GetTargetFunction() : nullptr;
-		return Function && Function->GetFName() == GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, BindMaterialParameter) && Pin->PinName == TEXT("ParameterName");
+		return Function && Function->HasMetaData(TEXT("ElasticUMGMaterialBinding")) && (Pin->PinName == TEXT("ParameterName") || Pin->PinName == TEXT("MaterialParameter"));
 	}
 	static UEdGraphPin* GetWidgetSource(const UEdGraphPin* PropertyPin)
 	{

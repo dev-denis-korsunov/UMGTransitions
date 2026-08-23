@@ -169,10 +169,10 @@ class ELASTICUMG_API UWidgetTransitionFunctionLibrary final : public UBlueprintF
 
 public:
 	/** Sets the target widget and its transitionable property path. */
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Bind", ElasticUMGTransitionBinding = "true"))
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Bind", ElasticUMGTransitionBinding = "true", BlueprintInternalUseOnly = "true"))
 	static FWidgetTransition Bind(FWidgetTransition Transition, UWidget* Widget, UPARAM(meta = (ElasticUMGRole = "WidgetProperty")) FName WidgetProperty);
 	/** Binds a material parameter on an Image or Border brush material. The adapter determines its channel layout. */
-	UFUNCTION(BlueprintPure, Category = "Widget Transition")
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ElasticUMGMaterialBinding = "true", BlueprintInternalUseOnly = "true"))
 	static FWidgetTransition BindMaterialParameter(FWidgetTransition Transition, UWidget* Widget, FName ParameterName);
 
 	UFUNCTION(BlueprintPure, Category = "Widget Transition")
@@ -195,8 +195,8 @@ public:
 	static FWidgetTransition OnUpdate(FWidgetTransition Transition, FOnWidgetTransitionUpdate OnUpdate);
 
 	/** Converts a transition description to compact runtime data and starts it. */
-	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (DisplayName = "Add Widget Transition", WorldContext = "WorldContextObject"))
-	static void StartWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition);
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (DisplayName = "Add Widget Transition", WorldContext = "WorldContextObject", ElasticUMGTransitionBinding = "true", ElasticUMGMaterialBinding = "true"))
+	static void StartWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition, UWidget* Widget = nullptr, UPARAM(meta = (ElasticUMGRole = "WidgetProperty")) FName WidgetProperty = NAME_None, FName MaterialParameter = NAME_None);
 
 	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject"))
 	static void ClearAllWidgetTransitions(const UObject* WorldContextObject, UWidget* Widget);
@@ -231,8 +231,8 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FOnWidgetTransitionAsyncEvent Finished;
 
-	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Add Widget Transition Async"), Category = "Widget Transition")
-	static UWidgetTransitionAsyncAction* AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition);
+	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Add Widget Transition Async", ElasticUMGTransitionBinding = "true", ElasticUMGMaterialBinding = "true"), Category = "Widget Transition")
+	static UWidgetTransitionAsyncAction* AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition, UWidget* Widget = nullptr, UPARAM(meta = (ElasticUMGRole = "WidgetProperty")) FName WidgetProperty = NAME_None, FName MaterialParameter = NAME_None);
 
 	virtual void Activate() override;
 
