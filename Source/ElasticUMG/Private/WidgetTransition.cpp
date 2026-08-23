@@ -289,29 +289,8 @@ bool FWidgetTransitionPropertyBinding::Read(UWidget* Widget, FVector4f& OutValue
 
 namespace WidgetTransition
 {
-	static void ApplyBinding(FWidgetTransition& Description, UWidget* Widget, FName Binding)
+	static void StartTransition(const UObject* WorldContextObject, FWidgetTransition Description)
 	{
-		if (!IsValid(Widget) || Binding.IsNone()) return;
-		Description.Widget = Widget;
-		const FString BindingPath = Binding.ToString();
-		if (BindingPath.StartsWith(TEXT("Material.")))
-		{
-			Description.BindingKind = EWidgetTransitionBindingKind::Material;
-			Description.MaterialParameter = FName(*BindingPath.RightChop(9));
-			Description.WidgetProperty = Binding;
-		}
-		else
-		{
-			Description.BindingKind = EWidgetTransitionBindingKind::Property;
-			Description.MaterialParameter = NAME_None;
-			Description.WidgetProperty = Binding;
-		}
-	}
-}
-
-void UWidgetTransitionFunctionLibrary::StartWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Description, UWidget* Widget, FName Binding)
-{
-	WidgetTransition::ApplyBinding(Description, Widget, Binding);
 	const UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
 	UWidgetTransitionSubsystem* Subsystem = World ? World->GetSubsystem<UWidgetTransitionSubsystem>() : nullptr;
 	UWidget* TargetWidget = Description.Widget.Get();
@@ -365,16 +344,23 @@ void UWidgetTransitionFunctionLibrary::StartWidgetTransition(const UObject* Worl
 	}
 	if (Description.Events.HasBoundEvents()) Subsystem->EventCallbacks.Add(Transition.TransitionId, MoveTemp(Description.Events));
 	Subsystem->Transitions.Emplace(MoveTemp(Transition));
+	}
 }
 
-FWidgetTransition UWidgetTransitionFunctionLibrary::CreateFloatWidgetTransition(float ToValue, float Delay, float Time) { FWidgetTransition Transition; Transition.ToValue = WidgetTransition::MakeValue(ToValue); Transition.Delay = FMath::Max(0.0f, Delay); Transition.Time = FMath::Max(0.0f, Time); return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::CreateVectorWidgetTransition(FVector2D ToValue, float Delay, float Time) { FWidgetTransition Transition; Transition.ToValue = WidgetTransition::MakeValue(ToValue); Transition.Delay = FMath::Max(0.0f, Delay); Transition.Time = FMath::Max(0.0f, Time); return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::CreateColorWidgetTransition(FLinearColor ToValue, float Delay, float Time) { FWidgetTransition Transition; Transition.ToValue = WidgetTransition::MakeValue(ToValue); Transition.Delay = FMath::Max(0.0f, Delay); Transition.Time = FMath::Max(0.0f, Time); return Transition; }
+void UWidgetTransitionFunctionLibrary::StartWidgetTransitions(const UObject* WorldContextObject, TArray<FWidgetTransition> Transitions)
+{
+	for (FWidgetTransition& Transition : Transitions) WidgetTransition::StartTransition(WorldContextObject, MoveTemp(Transition));
+}
+
+FWidgetTransition UWidgetTransitionFunctionLibrary::CreateFloatWidgetTransition(float ToValue, float Delay, float Time, int32 RepeatCount, bool bYoYo) { FWidgetTransition Transition; Transition.ToValue = WidgetTransition::MakeValue(ToValue); Transition.Delay = FMath::Max(0.0f, Delay); Transition.Time = FMath::Max(0.0f, Time); Transition.RepeatCount = FMath::Max(-1, RepeatCount); Transition.bYoYo = bYoYo; return Transition; }
+FWidgetTransition UWidgetTransitionFunctionLibrary::CreateVectorWidgetTransition(FVector2D ToValue, float Delay, float Time, int32 RepeatCount, bool bYoYo) { FWidgetTransition Transition; Transition.ToValue = WidgetTransition::MakeValue(ToValue); Transition.Delay = FMath::Max(0.0f, Delay); Transition.Time = FMath::Max(0.0f, Time); Transition.RepeatCount = FMath::Max(-1, RepeatCount); Transition.bYoYo = bYoYo; return Transition; }
+FWidgetTransition UWidgetTransitionFunctionLibrary::CreateColorWidgetTransition(FLinearColor ToValue, float Delay, float Time, int32 RepeatCount, bool bYoYo) { FWidgetTransition Transition; Transition.ToValue = WidgetTransition::MakeValue(ToValue); Transition.Delay = FMath::Max(0.0f, Delay); Transition.Time = FMath::Max(0.0f, Time); Transition.RepeatCount = FMath::Max(-1, RepeatCount); Transition.bYoYo = bYoYo; return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::Bind(FWidgetTransition Transition, UWidget* Widget, FName WidgetProperty)
 {
 	Transition.Widget = Widget;
-	Transition.BindingKind = EWidgetTransitionBindingKind::Property;
-	Transition.MaterialParameter = NAME_None;
+	const FString BindingPath = WidgetProperty.ToString();
+	Transition.BindingKind = BindingPath.StartsWith(TEXT("Material.")) ? EWidgetTransitionBindingKind::Material : EWidgetTransitionBindingKind::Property;
+	Transition.MaterialParameter = Transition.BindingKind == EWidgetTransitionBindingKind::Material ? FName(*BindingPath.RightChop(9)) : NAME_None;
 	Transition.WidgetProperty = WidgetProperty;
 	return Transition;
 }
@@ -411,11 +397,10 @@ void UWidgetTransitionFunctionLibrary::ClearAllWidgetTransitions(const UObject* 
 	if (IsValid(Widget) && Subsystem) WidgetTransition::ClearTransitionsForWidget(*Subsystem, Widget);
 }
 
-UWidgetTransitionAsyncAction* UWidgetTransitionAsyncAction::AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition, UWidget* Widget, FName Binding)
+UWidgetTransitionAsyncAction* UWidgetTransitionAsyncAction::AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition)
 {
 	UWidgetTransitionAsyncAction* Action = NewObject<UWidgetTransitionAsyncAction>();
 	Action->PendingTransition = MoveTemp(Transition);
-	WidgetTransition::ApplyBinding(Action->PendingTransition, Widget, Binding);
 	Action->WorldContextObject = WorldContextObject;
 	Action->RegisterWithGameInstance(WorldContextObject);
 	return Action;
@@ -433,7 +418,9 @@ void UWidgetTransitionAsyncAction::Activate()
 	PendingTransition.Events.OnStarted.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleStarted);
 	PendingTransition.Events.OnFinished.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleFinished);
 	PendingTransition.OnUpdate.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleUpdated);
-	UWidgetTransitionFunctionLibrary::StartWidgetTransition(Context, MoveTemp(PendingTransition));
+	TArray<FWidgetTransition> Transitions;
+	Transitions.Emplace(MoveTemp(PendingTransition));
+	UWidgetTransitionFunctionLibrary::StartWidgetTransitions(Context, MoveTemp(Transitions));
 }
 
 void UWidgetTransitionAsyncAction::HandleStarted(UWidget* Widget) { Started.Broadcast(Widget); }

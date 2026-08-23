@@ -194,21 +194,21 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Widget Transition")
 	static FWidgetTransition OnUpdate(FWidgetTransition Transition, FOnWidgetTransitionUpdate OnUpdate);
 
-	/** Converts a transition description to compact runtime data and starts it. */
-	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (DisplayName = "Add Widget Transition", WorldContext = "WorldContextObject", DefaultToSelf = "Widget", ElasticUMGTransitionBinding = "Combined"))
-	static void StartWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition, UWidget* Widget = nullptr, FName Binding = NAME_None);
+	/** Starts every bound transition in the array. Use Make Array to add one or more descriptions. */
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (DisplayName = "Add Widget Transitions", WorldContext = "WorldContextObject", AutoCreateRefTerm = "Transitions"))
+	static void StartWidgetTransitions(const UObject* WorldContextObject, TArray<FWidgetTransition> Transitions);
 
 	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject"))
 	static void ClearAllWidgetTransitions(const UObject* WorldContextObject, UWidget* Widget);
 
 private:
 	/** Internal compiler targets for the two dynamic custom nodes. */
-	UFUNCTION(BlueprintPure, meta = (BlueprintInternalUseOnly = "true"))
-	static FWidgetTransition CreateFloatWidgetTransition(float ToValue, float Delay = 0.0f, float Time = 0.2f);
-	UFUNCTION(BlueprintPure, meta = (BlueprintInternalUseOnly = "true"))
-	static FWidgetTransition CreateVectorWidgetTransition(FVector2D ToValue, float Delay = 0.0f, float Time = 0.2f);
-	UFUNCTION(BlueprintPure, meta = (BlueprintInternalUseOnly = "true"))
-	static FWidgetTransition CreateColorWidgetTransition(FLinearColor ToValue, float Delay = 0.0f, float Time = 0.2f);
+	UFUNCTION(BlueprintPure, meta = (BlueprintInternalUseOnly = "true", AdvancedDisplay = "Delay,RepeatCount,bYoYo"))
+	static FWidgetTransition CreateFloatWidgetTransition(float ToValue, float Delay = 0.0f, float Time = 0.2f, int32 RepeatCount = 0, bool bYoYo = false);
+	UFUNCTION(BlueprintPure, meta = (BlueprintInternalUseOnly = "true", AdvancedDisplay = "Delay,RepeatCount,bYoYo"))
+	static FWidgetTransition CreateVectorWidgetTransition(FVector2D ToValue, float Delay = 0.0f, float Time = 0.2f, int32 RepeatCount = 0, bool bYoYo = false);
+	UFUNCTION(BlueprintPure, meta = (BlueprintInternalUseOnly = "true", AdvancedDisplay = "Delay,RepeatCount,bYoYo"))
+	static FWidgetTransition CreateColorWidgetTransition(FLinearColor ToValue, float Delay = 0.0f, float Time = 0.2f, int32 RepeatCount = 0, bool bYoYo = false);
 	UFUNCTION(BlueprintPure, meta = (BlueprintInternalUseOnly = "true"))
 	static FWidgetTransition FromFloat(FWidgetTransition Transition, float FromValue);
 	UFUNCTION(BlueprintPure, meta = (BlueprintInternalUseOnly = "true"))
@@ -231,8 +231,8 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FOnWidgetTransitionAsyncEvent Finished;
 
-	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DefaultToSelf = "Widget", DisplayName = "Add Widget Transition Async", ElasticUMGTransitionBinding = "Combined"), Category = "Widget Transition")
-	static UWidgetTransitionAsyncAction* AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition, UWidget* Widget = nullptr, FName Binding = NAME_None);
+	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Add Widget Transition Async"), Category = "Widget Transition")
+	static UWidgetTransitionAsyncAction* AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition);
 
 	virtual void Activate() override;
 
