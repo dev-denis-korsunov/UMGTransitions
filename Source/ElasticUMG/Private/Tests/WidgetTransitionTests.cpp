@@ -60,8 +60,8 @@ namespace
 		{
 			Transition.bUseSpring = true;
 			Transition.RepeatCount = -1;
-			Transition.SpringState = MakeShared<FWidgetTransitionSpringState>(1.0f, 1.0f);
-			Transition.SpringState->Spring.Start(Transition.FromValue.Channels, Transition.ToValue.Channels);
+			Transition.Spring = MakeShared<FWidgetTransitionSpring>(1.0f, 1.0f);
+			Transition.Spring->Start(Transition.FromValue.Channels, Transition.ToValue.Channels);
 		}
 		return Transition;
 	}
@@ -164,7 +164,7 @@ bool FWidgetTransitionPropertyBindingTest::RunTest(const FString&)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionSpringTest, "ElasticUMG.WidgetTransition.Runtime.Spring.Converges", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionSpringTest::RunTest(const FString&)
 {
-	FSpringVector4f Spring(144.0f, 18.0f);
+	FWidgetTransitionSpring Spring(144.0f, 18.0f);
 	Spring.Start(FVector4f::Zero(), FVector4f(100.0f, -50.0f, 25.0f, 1.0f));
 	for (int32 Step = 0; Step < 1200 && !Spring.IsCompleted(); ++Step)
 	{

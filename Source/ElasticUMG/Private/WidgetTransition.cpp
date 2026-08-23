@@ -150,14 +150,14 @@ namespace WidgetTransition
 		}
 		const float DampingRatio = FMath::Lerp(1.0f, 0.15f, FMath::Clamp(Transition.SpringBounce, 0.0f, 1.0f));
 		// e^(-zeta * omega * Time) <= 0.001: choose omega so the envelope
-		// reaches the same relative tolerance used by FSpringVector4f completion tests.
+		// reaches the same relative tolerance used by FWidgetTransitionSpring completion tests.
 		const float Frequency = Transition.bFitSpringToTime && Transition.Time > UE_SMALL_NUMBER
 									? (-FMath::Loge(0.001f) / (DampingRatio * Transition.Time)) * FMath::Lerp(1.0f, 3.0f, FMath::Clamp(Transition.SpringSpeed, 0.0f, 1.0f))
 									: 4.0f * FMath::Pow(6.0f, FMath::Clamp(Transition.SpringSpeed, 0.0f, 1.0f));
 		const float SpringFactor = Frequency * Frequency;
 		const float DampingFactor = 2.0f * DampingRatio * Frequency;
-		Transition.SpringState = MakeShared<FWidgetTransitionSpringState>(SpringFactor, DampingFactor);
-		Transition.SpringState->Spring.Start(Transition.FromValue.Channels, Transition.ToValue.Channels);
+		Transition.Spring = MakeShared<FWidgetTransitionSpring>(SpringFactor, DampingFactor);
+		Transition.Spring->Start(Transition.FromValue.Channels, Transition.ToValue.Channels);
 	}
 
 	static bool RestartTransition(FWidgetTransition& Transition)
@@ -214,11 +214,11 @@ namespace WidgetTransition
 			}
 			FVector4f Value = FMath::Lerp(It->FromValue.Channels, It->ToValue.Channels, EasedAlpha);
 			const bool bReachedSpringDeadline = It->bUseSpring && It->bFitSpringToTime && It->CurrentTime >= It->Delay + It->Time;
-			if (It->bUseSpring && It->SpringState.IsValid() && !bReachedSpringDeadline)
+			if (It->bUseSpring && It->Spring.IsValid() && !bReachedSpringDeadline)
 			{
-				It->SpringState->Spring.Tick(DeltaTime);
-				Value = It->SpringState->Spring.GetValue();
-				bEnd = It->SpringState->Spring.IsCompleted();
+				It->Spring->Tick(DeltaTime);
+				Value = It->Spring->GetValue();
+				bEnd = It->Spring->IsCompleted();
 			}
 			if (bReachedSpringDeadline)
 			{

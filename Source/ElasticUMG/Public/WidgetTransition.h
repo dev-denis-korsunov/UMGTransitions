@@ -5,7 +5,6 @@
 #include "Engine/CurveTable.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "Kismet/BlueprintAsyncActionBase.h"
-#include "Spring.h"
 #include "Subsystems/WorldSubsystem.h"
 
 #include "WidgetTransition.generated.h"
@@ -72,14 +71,27 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWidgetTransitionAsyncEvent, FWidg
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnWidgetTransitionAsyncUpdate, FWidgetTransitionValue, Value, float, NormalizedProgress, float, EasedProgress);
 
 /** Heap-allocated spring state; only present for a spring transition. */
-struct FWidgetTransitionSpringState
+struct ELASTICUMG_API FWidgetTransitionSpring
 {
-	FWidgetTransitionSpringState(float SpringFactor, float DampingFactor)
-		: Spring(SpringFactor, DampingFactor)
-	{
-	}
+	FWidgetTransitionSpring(float SpringFactor, float DampingFactor);
 
-	FSpringVector4f Spring;
+	void Tick(float DeltaTime);
+	void Start(FVector4f InStartValue, FVector4f InTargetValue);
+
+	FORCEINLINE const FVector4f& GetValue() const { return CurrentValue; }
+	FORCEINLINE bool IsCompleted() const { return bCompleted; }
+
+private:
+	const float SpringFactor = 200.0f;
+	const float Frequency = 0.0f;
+	const float DampingRatio = 1.0f;
+	const float DampedFrequency = 0.0f;
+	FVector4f TargetValue = FVector4f::Zero();
+	FVector4f CurrentValue = FVector4f::Zero();
+	FVector4f Velocity = FVector4f::Zero();
+	float CompletionThresholdSquared = 0.0f;
+	uint8 bStarted : 1;
+	uint8 bCompleted : 1;
 };
 
 /** Cached access to a transition property on a widget. */
@@ -155,7 +167,7 @@ struct ELASTICUMG_API FWidgetTransition
 	uint16 bBound : 1 = false;
 	/** Stable key for rare callbacks in UWidgetTransitionSubsystem::Callbacks. */
 	uint64 TransitionId = 0;
-	TSharedPtr<FWidgetTransitionSpringState> SpringState;
+	TSharedPtr<FWidgetTransitionSpring> Spring;
 	/** Resolved once when the transition is added, avoiding a CurveTable lookup every tick. */
 	const FRealCurve* EasingCurve = nullptr;
 };

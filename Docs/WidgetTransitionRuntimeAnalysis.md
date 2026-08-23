@@ -112,12 +112,12 @@ TSharedPtr<FSpringVector2D> VectorSpring;
 Рекомендуемая форма:
 
 ```cpp
-struct FWidgetTransitionSpringState
+struct FWidgetTransitionSpring
 {
     TVariant<FSpringFloat, FSpringVector2D> Spring;
 };
 
-TUniquePtr<FWidgetTransitionSpringState> SpringState;
+TUniquePtr<FWidgetTransitionSpring> Spring;
 ```
 
 Это уменьшает inline-хранение с 32 B до одного указателя (8 B), убирает reference-count/control block и оставляет одно выделение только для spring-переходов. Альтернатива с двумя `TOptional` держит оба тяжёлых состояния inline и увеличит каждый обычный переход, поэтому её исключаем.
@@ -220,7 +220,7 @@ struct FWidgetTransitionColdData
 {
     FWidgetTransitionEasingValue Easing;
     FWidgetTransitionModeData ModeData; // Time либо spring controls
-    TUniquePtr<FWidgetTransitionSpringState> SpringState;
+    TUniquePtr<FWidgetTransitionSpring> Spring;
     TOptional<FWidgetTransitionCallbacks> Callbacks;
 };
 ```
@@ -296,7 +296,7 @@ struct FWidgetTransitionColdData
 1. **Зафиксировать baseline.** В development build один раз логировать `sizeof` и `alignof` для `FWidgetTransition`, binding, value, easing, delegate, spring и `TSparseArray` allocation. Отдельно замерить external allocations на создание 100 переходов.
 2. **Профилировать 10 / 100 / 500 переходов.** Три сценария: interpolation без callbacks, spring без callbacks, callbacks на каждом тике. Использовать Unreal Insights и `STAT`-цикл вокруг `TickTransitions`.
 3. **Сделать безопасный structural pass.** Битовые флаги, порядок полей, `FName` для property path, удалить дублированный widget из binding. Сверить поведение split pins, delay и YoYo.
-4. **Сделать spring pass.** Одна `TUniquePtr<FWidgetTransitionSpringState>`; проверить restart/YoYo и отсутствие аллокаций на каждом tick.
+4. **Сделать spring pass.** Одна `TUniquePtr<FWidgetTransitionSpring>`; проверить restart/YoYo и отсутствие аллокаций на каждом tick.
 5. **Сделать callback pass.** Начать с Variant update-делегата. Sidecar применять только если измерение подтверждает, что callbacks редко bound.
 6. **Сравнить до/после.** Текущий baseline — 224 B; исходный — 440 B. Цель safe-пакета достигнута. Полный hot/cold split имеет смысл только после CPU-профилирования сценариев 100/500 переходов; ожидаемая дополнительная экономия не должна оправдываться ценой сложности без такого сигнала.
 

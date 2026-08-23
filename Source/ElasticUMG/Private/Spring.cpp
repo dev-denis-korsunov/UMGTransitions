@@ -1,4 +1,4 @@
-#include "Spring.h"
+#include "WidgetTransition.h"
 
 namespace
 {
@@ -8,7 +8,7 @@ namespace
 	}
 }
 
-FSpringVector4f::FSpringVector4f(float InSpringFactor, float InDampingFactor)
+FWidgetTransitionSpring::FWidgetTransitionSpring(float InSpringFactor, float InDampingFactor)
 	: SpringFactor(InSpringFactor)
 	, Frequency(FMath::Sqrt(InSpringFactor))
 	, DampingRatio(InDampingFactor / (2.0f * Frequency))
@@ -18,7 +18,7 @@ FSpringVector4f::FSpringVector4f(float InSpringFactor, float InDampingFactor)
 {
 }
 
-void FSpringVector4f::Start(FVector4f InStartValue, FVector4f InTargetValue)
+void FWidgetTransitionSpring::Start(FVector4f InStartValue, FVector4f InTargetValue)
 {
 	CurrentValue = InStartValue;
 	TargetValue = InTargetValue;
@@ -28,7 +28,7 @@ void FSpringVector4f::Start(FVector4f InStartValue, FVector4f InTargetValue)
 	bCompleted = false;
 }
 
-void FSpringVector4f::Tick(float DeltaTime)
+void FWidgetTransitionSpring::Tick(float DeltaTime)
 {
 	if (!bStarted || bCompleted)
 	{
