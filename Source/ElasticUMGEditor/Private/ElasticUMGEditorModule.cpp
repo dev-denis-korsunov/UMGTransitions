@@ -89,12 +89,6 @@ namespace ElasticUMGEditor
 		const UFunction* Function = Node ? Node->GetTargetFunction() : nullptr;
 		return Function && Function->GetMetaData(TEXT("ElasticUMGTransitionBinding")) == TEXT("Combined") && (Pin->PinName == TEXT("WidgetProperty") || Pin->PinName == TEXT("Binding"));
 	}
-	static bool IsMaterialParameterPin(const UEdGraphPin* Pin)
-	{
-		const UK2Node_CallFunction* Node = Pin ? Cast<UK2Node_CallFunction>(Pin->GetOwningNode()) : nullptr;
-		const UFunction* Function = Node ? Node->GetTargetFunction() : nullptr;
-		return Function && Function->HasMetaData(TEXT("ElasticUMGMaterialBinding")) && (Pin->PinName == TEXT("ParameterName") || Pin->PinName == TEXT("MaterialParameter"));
-	}
 	static UEdGraphPin* GetWidgetSource(const UEdGraphPin* PropertyPin)
 	{
 		UEdGraphPin* WidgetPin = PropertyPin && PropertyPin->GetOwningNode() ? PropertyPin->GetOwningNode()->FindPin(TEXT("Widget")) : nullptr;
@@ -173,10 +167,6 @@ namespace ElasticUMGEditor
 			{
 				return SNew(SBox).IsEnabled(false)[SNew(STextBlock).Text(FText::FromString(Option.IsValid() ? Option->Label : FString())).Font(FAppStyle::GetFontStyle("PropertyWindow.BoldFont"))];
 			}
-			if (!Option.IsValid() || Option->bHeader)
-			{
-				return SNew(SBox).IsEnabled(false)[SNew(STextBlock).Text(FText::FromString(Option.IsValid() ? Option->Label : FString())).Font(FAppStyle::GetFontStyle("PropertyWindow.BoldFont"))];
-			}
 			return SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().FillWidth(1.0f)[SNew(STextBlock).Text(FText::FromString(Option->Label))]
 				+ SHorizontalBox::Slot().AutoWidth().Padding(8.0f, 0.0f, 2.0f, 0.0f)[SNew(SImage).Image(FAppStyle::GetBrush("Kismet.VariableList.TypeIcon")).ColorAndOpacity(Option->TypeColor)];
@@ -192,64 +182,12 @@ namespace ElasticUMGEditor
 		bool bIncludeMaterialParameters = false;
 	};
 
-	class SMaterialParameterPin final : public SGraphPin
-	{
-	public:
-		SLATE_BEGIN_ARGS(SMaterialParameterPin) {} SLATE_END_ARGS()
-		void Construct(const FArguments&, UEdGraphPin* Pin) { SGraphPin::Construct(SGraphPin::FArguments(), Pin); }
-	protected:
-		virtual TSharedRef<SWidget> GetDefaultValueWidget() override
-		{
-			RefreshOptions();
-			return SNew(SComboBox<TSharedPtr<FPropertyOption>>).OptionsSource(&Options).OnComboBoxOpening(this, &SMaterialParameterPin::RefreshOptions)
-				.OnGenerateWidget(this, &SMaterialParameterPin::MakeOption).OnSelectionChanged(this, &SMaterialParameterPin::SelectOption)
-				.Content()[SNew(STextBlock).Text(this, &SMaterialParameterPin::GetCurrentValue).Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))];
-		}
-	private:
-		void RefreshOptions()
-		{
-			Options.Reset();
-			UMaterialInterface* Material = GetDesignerMaterial(GraphPinObj);
-			if (!Material) return;
-			TArray<FMaterialParameterInfo> Parameters;
-			TArray<FGuid> Ids;
-			const auto AddMaterialParameters = [this, &Material, &Parameters, &Ids](bool bVector)
-			{
-				Parameters.Reset(); Ids.Reset();
-				if (bVector) Material->GetAllVectorParameterInfo(Parameters, Ids); else Material->GetAllScalarParameterInfo(Parameters, Ids);
-				const FLinearColor TypeColor = bVector ? FLinearColor(0.25f, 0.65f, 1.0f) : FLinearColor(0.35f, 0.85f, 0.35f);
-				for (const FMaterialParameterInfo& Parameter : Parameters)
-				{
-					if (Parameter.Association == EMaterialParameterAssociation::GlobalParameter) Options.Add(MakeShared<FPropertyOption>(FPropertyOption{ Parameter.Name.ToString(), Parameter.Name.ToString(), TypeColor }));
-				}
-			};
-			AddMaterialParameters(false);
-			AddMaterialParameters(true);
-			Options.Sort([](const TSharedPtr<FPropertyOption>& A, const TSharedPtr<FPropertyOption>& B) { return A->Label < B->Label; });
-		}
-		TSharedRef<SWidget> MakeOption(TSharedPtr<FPropertyOption> Option) const
-		{
-			return SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f)[SNew(STextBlock).Text(FText::FromString(Option.IsValid() ? Option->Label : FString()))]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(8.0f, 0.0f, 2.0f, 0.0f)[SNew(SImage).Image(FAppStyle::GetBrush("Kismet.VariableList.TypeIcon")).ColorAndOpacity(Option.IsValid() ? Option->TypeColor : FLinearColor::White)];
-		}
-		void SelectOption(TSharedPtr<FPropertyOption> Option, ESelectInfo::Type)
-		{
-			if (!Option.IsValid() || GraphPinObj->GetDefaultAsString() == Option->Path) return;
-			GraphPinObj->Modify();
-			GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, Option->Path);
-		}
-		FText GetCurrentValue() const { const FString Value = GraphPinObj->GetDefaultAsString(); return Value.IsEmpty() || Value == TEXT("None") ? NSLOCTEXT("ElasticUMG", "SelectMaterialParameter", "Select material parameter") : FText::FromString(Value); }
-		TArray<TSharedPtr<FPropertyOption>> Options;
-	};
-
 	class FTransitionPinFactory final : public FGraphPanelPinFactory
 	{
 	public:
 		virtual TSharedPtr<SGraphPin> CreatePin(UEdGraphPin* Pin) const override
 		{
 			if (IsBindingPropertyPin(Pin)) return SNew(SWidgetPropertyPathPin, Pin);
-			if (IsMaterialParameterPin(Pin)) return SNew(SMaterialParameterPin, Pin);
 			return nullptr;
 		}
 	};

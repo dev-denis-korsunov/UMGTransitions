@@ -38,7 +38,6 @@ enum class EWidgetTransitionValueType : uint8
 enum class EWidgetTransitionBindingKind : uint8
 {
 	Property,
-	Material,
 	MaterialScalar,
 	MaterialVector,
 };
@@ -116,8 +115,6 @@ struct ELASTICUMG_API FWidgetTransition
 
 	TWeakObjectPtr<UWidget> Widget;
 	FName WidgetProperty;
-	EWidgetTransitionBindingKind BindingKind = EWidgetTransitionBindingKind::Property;
-	FName MaterialParameter;
 	FWidgetTransitionValue FromValue;
 	FWidgetTransitionValue ToValue;
 	FCurveTableRowHandle Easing;
@@ -129,7 +126,8 @@ struct ELASTICUMG_API FWidgetTransition
 	float SpringBounce = 0.45f;
 	int32 RepeatCount = 0;
 	bool bUseFrom = false;
-	bool bApplyValueBeforeDelay = true;
+	/** Defers applying From Value until the transition starts after its delay. */
+	bool bChangeFromPropertyAfterDelay = false;
 	bool bYoYo = false;
 	bool bRemoveFromParent = false;
 	bool bUseSpring = false;
@@ -154,11 +152,6 @@ struct FActiveWidgetTransition
 	/** Normalized designer controls. 0..1 maps to physical stiffness and damping ratio. */
 	float SpringSpeed = 0.65f;
 	float SpringBounce = 0.45f;
-	uint16 bFrom : 1 = false;
-	uint16 bChangeFromPropertyAfterDelay : 1 = false;
-	uint16 bPipe : 1 = false;
-	uint16 bFromVisibility : 1 = false;
-	uint16 bToVisibility : 1 = false;
 	uint16 bRemoveFromParent : 1 = false;
 	uint16 bSpring : 1 = false;
 	uint16 bYoYo : 1 = false;
@@ -183,6 +176,9 @@ public:
 	static FWidgetTransition CreateWidgetTransition(UWidget* Widget, UPARAM(meta = (ElasticUMGRole = "WidgetProperty")) FName WidgetProperty, FWidgetTransitionValue ToValue, float Time = 0.2f, float Delay = 0.0f);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (CPP_Default_bUseFrom = "true", ReturnDisplayName = "Transition"))
 	static FWidgetTransition From(FWidgetTransition Transition, bool bUseFrom, FWidgetTransitionValue FromValue);
+	/** Configures optional transition behavior. */
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
+	static FWidgetTransition Options(FWidgetTransition Transition, bool bChangeFromPropertyAfterDelay = false);
 
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DataTablePin = "CurveTable", ReturnDisplayName = "Transition"))
 	static FWidgetTransition Easing(FWidgetTransition Transition, UCurveTable* CurveTable, FName RowName);

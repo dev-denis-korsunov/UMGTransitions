@@ -63,6 +63,16 @@ namespace WidgetTransition
 		return ChannelCount == 1 || ChannelCount == 2;
 	}
 
+	static bool IsMaterialBinding(FName WidgetProperty)
+	{
+		return WidgetProperty.ToString().StartsWith(TEXT("Material."));
+	}
+
+	static FName GetMaterialParameter(FName WidgetProperty)
+	{
+		return FName(*WidgetProperty.ToString().RightChop(9));
+	}
+
 	static void ClearTransitionsForWidget(UWidgetTransitionSubsystem& Subsystem, UWidget* Widget)
 	{
 		for (auto It = Subsystem.Transitions.CreateIterator(); It; ++It)
@@ -357,8 +367,6 @@ namespace WidgetTransition
 		Transition.Delay = FMath::Max(0.0f, Description.Delay);
 		Transition.Easing = MoveTemp(Description.Easing);
 		Transition.RepeatCount = FMath::Max(-1, Description.RepeatCount);
-		Transition.bFrom = Description.bUseFrom;
-		Transition.bChangeFromPropertyAfterDelay = !Description.bApplyValueBeforeDelay;
 		Transition.bYoYo = Description.bYoYo;
 		Transition.bRemoveFromParent = Description.bRemoveFromParent;
 		Transition.bSpring = Description.bUseSpring;
@@ -369,9 +377,9 @@ namespace WidgetTransition
 		Transition.OnUpdate = MoveTemp(Description.OnUpdate);
 		if (Transition.bBound)
 		{
-			const bool bResolved = Description.BindingKind == EWidgetTransitionBindingKind::Property
-									   ? Transition.PropertyBinding.Resolve(TargetWidget, Description.WidgetProperty.ToString())
-									   : Transition.PropertyBinding.ResolveMaterial(TargetWidget, Description.MaterialParameter);
+			const bool bResolved = IsMaterialBinding(Description.WidgetProperty)
+									   ? Transition.PropertyBinding.ResolveMaterial(TargetWidget, GetMaterialParameter(Description.WidgetProperty))
+									   : Transition.PropertyBinding.Resolve(TargetWidget, Description.WidgetProperty.ToString());
 			if (!bResolved)
 				return;
 			if (!WidgetTransition::NormalizeValue(Description.ToValue, Transition.PropertyBinding.ChannelCount, Transition.ToValue))
@@ -389,7 +397,7 @@ namespace WidgetTransition
 			}
 			else if (!Transition.PropertyBinding.Read(TargetWidget, Transition.FromValue))
 				return;
-			if (Transition.Delay > 0.0f && !Transition.bChangeFromPropertyAfterDelay)
+			if (Transition.Delay > 0.0f && Description.bUseFrom && !Description.bChangeFromPropertyAfterDelay)
 				Transition.PropertyBinding.Apply(TargetWidget, Transition.FromValue);
 		}
 		else
@@ -435,9 +443,6 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::CreateWidgetTransition(UWidg
 	FWidgetTransition Transition;
 	Transition.Widget = Widget;
 	Transition.WidgetProperty = WidgetProperty;
-	const FString BindingPath = WidgetProperty.ToString();
-	Transition.BindingKind = BindingPath.StartsWith(TEXT("Material.")) ? EWidgetTransitionBindingKind::Material : EWidgetTransitionBindingKind::Property;
-	Transition.MaterialParameter = Transition.BindingKind == EWidgetTransitionBindingKind::Material ? FName(*BindingPath.RightChop(9)) : NAME_None;
 	Transition.ToValue = MoveTemp(ToValue);
 	Transition.Delay = FMath::Max(0.0f, Delay);
 	Transition.Time = FMath::Max(0.0f, Time);
@@ -448,6 +453,12 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::From(FWidgetTransition Trans
 {
 	Transition.FromValue = MoveTemp(FromValue);
 	Transition.bUseFrom = bUseFrom;
+	return Transition;
+}
+
+FWidgetTransition UWidgetTransitionFunctionLibrary::Options(FWidgetTransition Transition, bool bChangeFromPropertyAfterDelay)
+{
+	Transition.bChangeFromPropertyAfterDelay = bChangeFromPropertyAfterDelay;
 	return Transition;
 }
 
@@ -539,9 +550,9 @@ void UWidgetTransitionAsyncAction::Activate()
 	}
 	UWidget* Widget = PendingTransition.Widget.Get();
 	const bool bHasBinding = IsValid(Widget) && !PendingTransition.WidgetProperty.IsNone();
-	const bool bResolved = bHasBinding && (PendingTransition.BindingKind == EWidgetTransitionBindingKind::Property
-											   ? EventBinding.Resolve(Widget, PendingTransition.WidgetProperty.ToString())
-											   : EventBinding.ResolveMaterial(Widget, PendingTransition.MaterialParameter));
+	const bool bResolved = bHasBinding && (WidgetTransition::IsMaterialBinding(PendingTransition.WidgetProperty)
+											   ? EventBinding.ResolveMaterial(Widget, WidgetTransition::GetMaterialParameter(PendingTransition.WidgetProperty))
+											   : EventBinding.Resolve(Widget, PendingTransition.WidgetProperty.ToString()));
 	if (bResolved)
 	{
 		EventValue.Type = EventBinding.ValueType;
