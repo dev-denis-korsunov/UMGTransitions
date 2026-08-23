@@ -150,10 +150,8 @@ struct ELASTICUMG_API FWidgetTransition
 	/** Stable key for rare callbacks in UWidgetTransitionSubsystem::Callbacks. */
 	uint64 TransitionId = 0;
 	TSharedPtr<FWidgetTransitionSpringState> SpringState;
-#if UE_BUILD_SHIPPING
-	/** Cached at transition start; CurveTable rows are immutable in a shipping build. */
+	/** Resolved once when the transition is added, avoiding a CurveTable lookup every tick. */
 	const FRealCurve* EasingCurve = nullptr;
-#endif
 };
 
 UCLASS()
@@ -264,4 +262,9 @@ public:
 	TMap<uint64, FWidgetTransitionCallbacks> Callbacks;
 	/** Monotonic key source; a sparse-array index cannot be used because indices are reused. */
 	uint64 NextTransitionId = 1;
+
+#if WITH_DEV_AUTOMATION_TESTS
+	/** Invokes the transition hot path without requiring an initialized UWorld. */
+	void TickTransitionsForTesting(float DeltaTime);
+#endif
 };

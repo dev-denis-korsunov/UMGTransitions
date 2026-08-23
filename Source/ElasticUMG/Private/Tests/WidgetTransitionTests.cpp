@@ -4,6 +4,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Components/Image.h"
+#include "Curves/RichCurve.h"
+#include "HAL/PlatformTime.h"
 #include "Misc/AutomationTest.h"
 
 namespace
@@ -13,15 +15,88 @@ namespace
 	{
 		return FString::Printf(TEXT("%s: %llu B, alignment %llu B"), Name, static_cast<uint64>(Size), static_cast<uint64>(Alignment));
 	}
+
+	FString FormatMicroseconds(double Seconds)
+	{
+		return FString::Printf(TEXT("%.3f us"), Seconds * 1000000.0);
+	}
+
+	FWidgetTransition MakeRuntimeOpacityTransition(UImage* Widget)
+	{
+		FWidgetTransition Transition;
+		Transition.Widget = Widget;
+		Transition.WidgetProperty = TEXT("RenderOpacity");
+		Transition.FromValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.0f);
+		Transition.ToValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(1.0f);
+		Transition.Time = 60.0f;
+		Transition.bUseFrom = true;
+		Transition.bBound = Transition.PropertyBinding.Resolve(Widget, TEXT("RenderOpacity"));
+		return Transition;
+	}
+
+	enum class EWidgetTransitionBenchmarkMode : uint8
+	{
+		Linear,
+		Easing,
+		Spring,
+	};
+
+	FWidgetTransition MakeBenchmarkTransition(UImage* Widget, bool bBound, EWidgetTransitionBenchmarkMode Mode, UCurveTable* CurveTable, FName CurveRow)
+	{
+		FWidgetTransition Transition = MakeRuntimeOpacityTransition(Widget);
+		Transition.bBound = bBound;
+		if (!bBound)
+		{
+			Transition.WidgetProperty = NAME_None;
+			Transition.PropertyBinding.Invalidate();
+			Transition.PropertyBinding.ChannelCount = 1;
+		}
+		if (Mode == EWidgetTransitionBenchmarkMode::Easing)
+		{
+			Transition.Easing.CurveTable = CurveTable;
+			Transition.Easing.RowName = CurveRow;
+		}
+		else if (Mode == EWidgetTransitionBenchmarkMode::Spring)
+		{
+			Transition.bUseSpring = true;
+			Transition.RepeatCount = -1;
+			Transition.SpringState = MakeShared<FWidgetTransitionSpringState>(1.0f, 1.0f);
+			Transition.SpringState->Spring.Start(Transition.FromValue.Channels, Transition.ToValue.Channels);
+		}
+		return Transition;
+	}
+
+	const TCHAR* GetBenchmarkModeName(EWidgetTransitionBenchmarkMode Mode)
+	{
+		switch (Mode)
+		{
+		case EWidgetTransitionBenchmarkMode::Linear:
+		{
+			return TEXT("Linear");
+		}
+		case EWidgetTransitionBenchmarkMode::Easing:
+		{
+			return TEXT("CurveTable easing");
+		}
+		case EWidgetTransitionBenchmarkMode::Spring:
+		{
+			return TEXT("Spring");
+		}
+		default:
+		{
+			return TEXT("Unknown");
+		}
+		}
+	}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionStorageLayoutTest, "ElasticUMG.WidgetTransition.Runtime.StorageLayout", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionStorageLayoutTest::RunTest(const FString&)
-	{
-		AddInfo(FormatBytes(TEXT("FWidgetTransition"), sizeof(FWidgetTransition), alignof(FWidgetTransition)));
-		AddInfo(FormatBytes(TEXT("FWidgetTransitionValue"), sizeof(FWidgetTransitionValue), alignof(FWidgetTransitionValue)));
-		AddInfo(FormatBytes(TEXT("FWidgetTransitionPropertyBinding"), sizeof(FWidgetTransitionPropertyBinding), alignof(FWidgetTransitionPropertyBinding)));
-		TestTrue(TEXT("Transition storage is non-empty"), sizeof(FWidgetTransition) > 0);
+{
+	AddInfo(FormatBytes(TEXT("FWidgetTransition"), sizeof(FWidgetTransition), alignof(FWidgetTransition)));
+	AddInfo(FormatBytes(TEXT("FWidgetTransitionValue"), sizeof(FWidgetTransitionValue), alignof(FWidgetTransitionValue)));
+	AddInfo(FormatBytes(TEXT("FWidgetTransitionPropertyBinding"), sizeof(FWidgetTransitionPropertyBinding), alignof(FWidgetTransitionPropertyBinding)));
+	TestTrue(TEXT("Transition storage is non-empty"), sizeof(FWidgetTransition) > 0);
 	return true;
 }
 
@@ -91,6 +166,139 @@ bool FWidgetTransitionMetadataTest::RunTest(const FString&)
 {
 	const UFunction* Create = UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateWidgetTransition));
 	TestTrue(TEXT("Create function opts into the custom property pin"), Create && Create->HasMetaData(TEXT("ElasticUMGTransitionBinding")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionConstructionPerformanceTest, "ElasticUMG.WidgetTransition.Performance.Construction", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
+bool FWidgetTransitionConstructionPerformanceTest::RunTest(const FString&)
+{
+	constexpr int32 IterationCount = 100000;
+	UImage* Widget = NewObject<UImage>(GetTransientPackage());
+	const FWidgetTransitionValue FromValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.0f);
+	const FWidgetTransitionValue ToValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(1.0f);
+	volatile uint64 Sink = 0;
+
+	auto Measure = [this, &Sink](const TCHAR* Name, auto&& Construct)
+	{
+		const double StartTime = FPlatformTime::Seconds();
+		for (int32 Index = 0; Index < IterationCount; ++Index)
+		{
+			const FWidgetTransition Transition = Construct();
+			Sink += static_cast<uint64>(Transition.Time * 1000.0f) + static_cast<uint64>(Transition.RepeatCount + 1) + Transition.bUseSpring;
+		}
+		const double ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
+		AddInfo(FString::Printf(TEXT("%s: %s total, %s / transition (%d transitions)"), Name, *FormatMicroseconds(ElapsedSeconds), *FormatMicroseconds(ElapsedSeconds / IterationCount), IterationCount));
+	};
+
+	Measure(TEXT("Direct structure"), [&Widget, &ToValue]()
+	{
+		FWidgetTransition Transition;
+		Transition.Widget = Widget;
+		Transition.WidgetProperty = TEXT("RenderOpacity");
+		Transition.ToValue = ToValue;
+		Transition.Time = 0.2f;
+		return Transition;
+	});
+	Measure(TEXT("Create Widget Transition"), [&Widget, &ToValue]()
+	{
+		return UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderOpacity"), ToValue, 0.2f, 0.1f);
+	});
+	Measure(TEXT("Full pure pipeline"), [&Widget, &FromValue, &ToValue]()
+	{
+		FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderOpacity"), ToValue, 0.2f, 0.1f);
+		Transition = UWidgetTransitionFunctionLibrary::From(MoveTemp(Transition), true, FromValue);
+		Transition = UWidgetTransitionFunctionLibrary::Options(MoveTemp(Transition), true, true);
+		Transition = UWidgetTransitionFunctionLibrary::Repeat(MoveTemp(Transition), 3);
+		Transition = UWidgetTransitionFunctionLibrary::YoYo(MoveTemp(Transition));
+		return UWidgetTransitionFunctionLibrary::Spring(MoveTemp(Transition), 0.65f, 0.45f, true);
+	});
+
+	TestTrue(TEXT("Construction benchmark executed"), Sink > 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionConcurrentTickPerformanceTest, "ElasticUMG.WidgetTransition.Performance.ConcurrentTick", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
+bool FWidgetTransitionConcurrentTickPerformanceTest::RunTest(const FString&)
+{
+	constexpr int32 FrameCount = 300;
+	constexpr int32 TransitionCounts[] = { 1, 10, 100, 500 };
+	constexpr float DeltaTime = 1.0f / 60.0f;
+
+	for (const int32 TransitionCount : TransitionCounts)
+	{
+		UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+		TArray<UImage*> Widgets;
+		Widgets.Reserve(TransitionCount);
+		for (int32 Index = 0; Index < TransitionCount; ++Index)
+		{
+			UImage* Widget = NewObject<UImage>(GetTransientPackage());
+			Widgets.Add(Widget);
+			FWidgetTransition Transition = MakeRuntimeOpacityTransition(Widget);
+			TestTrue(FString::Printf(TEXT("RenderOpacity resolves for transition %d"), Index), Transition.bBound);
+			Subsystem->Transitions.Emplace(MoveTemp(Transition));
+		}
+
+		Subsystem->TickTransitionsForTesting(DeltaTime);
+		const double StartTime = FPlatformTime::Seconds();
+		for (int32 FrameIndex = 0; FrameIndex < FrameCount; ++FrameIndex)
+		{
+			Subsystem->TickTransitionsForTesting(DeltaTime);
+		}
+		const double ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
+		const double SecondsPerFrame = ElapsedSeconds / FrameCount;
+		const double SecondsPerTransition = ElapsedSeconds / (FrameCount * TransitionCount);
+		AddInfo(FString::Printf(TEXT("%d concurrent transitions: %s / frame, %s / transition (%d frames)"), TransitionCount, *FormatMicroseconds(SecondsPerFrame), *FormatMicroseconds(SecondsPerTransition), FrameCount));
+		TestEqual(FString::Printf(TEXT("All %d transitions remain active"), TransitionCount), Subsystem->Transitions.Num(), TransitionCount);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionModeMatrixPerformanceTest, "ElasticUMG.WidgetTransition.Performance.ModeMatrix", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
+bool FWidgetTransitionModeMatrixPerformanceTest::RunTest(const FString&)
+{
+	constexpr int32 FrameCount = 300;
+	constexpr int32 TransitionCounts[] = { 100, 500 };
+	constexpr EWidgetTransitionBenchmarkMode Modes[] = { EWidgetTransitionBenchmarkMode::Linear, EWidgetTransitionBenchmarkMode::Easing, EWidgetTransitionBenchmarkMode::Spring };
+	constexpr float DeltaTime = 1.0f / 60.0f;
+	const FName CurveRow(TEXT("PerformanceEase"));
+	UCurveTable* CurveTable = NewObject<UCurveTable>(GetTransientPackage());
+	FRichCurve& EasingCurve = CurveTable->AddRichCurve(CurveRow);
+	EasingCurve.AddKey(0.0f, 0.0f);
+	EasingCurve.AddKey(0.5f, 0.2f);
+	EasingCurve.AddKey(1.0f, 1.0f);
+
+	for (const int32 TransitionCount : TransitionCounts)
+	{
+		for (const EWidgetTransitionBenchmarkMode Mode : Modes)
+		{
+			for (const bool bBound : { false, true })
+			{
+				UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+				TArray<UImage*> Widgets;
+				Widgets.Reserve(TransitionCount);
+				for (int32 Index = 0; Index < TransitionCount; ++Index)
+				{
+					UImage* Widget = NewObject<UImage>(GetTransientPackage());
+					Widgets.Add(Widget);
+					FWidgetTransition Transition = MakeBenchmarkTransition(Widget, bBound, Mode, CurveTable, CurveRow);
+					TestTrue(FString::Printf(TEXT("Transition %d is initialized"), Index), !bBound || Transition.bBound);
+					Subsystem->Transitions.Emplace(MoveTemp(Transition));
+				}
+
+				Subsystem->TickTransitionsForTesting(DeltaTime);
+				const double StartTime = FPlatformTime::Seconds();
+				for (int32 FrameIndex = 0; FrameIndex < FrameCount; ++FrameIndex)
+				{
+					Subsystem->TickTransitionsForTesting(DeltaTime);
+				}
+				const double ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
+				const double SecondsPerFrame = ElapsedSeconds / FrameCount;
+				const double SecondsPerTransition = ElapsedSeconds / (FrameCount * TransitionCount);
+				AddInfo(FString::Printf(TEXT("%d %s, %s binding: %s / frame, %s / transition (%d frames)"), TransitionCount, GetBenchmarkModeName(Mode), bBound ? TEXT("with") : TEXT("without"), *FormatMicroseconds(SecondsPerFrame), *FormatMicroseconds(SecondsPerTransition), FrameCount));
+				TestEqual(FString::Printf(TEXT("All %d %s transitions remain active"), TransitionCount, GetBenchmarkModeName(Mode)), Subsystem->Transitions.Num(), TransitionCount);
+			}
+		}
+	}
 	return true;
 }
 

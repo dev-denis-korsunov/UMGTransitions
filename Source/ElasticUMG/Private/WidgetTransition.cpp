@@ -168,11 +168,7 @@ namespace WidgetTransition
 			float EasedAlpha = Alpha;
 			if (!It->Easing.IsNull())
 			{
-#if UE_BUILD_SHIPPING
 				EasedAlpha = It->EasingCurve ? It->EasingCurve->Eval(Alpha) : 0.0f;
-#else
-				EasedAlpha = It->Easing.Eval(Alpha, TEXT("Widget Transition"));
-#endif
 			}
 			FVector4f Value = FMath::Lerp(It->FromValue.Channels, It->ToValue.Channels, EasedAlpha);
 			const bool bReachedSpringDeadline = It->bUseSpring && It->bFitSpringToTime && It->CurrentTime >= It->Delay + It->Time;
@@ -447,9 +443,7 @@ namespace WidgetTransition
 		Transition.RepeatCount = FMath::Max(-1, Transition.RepeatCount);
 		Transition.bBound = IsValid(TargetWidget) && !Transition.WidgetProperty.IsNone();
 		Transition.bHasCallbacks = Callbacks.HasBoundCallbacks();
-#if UE_BUILD_SHIPPING
 		Transition.EasingCurve = Transition.Easing.IsNull() ? nullptr : Transition.Easing.GetCurve(TEXT("Widget Transition"), false);
-#endif
 		if (Transition.bBound)
 		{
 			const bool bResolved = IsMaterialBinding(Transition.WidgetProperty)
@@ -703,3 +697,10 @@ void UWidgetTransitionSubsystem::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 	WidgetTransition::TickTransitions(*this, DeltaTime);
 }
+
+#if WITH_DEV_AUTOMATION_TESTS
+void UWidgetTransitionSubsystem::TickTransitionsForTesting(float DeltaTime)
+{
+	WidgetTransition::TickTransitions(*this, DeltaTime);
+}
+#endif

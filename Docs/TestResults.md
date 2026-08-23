@@ -7,10 +7,23 @@
 | Тест | Назначение |
 | --- | --- |
 | `ElasticUMG.WidgetTransition.Runtime.StorageLayout` | Печатает фактические `sizeof`/`alignof` runtime-структур для контроля оптимизаций. |
-| `ElasticUMG.WidgetTransition.Runtime.Easing.Endpoints` | Проверяет границы и нормализацию cubic Bezier easing. |
-| `ElasticUMG.WidgetTransition.Runtime.PropertyBinding.RenderOpacity` | Проверяет resolve/read/write типизированного binding к `UWidget.RenderOpacity`. |
-| `ElasticUMG.WidgetTransition.Runtime.Spring.Converges` | Проверяет сходимость float- и vector-spring к target. |
-| `ElasticUMG.WidgetTransition.Runtime.EventRegistry` | Проверяет хранение, вызов и удаление редкого lifecycle callback по transition ID. |
+| `ElasticUMG.WidgetTransition.Runtime.Easing.Endpoints` | Проверяет, что пустой `CurveTableRowHandle` выбирает linear interpolation. |
+| `ElasticUMG.WidgetTransition.Runtime.PropertyBinding.Channels` | Проверяет resolve/read/write binding к `RenderOpacity` и число каналов для `RenderTransform.Scale`. |
+| `ElasticUMG.WidgetTransition.Runtime.Spring.Converges` | Проверяет сходимость единого четырёхканального spring к target. |
+| `ElasticUMG.WidgetTransition.Runtime.SpecBuilders` | Проверяет, что pure-функции сохраняют независимые параметры перехода. |
+| `ElasticUMG.WidgetTransition.Performance.Construction` | Сравнивает ручную сборку, `Create Widget Transition` и полную pure-цепочку на 100 000 экземпляров. |
+| `ElasticUMG.WidgetTransition.Performance.ConcurrentTick` | Измеряет горячий путь interpolation + `RenderOpacity` write при 1, 10, 100 и 500 активных переходах. |
+| `ElasticUMG.WidgetTransition.Performance.ModeMatrix` | Сравнивает Linear, CurveTable easing и Spring с binding и без него при 100 и 500 активных переходах. |
+
+## Методика performance-тестов
+
+Оба теста имеют фильтр `Perf` и не выполняются как обычные unit-тесты. Измерения производятся в Development Editor на одной машине; сравнивать следует только результаты с одинаковой конфигурацией.
+
+- `Construction`: 100 000 итераций каждого варианта; в лог выводятся суммарное время и микросекунды на transition.
+- `ConcurrentTick`: после одного прогревочного кадра выполняются 300 кадров по `1/60` секунды. Каждый transition привязан к отдельному `UImage.RenderOpacity`, поэтому измеряется и вычисление значения, и запись binding. Лог выводит микросекунды на кадр и на transition для 1, 10, 100 и 500 одновременных переходов.
+- `ModeMatrix`: 300 кадров по `1/60` секунды для Linear, CurveTable easing и Spring. Каждый режим запускается с `RenderOpacity` binding и без него, при 100 и 500 transition. CurveTable содержит три ключа: `(0, 0)`, `(0.5, 0.2)`, `(1, 1)`.
+
+`FRealCurve` для easing резолвится один раз при добавлении transition в subsystem. Поэтому изменение CurveTable не меняет уже запущенные transition; их нужно добавить заново.
 
 ## Результаты прогонов
 
@@ -29,7 +42,15 @@
 | 2026-08-02 | UE 5.7.4 / Mac arm64 Development | `ElasticUMG.WidgetTransition.Runtime.Spring.Converges` | Passed | Spring state переведён на единый optional `TUniquePtr`. |
 | 2026-08-02 | UE 5.7.4 / Mac arm64 Development | `ElasticUMG.WidgetTransition.Runtime.EventRegistry` | Passed | Lifecycle callback сохраняется, вызывается и удаляется по `TransitionId`. |
 | 2026-08-02 | UE 5.7.4 / Mac arm64 Development | `ElasticUMG.WidgetTransition.Runtime.StorageLayout` | Passed | `FWidgetTransition` 224 B/8 (−160 B от предыдущего baseline, −216 B от исходного); binding 64 B/8; update callback payload 40 B/8; spring state payload 72 B/8. |
+| 2026-08-23 | UE 5.7 / Mac arm64 Development | `ElasticUMG.WidgetTransition.Performance.Construction` | Passed | 100 000: direct 0.035 μs/transition; `Create Widget Transition` 0.034 μs; full pure pipeline 0.121 μs. |
+| 2026-08-23 | UE 5.7 / Mac arm64 Development | `ElasticUMG.WidgetTransition.Performance.ConcurrentTick` | Passed | 300 кадров, `RenderOpacity` write: 1 — 0.031 μs/frame (0.031 μs/transition); 10 — 0.234 (0.023); 100 — 2.352 (0.024); 500 — 11.876 (0.024). |
+| 2026-08-23 | UE 5.7 / Mac arm64 Development | `ElasticUMG.WidgetTransition.Performance.ModeMatrix` | Passed | 500 transition, μs/frame (без/с binding): Linear 2.924/10.968; CurveTable easing 26.301/34.491; Spring 10.176/21.916. На 100: Linear 0.569/2.272; easing 5.478/7.061; spring 1.879/4.309. |
+| 2026-08-23 | UE 5.7 / Mac arm64 Development | `ElasticUMG.WidgetTransition.Performance.Construction` | Passed | После кеширования CurveTable: direct 0.031 μs/transition; `Create Widget Transition` 0.032 μs; full pure pipeline 0.128 μs. |
+| 2026-08-23 | UE 5.7 / Mac arm64 Development | `ElasticUMG.WidgetTransition.Performance.ConcurrentTick` | Passed | После кеширования CurveTable: 1 — 0.040 μs/frame; 10 — 0.409; 100 — 3.816; 500 — 19.410 (0.039 μs/transition). Сравнивать с матрицей режимов того же прогона. |
+| 2026-08-23 | UE 5.7 / Mac arm64 Development | `ElasticUMG.WidgetTransition.Performance.ModeMatrix` | Passed | После кеширования CurveTable, 500 transition, μs/frame (без/с binding): Linear 2.862/19.955; easing 2.831/19.801; spring 11.485/25.174. На 100: Linear 0.581/3.933; easing 0.589/3.951; spring 2.180/5.015. |
 
 ## Правило обновления
 
 Для каждого запуска добавляется отдельная строка с полным именем теста. Для `StorageLayout` в примечание переносятся значения из `AddInfo`; это будет baseline для сравнения после каждого structural refactor.
+
+Для performance-тестов в примечание переносятся все строки `AddInfo`, включая число simultaneous transitions. Это позволяет строить историю отдельно для 1, 10, 100 и 500 без смешивания абсолютной и удельной стоимости.
