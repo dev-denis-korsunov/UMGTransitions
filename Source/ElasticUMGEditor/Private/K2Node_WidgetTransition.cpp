@@ -10,7 +10,6 @@
 namespace WidgetTransitionNode
 {
 	const FName ValueTypePinName(TEXT("ValueType"));
-	const FName FromValueTypePinName(TEXT("FromValueType"));
 	const FName ToValuePinName(TEXT("ToValue"));
 	const FName FromValuePinName(TEXT("FromValue"));
 	const FName UseFromPinName(TEXT("bUseFrom"));
@@ -22,7 +21,7 @@ namespace WidgetTransitionNode
 	const FName YoYoPinName(TEXT("bYoYo"));
 	const FName TransitionPinName(TEXT("Transition"));
 
-	static UFunction* GetFunction(EWidgetTransitionValueType Type, bool bFrom)
+	static UFunction* GetLegacyFunction(EWidgetTransitionValueType Type, bool bFrom)
 	{
 		const FName FunctionName = bFrom
 			? (Type == EWidgetTransitionValueType::Float ? TEXT("FromFloat") : Type == EWidgetTransitionValueType::Vector2D ? TEXT("FromVector") : TEXT("FromColor"))
@@ -109,16 +108,14 @@ namespace WidgetTransitionNode
 void UK2Node_WidgetTransition::AllocateDefaultPins()
 {
 	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
-	const UFunction* CreateFunction = WidgetTransitionNode::GetFunction(ValueType, false);
+	const UFunction* CreateFunction = UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(TEXT("CreateWidgetTransition"));
 	CreatePin(EGPD_Input, Schema->PC_Object, UWidget::StaticClass(), WidgetTransitionNode::WidgetPinName);
 	CreatePin(EGPD_Input, Schema->PC_Name, WidgetTransitionNode::WidgetPropertyPinName)->DefaultValue = TEXT("None");
 	WidgetTransitionNode::CreateBoolPin(this, WidgetTransitionNode::UseFromPinName, bUseFrom, Schema);
 	if (bUseFrom)
 	{
-		WidgetTransitionNode::CreateTypePin(this, FromValueType, WidgetTransitionNode::FromValueTypePinName, Schema);
-		WidgetTransitionNode::CreateTypedPin(this, EGPD_Input, WidgetTransitionNode::FromValuePinName, WidgetTransitionNode::GetFunction(FromValueType, true), Schema);
+		WidgetTransitionNode::CreateTypedPin(this, EGPD_Input, WidgetTransitionNode::FromValuePinName, UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(TEXT("SetFromTransition")), Schema);
 	}
-	WidgetTransitionNode::CreateTypePin(this, ValueType, WidgetTransitionNode::ValueTypePinName, Schema);
 	WidgetTransitionNode::CreateTypedPin(this, EGPD_Input, WidgetTransitionNode::ToValuePinName, CreateFunction, Schema);
 	WidgetTransitionNode::CreateTypedPin(this, EGPD_Input, WidgetTransitionNode::DelayPinName, CreateFunction, Schema);
 	WidgetTransitionNode::CreateTypedPin(this, EGPD_Input, WidgetTransitionNode::TimePinName, CreateFunction, Schema);
@@ -139,9 +136,14 @@ void UK2Node_WidgetTransition::ReallocatePinsDuringReconstruction(TArray<UEdGrap
 		// These pins are intentionally removed with Use From. Keeping them here turns them into red orphan pins.
 		OldPins.RemoveAll([](const UEdGraphPin* Pin)
 		{
-			return Pin && (Pin->PinName == WidgetTransitionNode::FromValueTypePinName || Pin->PinName == WidgetTransitionNode::FromValuePinName);
+			return Pin && Pin->PinName == WidgetTransitionNode::FromValuePinName;
 		});
 	}
+	// The former per-endpoint enum pins are deliberately discarded during migration.
+	OldPins.RemoveAll([](const UEdGraphPin* Pin)
+	{
+		return Pin && (Pin->PinName == WidgetTransitionNode::ValueTypePinName || Pin->PinName == TEXT("FromValueType"));
+	});
 	Super::ReallocatePinsDuringReconstruction(OldPins);
 }
 
@@ -153,7 +155,7 @@ void UK2Node_WidgetTransition::GetMenuActions(FBlueprintActionDatabaseRegistrar&
 void UK2Node_WidgetTransition::ExpandNode(FKismetCompilerContext& CompilerContext, UEdGraph* SourceGraph)
 {
 	Super::ExpandNode(CompilerContext, SourceGraph);
-	UFunction* Function = WidgetTransitionNode::GetFunction(ValueType, false);
+	UFunction* Function = UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(TEXT("CreateWidgetTransition"));
 	UK2Node_CallFunction* Call = CompilerContext.SpawnIntermediateNode<UK2Node_CallFunction>(this, SourceGraph);
 	Call->SetFromFunction(Function); Call->AllocateDefaultPins();
 	WidgetTransitionNode::MoveLinks(CompilerContext, this, Call, WidgetTransitionNode::ToValuePinName);
@@ -173,7 +175,7 @@ void UK2Node_WidgetTransition::ExpandNode(FKismetCompilerContext& CompilerContex
 	if (bUseFrom)
 	{
 		UK2Node_CallFunction* FromCall = CompilerContext.SpawnIntermediateNode<UK2Node_CallFunction>(this, SourceGraph);
-		FromCall->SetFromFunction(WidgetTransitionNode::GetFunction(FromValueType, true));
+		FromCall->SetFromFunction(UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(TEXT("SetFromTransition")));
 		FromCall->AllocateDefaultPins();
 		if (UEdGraphPin* Return = BindCall->GetReturnValuePin()) if (UEdGraphPin* Transition = FromCall->FindPin(WidgetTransitionNode::TransitionPinName)) CompilerContext.GetSchema()->TryCreateConnection(Return, Transition);
 		WidgetTransitionNode::MoveLinks(CompilerContext, this, FromCall, WidgetTransitionNode::FromValuePinName);
@@ -187,7 +189,6 @@ void UK2Node_WidgetTransition::ExpandNode(FKismetCompilerContext& CompilerContex
 void UK2Node_WidgetTransition::PinDefaultValueChanged(UEdGraphPin* Pin)
 {
 	Super::PinDefaultValueChanged(Pin);
-	EWidgetTransitionValueType NewType;
 	if (Pin && Pin->PinName == WidgetTransitionNode::UseFromPinName)
 	{
 		const bool bNewUseFrom = WidgetTransitionNode::ReadBool(Pin);
@@ -199,20 +200,6 @@ void UK2Node_WidgetTransition::PinDefaultValueChanged(UEdGraphPin* Pin)
 			ReconstructNode();
 		}
 	}
-	else if (Pin && Pin->PinName == WidgetTransitionNode::FromValueTypePinName && WidgetTransitionNode::ReadType(Pin, NewType) && NewType != FromValueType)
-	{
-		Modify();
-		WidgetTransitionNode::ResetTypedValuePin(this, WidgetTransitionNode::FromValuePinName);
-		FromValueType = NewType;
-		ReconstructNode();
-	}
-	else if (Pin && Pin->PinName == WidgetTransitionNode::ValueTypePinName && WidgetTransitionNode::ReadType(Pin, NewType) && NewType != ValueType)
-	{
-		Modify();
-		WidgetTransitionNode::ResetTypedValuePin(this, WidgetTransitionNode::ToValuePinName);
-		ValueType = NewType;
-		ReconstructNode();
-	}
 }
 
 void UK2Node_WidgetTransitionFrom::AllocateDefaultPins()
@@ -220,7 +207,7 @@ void UK2Node_WidgetTransitionFrom::AllocateDefaultPins()
 	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
 	CreatePin(EGPD_Input, Schema->PC_Struct, FWidgetTransition::StaticStruct(), WidgetTransitionNode::TransitionPinName);
 	WidgetTransitionNode::CreateTypePin(this, ValueType, WidgetTransitionNode::ValueTypePinName, Schema);
-	WidgetTransitionNode::CreateTypedPin(this, EGPD_Input, WidgetTransitionNode::FromValuePinName, WidgetTransitionNode::GetFunction(ValueType, true), Schema);
+	WidgetTransitionNode::CreateTypedPin(this, EGPD_Input, WidgetTransitionNode::FromValuePinName, WidgetTransitionNode::GetLegacyFunction(ValueType, true), Schema);
 	CreatePin(EGPD_Output, Schema->PC_Struct, FWidgetTransition::StaticStruct(), WidgetTransitionNode::TransitionPinName);
 }
 
@@ -232,7 +219,7 @@ void UK2Node_WidgetTransitionFrom::GetMenuActions(FBlueprintActionDatabaseRegist
 void UK2Node_WidgetTransitionFrom::ExpandNode(FKismetCompilerContext& CompilerContext, UEdGraph* SourceGraph)
 {
 	Super::ExpandNode(CompilerContext, SourceGraph);
-	UFunction* Function = WidgetTransitionNode::GetFunction(ValueType, true);
+	UFunction* Function = WidgetTransitionNode::GetLegacyFunction(ValueType, true);
 	UK2Node_CallFunction* Call = CompilerContext.SpawnIntermediateNode<UK2Node_CallFunction>(this, SourceGraph);
 	Call->SetFromFunction(Function); Call->AllocateDefaultPins();
 	WidgetTransitionNode::MoveLinks(CompilerContext, this, Call, WidgetTransitionNode::TransitionPinName);

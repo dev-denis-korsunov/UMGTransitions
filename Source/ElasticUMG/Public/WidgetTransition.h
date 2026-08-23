@@ -17,8 +17,6 @@ class UMaterialInstanceDynamic;
 
 DECLARE_DYNAMIC_DELEGATE_ThreeParams(FOnWidgetTransitionUpdate, UWidget*, Widget, float, NormalizedProgress, float, EasedProgress);
 DECLARE_DYNAMIC_DELEGATE_OneParam(FOnWidgetTransitionEvent, UWidget*, Widget);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWidgetTransitionAsyncEvent, UWidget*, Widget);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnWidgetTransitionAsyncUpdate, UWidget*, Widget, float, NormalizedProgress, float, EasedProgress);
 
 /** Rare lifecycle callbacks stored by the transition subsystem rather than each active transition. */
 struct FWidgetTransitionEvents
@@ -49,11 +47,21 @@ enum class EWidgetTransitionBindingKind : uint8
  * Type-tagged Blueprint endpoint. Runtime code expands this value to the channel
  * count of the selected binding before the transition starts.
  */
-struct FWidgetTransitionValue
+USTRUCT(BlueprintType)
+struct ELASTICUMG_API FWidgetTransitionValue
 {
+	GENERATED_BODY()
+
+	/** Normalized transition channels. Split this pin to edit its FVector4f directly. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widget Transition")
 	FVector4f Channels = FVector4f::Zero();
+
+	/** Semantic type selected by Make Transition Value. Kept internal so split pins stay compact. */
 	EWidgetTransitionValueType Type = EWidgetTransitionValueType::Float;
 };
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWidgetTransitionAsyncEvent, FWidgetTransitionValue, Value);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnWidgetTransitionAsyncUpdate, FWidgetTransitionValue, Value, float, NormalizedProgress, float, EasedProgress);
 
 /** Heap-allocated spring state; only present for a float or Vector2D spring transition. */
 struct FWidgetTransitionSpringState
@@ -194,6 +202,25 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Widget Transition")
 	static FWidgetTransition OnUpdate(FWidgetTransition Transition, FOnWidgetTransitionUpdate OnUpdate);
 
+	/** Makes a scalar transition endpoint. */
+	UFUNCTION(BlueprintPure, Category = "Widget Transition|Transition Value", meta = (DisplayName = "Make Float Transition Value"))
+	static FWidgetTransitionValue MakeFloatTransitionValue(float Value);
+	/** Makes a two-dimensional transition endpoint. */
+	UFUNCTION(BlueprintPure, Category = "Widget Transition|Transition Value", meta = (DisplayName = "Make Vector2D Transition Value"))
+	static FWidgetTransitionValue MakeVectorTransitionValue(FVector2D Value);
+	/** Makes a color transition endpoint. */
+	UFUNCTION(BlueprintPure, Category = "Widget Transition|Transition Value", meta = (DisplayName = "Make Color Transition Value"))
+	static FWidgetTransitionValue MakeColorTransitionValue(FLinearColor Value);
+	/** Returns the first channel of a transition endpoint. */
+	UFUNCTION(BlueprintPure, Category = "Widget Transition|Transition Value", meta = (DisplayName = "As Float"))
+	static float AsFloat(FWidgetTransitionValue Value);
+	/** Returns the first two channels of a transition endpoint. */
+	UFUNCTION(BlueprintPure, Category = "Widget Transition|Transition Value", meta = (DisplayName = "As Vector2D"))
+	static FVector2D AsVector2D(FWidgetTransitionValue Value);
+	/** Returns all four channels of a transition endpoint as a linear color. */
+	UFUNCTION(BlueprintPure, Category = "Widget Transition|Transition Value", meta = (DisplayName = "As Color"))
+	static FLinearColor AsColor(FWidgetTransitionValue Value);
+
 	/** Starts every bound transition in the array. Use Make Array to add one or more descriptions. */
 	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (DisplayName = "Add Widget Transitions", WorldContext = "WorldContextObject", AutoCreateRefTerm = "Transitions"))
 	static void StartWidgetTransitions(const UObject* WorldContextObject, TArray<FWidgetTransition> Transitions);
@@ -202,7 +229,12 @@ public:
 	static void ClearAllWidgetTransitions(const UObject* WorldContextObject, UWidget* Widget);
 
 private:
-	/** Internal compiler targets for the two dynamic custom nodes. */
+	/** Internal compiler targets for the transition Blueprint nodes. */
+	UFUNCTION(BlueprintPure, meta = (BlueprintInternalUseOnly = "true", AdvancedDisplay = "Delay,RepeatCount,bYoYo"))
+	static FWidgetTransition CreateWidgetTransition(FWidgetTransitionValue ToValue, float Delay = 0.0f, float Time = 0.2f, int32 RepeatCount = 0, bool bYoYo = false);
+	UFUNCTION(BlueprintPure, meta = (BlueprintInternalUseOnly = "true"))
+	static FWidgetTransition SetFromTransition(FWidgetTransition Transition, FWidgetTransitionValue FromValue);
+	/** Legacy compiler targets retained for existing Blueprint assets. */
 	UFUNCTION(BlueprintPure, meta = (BlueprintInternalUseOnly = "true", AdvancedDisplay = "Delay,RepeatCount,bYoYo"))
 	static FWidgetTransition CreateFloatWidgetTransition(float ToValue, float Delay = 0.0f, float Time = 0.2f, int32 RepeatCount = 0, bool bYoYo = false);
 	UFUNCTION(BlueprintPure, meta = (BlueprintInternalUseOnly = "true", AdvancedDisplay = "Delay,RepeatCount,bYoYo"))
@@ -245,6 +277,7 @@ private:
 	void HandleFinished(UWidget* Widget);
 
 	FWidgetTransition PendingTransition;
+	FWidgetTransitionValue EventValue;
 	TWeakObjectPtr<const UObject> WorldContextObject;
 };
 

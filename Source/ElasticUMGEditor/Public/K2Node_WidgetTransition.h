@@ -29,13 +29,7 @@ public:
 
 private:
 	UPROPERTY()
-	EWidgetTransitionValueType ValueType = EWidgetTransitionValueType::Float;
-
-	UPROPERTY()
 	bool bUseFrom = false;
-
-	UPROPERTY()
-	EWidgetTransitionValueType FromValueType = EWidgetTransitionValueType::Float;
 };
 
 /** Adds an independently typed explicit From endpoint to a transition. */
