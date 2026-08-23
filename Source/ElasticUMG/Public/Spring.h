@@ -14,11 +14,13 @@ public:
 
 private:
 	const float SpringFactor = 200.0f;
-	const float DampingFactor = 16.0f;
+	const float Frequency = 0.0f;
+	const float DampingRatio = 1.0f;
+	const float DampedFrequency = 0.0f;
 	FVector4f TargetValue = FVector4f::Zero();
 	FVector4f CurrentValue = FVector4f::Zero();
 	FVector4f Velocity = FVector4f::Zero();
-	float InitialDisplacement = 0.0f;
+	float CompletionThresholdSquared = 0.0f;
 	uint8 bStarted : 1;
 	uint8 bCompleted : 1;
 };

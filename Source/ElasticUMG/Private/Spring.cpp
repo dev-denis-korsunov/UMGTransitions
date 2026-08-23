@@ -2,15 +2,17 @@
 
 namespace
 {
-	static float Length(const FVector4f& Value)
+	static float LengthSquared(const FVector4f& Value)
 	{
-		return FMath::Sqrt(Value.X * Value.X + Value.Y * Value.Y + Value.Z * Value.Z + Value.W * Value.W);
+		return Value.X * Value.X + Value.Y * Value.Y + Value.Z * Value.Z + Value.W * Value.W;
 	}
 }
 
 FSpringVector4f::FSpringVector4f(float InSpringFactor, float InDampingFactor)
 	: SpringFactor(InSpringFactor)
-	, DampingFactor(InDampingFactor)
+	, Frequency(FMath::Sqrt(InSpringFactor))
+	, DampingRatio(InDampingFactor / (2.0f * Frequency))
+	, DampedFrequency(DampingRatio < 1.0f ? Frequency * FMath::Sqrt(1.0f - DampingRatio * DampingRatio) : 0.0f)
 	, bStarted(false)
 	, bCompleted(false)
 {
@@ -21,7 +23,7 @@ void FSpringVector4f::Start(FVector4f InStartValue, FVector4f InTargetValue)
 	CurrentValue = InStartValue;
 	TargetValue = InTargetValue;
 	Velocity = FVector4f::Zero();
-	InitialDisplacement = Length(TargetValue - CurrentValue);
+	CompletionThresholdSquared = FMath::Max(0.00000001f, LengthSquared(TargetValue - CurrentValue) * 0.000001f);
 	bStarted = true;
 	bCompleted = false;
 }
@@ -32,12 +34,9 @@ void FSpringVector4f::Tick(float DeltaTime)
 	{
 		return;
 	}
-	const float Frequency = FMath::Sqrt(SpringFactor);
-	const float DampingRatio = DampingFactor / (2.0f * Frequency);
 	const FVector4f Offset = CurrentValue - TargetValue;
 	if (DampingRatio < 1.0f)
 	{
-		const float DampedFrequency = Frequency * FMath::Sqrt(1.0f - DampingRatio * DampingRatio);
 		const float Exponential = FMath::Exp(-DampingRatio * Frequency * DeltaTime);
 		const float Cosine = FMath::Cos(DampedFrequency * DeltaTime);
 		const float Sine = FMath::Sin(DampedFrequency * DeltaTime);
@@ -53,8 +52,7 @@ void FSpringVector4f::Tick(float DeltaTime)
 		CurrentValue = TargetValue + Exponential * (Offset + Coefficient * DeltaTime);
 		Velocity = Exponential * (Velocity - Frequency * Coefficient * DeltaTime);
 	}
-	const float Threshold = FMath::Max(0.0001f, InitialDisplacement * 0.001f);
-	bCompleted = Length(CurrentValue - TargetValue) <= Threshold && Length(Velocity) <= Threshold * Frequency;
+	bCompleted = LengthSquared(CurrentValue - TargetValue) <= CompletionThresholdSquared && LengthSquared(Velocity) <= CompletionThresholdSquared * SpringFactor;
 	if (bCompleted)
 	{
 		CurrentValue = TargetValue;

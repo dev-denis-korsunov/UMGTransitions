@@ -25,6 +25,8 @@
 
 `FRealCurve` для easing резолвится один раз при добавлении transition в subsystem. Поэтому изменение CurveTable не меняет уже запущенные transition; их нужно добавить заново.
 
+Для microbenchmark spring сравнение реализации выполняется по варианту без binding: reflection-write в `RenderOpacity` вносит заметный шум между отдельными commandlet-прогонами.
+
 ## Результаты прогонов
 
 | Дата | Конфигурация | Тест | Результат | Примечание |
@@ -48,6 +50,9 @@
 | 2026-08-23 | UE 5.7 / Mac arm64 Development | `ElasticUMG.WidgetTransition.Performance.Construction` | Passed | После кеширования CurveTable: direct 0.031 μs/transition; `Create Widget Transition` 0.032 μs; full pure pipeline 0.128 μs. |
 | 2026-08-23 | UE 5.7 / Mac arm64 Development | `ElasticUMG.WidgetTransition.Performance.ConcurrentTick` | Passed | После кеширования CurveTable: 1 — 0.040 μs/frame; 10 — 0.409; 100 — 3.816; 500 — 19.410 (0.039 μs/transition). Сравнивать с матрицей режимов того же прогона. |
 | 2026-08-23 | UE 5.7 / Mac arm64 Development | `ElasticUMG.WidgetTransition.Performance.ModeMatrix` | Passed | После кеширования CurveTable, 500 transition, μs/frame (без/с binding): Linear 2.862/19.955; easing 2.831/19.801; spring 11.485/25.174. На 100: Linear 0.581/3.933; easing 0.589/3.951; spring 2.180/5.015. |
+| 2026-08-23 | UE 5.7 / Mac arm64 Development | `ElasticUMG.WidgetTransition.Performance.ModeMatrix` | Passed | Spring experiment A — cached frequency/damping: 500 без binding 8.986 μs/frame (0.018 μs/transition), было 11.485. С binding 18.163 μs/frame. |
+| 2026-08-23 | UE 5.7 / Mac arm64 Development | `ElasticUMG.WidgetTransition.Runtime.Spring.Converges` | Passed | После перехода на squared completion check spring сохранил сходимость к target. |
+| 2026-08-23 | UE 5.7 / Mac arm64 Development | `ElasticUMG.WidgetTransition.Performance.ModeMatrix` | Passed | Spring experiment B — cached parameters + squared completion check: 500 без binding 8.359 μs/frame (0.017 μs/transition), ещё −7%; с binding 23.081 μs/frame, значение шумное между commandlet-прогонами. |
 
 ## Правило обновления
 
