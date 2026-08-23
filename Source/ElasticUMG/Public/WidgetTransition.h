@@ -213,9 +213,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Widget Transition|Transition Value", meta = (DisplayName = "As Color"))
 	static FLinearColor AsColor(FWidgetTransitionValue Value);
 
-	/** Starts every bound transition in the array. Use Make Array to add one or more descriptions. */
-	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (DisplayName = "Add Widget Transitions", WorldContext = "WorldContextObject", AutoCreateRefTerm = "Transitions"))
-	static void StartWidgetTransitions(const UObject* WorldContextObject, TArray<FWidgetTransition> Transitions);
+	/** Starts one transition. */
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (DisplayName = "Add Widget Transition", WorldContext = "WorldContextObject"))
+	static void AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition);
+	/** Starts every transition in the array. */
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (DisplayName = "Add Widget Transition Array", WorldContext = "WorldContextObject", AutoCreateRefTerm = "Transitions"))
+	static void AddWidgetTransitionArray(const UObject* WorldContextObject, TArray<FWidgetTransition> Transitions);
 
 	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject"))
 	static void ClearAllWidgetTransitions(const UObject* WorldContextObject, UWidget* Widget);

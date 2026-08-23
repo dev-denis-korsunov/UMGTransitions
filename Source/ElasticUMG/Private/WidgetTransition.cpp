@@ -357,7 +357,12 @@ namespace WidgetTransition
 	}
 }
 
-void UWidgetTransitionFunctionLibrary::StartWidgetTransitions(const UObject* WorldContextObject, TArray<FWidgetTransition> Transitions)
+void UWidgetTransitionFunctionLibrary::AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition)
+{
+	WidgetTransition::StartTransition(WorldContextObject, MoveTemp(Transition));
+}
+
+void UWidgetTransitionFunctionLibrary::AddWidgetTransitionArray(const UObject* WorldContextObject, TArray<FWidgetTransition> Transitions)
 {
 	for (FWidgetTransition& Transition : Transitions) WidgetTransition::StartTransition(WorldContextObject, MoveTemp(Transition));
 }
@@ -447,9 +452,7 @@ void UWidgetTransitionAsyncAction::Activate()
 	PendingTransition.Events.OnStarted.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleStarted);
 	PendingTransition.Events.OnFinished.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleFinished);
 	PendingTransition.OnUpdate.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleUpdated);
-	TArray<FWidgetTransition> Transitions;
-	Transitions.Emplace(MoveTemp(PendingTransition));
-	UWidgetTransitionFunctionLibrary::StartWidgetTransitions(Context, MoveTemp(Transitions));
+	UWidgetTransitionFunctionLibrary::AddWidgetTransition(Context, MoveTemp(PendingTransition));
 }
 
 void UWidgetTransitionAsyncAction::RefreshEventValue(UWidget* Widget)
