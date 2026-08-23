@@ -164,6 +164,8 @@ struct FActiveWidgetTransition
 	uint16 bYoYo : 1 = false;
 	uint16 bStarted : 1 = false;
 	uint16 bFitSpringToTime : 1 = false;
+	/** Whether this transition writes its sampled value to a widget property. */
+	uint16 bBound : 1 = false;
 	/** Stable key for rare lifecycle callbacks in UWidgetTransitionSubsystem::EventCallbacks. */
 	uint64 TransitionId = 0;
 	TUniquePtr<FWidgetTransitionSpringState> SpringState;
@@ -178,7 +180,9 @@ class ELASTICUMG_API UWidgetTransitionFunctionLibrary final : public UBlueprintF
 public:
 	/** Creates a transition bound to a widget property or a Material.Parameter entry. */
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Create Widget Transition", ElasticUMGTransitionBinding = "Combined"))
-	static FWidgetTransition CreateWidgetTransition(UWidget* Widget, UPARAM(meta = (ElasticUMGRole = "WidgetProperty")) FName WidgetProperty, FWidgetTransitionValue ToValue, FWidgetTransitionValue FromValue, float Time = 0.2f, bool bUseFrom = false, float Delay = 0.0f);
+	static FWidgetTransition CreateWidgetTransition(UWidget* Widget, UPARAM(meta = (ElasticUMGRole = "WidgetProperty")) FName WidgetProperty, FWidgetTransitionValue ToValue, float Time = 0.2f, float Delay = 0.0f);
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (CPP_Default_bUseFrom = "true"))
+	static FWidgetTransition From(FWidgetTransition Transition, bool bUseFrom, FWidgetTransitionValue FromValue);
 
 	UFUNCTION(BlueprintPure, Category = "Widget Transition")
 	static FWidgetTransition Delay(FWidgetTransition Transition, float Delay, bool bApplyValueBeforeDelay = true);
