@@ -43,6 +43,12 @@ enum class EWidgetTransitionBindingKind : uint8
 	Property,
 	MaterialScalar,
 	MaterialVector,
+	RenderOpacity,
+	RenderTransformTranslation,
+	RenderTransformScale,
+	RenderTransformShear,
+	RenderTransformAngle,
+	RenderTransformPivot,
 };
 
 /**

@@ -144,6 +144,20 @@ bool FWidgetTransitionPropertyBindingTest::RunTest(const FString&)
 	TestTrue(TEXT("Opacity was updated"), FMath::IsNearlyEqual(Widget->GetRenderOpacity(), 0.35f, Tolerance));
 	TestTrue(TEXT("Scale resolves"), Binding.Resolve(Widget, TEXT("RenderTransform.Scale")));
 	TestEqual(TEXT("Scale has two channels"), Binding.ChannelCount, static_cast<uint8>(2));
+	TestTrue(TEXT("Scale value can be written"), Binding.Apply(Widget, FVector4f(1.25f, 0.75f, 0.0f, 0.0f)));
+	TestTrue(TEXT("Scale was updated"), Widget->GetRenderTransform().Scale.Equals(FVector2D(1.25f, 0.75f), Tolerance));
+	TestTrue(TEXT("Translation resolves"), Binding.Resolve(Widget, TEXT("RenderTransform.Translation")));
+	TestTrue(TEXT("Translation value can be written"), Binding.Apply(Widget, FVector4f(10.0f, -20.0f, 0.0f, 0.0f)));
+	TestTrue(TEXT("Translation was updated"), Widget->GetRenderTransform().Translation.Equals(FVector2D(10.0f, -20.0f), Tolerance));
+	TestTrue(TEXT("Shear resolves"), Binding.Resolve(Widget, TEXT("RenderTransform.Shear")));
+	TestTrue(TEXT("Shear value can be written"), Binding.Apply(Widget, FVector4f(3.0f, -4.0f, 0.0f, 0.0f)));
+	TestTrue(TEXT("Shear was updated"), Widget->GetRenderTransform().Shear.Equals(FVector2D(3.0f, -4.0f), Tolerance));
+	TestTrue(TEXT("Angle resolves"), Binding.Resolve(Widget, TEXT("RenderTransform.Angle")));
+	TestTrue(TEXT("Angle value can be written"), Binding.Apply(Widget, FVector4f(45.0f, 45.0f, 45.0f, 45.0f)));
+	TestTrue(TEXT("Angle was updated"), FMath::IsNearlyEqual(Widget->GetRenderTransformAngle(), 45.0f, Tolerance));
+	TestTrue(TEXT("Pivot resolves"), Binding.Resolve(Widget, TEXT("RenderTransformPivot")));
+	TestTrue(TEXT("Pivot value can be written"), Binding.Apply(Widget, FVector4f(0.25f, 0.75f, 0.0f, 0.0f)));
+	TestTrue(TEXT("Pivot was updated"), Widget->GetRenderTransformPivot().Equals(FVector2D(0.25f, 0.75f), Tolerance));
 	return true;
 }
 
@@ -299,6 +313,56 @@ bool FWidgetTransitionModeMatrixPerformanceTest::RunTest(const FString&)
 			}
 		}
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionFastBindingPerformanceTest, "ElasticUMG.WidgetTransition.Performance.FastBindings", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
+bool FWidgetTransitionFastBindingPerformanceTest::RunTest(const FString&)
+{
+	constexpr int32 TransitionCount = 500;
+	constexpr int32 FrameCount = 300;
+	constexpr float DeltaTime = 1.0f / 60.0f;
+
+	auto Measure = [this](FName PropertyName, bool bVector)
+	{
+		UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+		TArray<UImage*> Widgets;
+		Widgets.Reserve(TransitionCount);
+		const FWidgetTransitionValue FromValue = bVector ? UWidgetTransitionFunctionLibrary::MakeVectorTransitionValue(FVector2D::ZeroVector) : UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.0f);
+		const FWidgetTransitionValue ToValue = bVector ? UWidgetTransitionFunctionLibrary::MakeVectorTransitionValue(FVector2D(100.0f, -50.0f)) : UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(1.0f);
+		for (int32 Index = 0; Index < TransitionCount; ++Index)
+		{
+			UImage* Widget = NewObject<UImage>(GetTransientPackage());
+			Widgets.Add(Widget);
+			FWidgetTransition Transition;
+			Transition.Widget = Widget;
+			Transition.WidgetProperty = PropertyName;
+			Transition.FromValue = FromValue;
+			Transition.ToValue = ToValue;
+			Transition.Time = 60.0f;
+			Transition.bUseFrom = true;
+			Transition.bBound = Transition.PropertyBinding.Resolve(Widget, PropertyName.ToString());
+			TestTrue(FString::Printf(TEXT("%s resolves for transition %d"), *PropertyName.ToString(), Index), Transition.bBound);
+			Subsystem->Transitions.Emplace(MoveTemp(Transition));
+		}
+
+		Subsystem->TickTransitionsForTesting(DeltaTime);
+		const double StartTime = FPlatformTime::Seconds();
+		for (int32 FrameIndex = 0; FrameIndex < FrameCount; ++FrameIndex)
+		{
+			Subsystem->TickTransitionsForTesting(DeltaTime);
+		}
+		const double ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
+		AddInfo(FString::Printf(TEXT("500 %s transitions: %s / frame, %s / transition (%d frames)"), *PropertyName.ToString(), *FormatMicroseconds(ElapsedSeconds / FrameCount), *FormatMicroseconds(ElapsedSeconds / (FrameCount * TransitionCount)), FrameCount));
+		TestEqual(FString::Printf(TEXT("All %s transitions remain active"), *PropertyName.ToString()), Subsystem->Transitions.Num(), TransitionCount);
+	};
+
+	Measure(TEXT("RenderOpacity"), false);
+	Measure(TEXT("RenderTransform.Translation"), true);
+	Measure(TEXT("RenderTransform.Scale"), true);
+	Measure(TEXT("RenderTransform.Shear"), true);
+	Measure(TEXT("RenderTransform.Angle"), false);
+	Measure(TEXT("RenderTransformPivot"), true);
 	return true;
 }
 

@@ -88,6 +88,48 @@ namespace WidgetTransition
 		return FName(*WidgetProperty.ToString().RightChop(9));
 	}
 
+	static bool ResolveFastWidgetProperty(FWidgetTransitionPropertyBinding& Binding, const FString& PropertyPath)
+	{
+		Binding.bUsesDouble = false;
+		if (PropertyPath == TEXT("RenderOpacity"))
+		{
+			Binding.Kind = EWidgetTransitionBindingKind::RenderOpacity;
+			Binding.ValueType = EWidgetTransitionValueType::Float;
+			Binding.ChannelCount = 1;
+			return true;
+		}
+		if (PropertyPath == TEXT("RenderTransform.Translation"))
+		{
+			Binding.Kind = EWidgetTransitionBindingKind::RenderTransformTranslation;
+		}
+		else if (PropertyPath == TEXT("RenderTransform.Scale"))
+		{
+			Binding.Kind = EWidgetTransitionBindingKind::RenderTransformScale;
+		}
+		else if (PropertyPath == TEXT("RenderTransform.Shear"))
+		{
+			Binding.Kind = EWidgetTransitionBindingKind::RenderTransformShear;
+		}
+		else if (PropertyPath == TEXT("RenderTransform.Angle"))
+		{
+			Binding.Kind = EWidgetTransitionBindingKind::RenderTransformAngle;
+			Binding.ValueType = EWidgetTransitionValueType::Float;
+			Binding.ChannelCount = 1;
+			return true;
+		}
+		else if (PropertyPath == TEXT("RenderTransformPivot"))
+		{
+			Binding.Kind = EWidgetTransitionBindingKind::RenderTransformPivot;
+		}
+		else
+		{
+			return false;
+		}
+		Binding.ValueType = EWidgetTransitionValueType::Vector2D;
+		Binding.ChannelCount = 2;
+		return true;
+	}
+
 	static void ClearTransitionsForWidget(UWidgetTransitionSubsystem& Subsystem, UWidget* Widget)
 	{
 		for (auto It = Subsystem.Transitions.CreateIterator(); It; ++It)
@@ -216,13 +258,19 @@ namespace WidgetTransition
 
 bool FWidgetTransitionPropertyBinding::Resolve(UWidget* InWidget, const FString& InPropertyPath)
 {
+	Invalidate();
+	if (!IsValid(InWidget))
+	{
+		return false;
+	}
+	if (WidgetTransition::ResolveFastWidgetProperty(*this, InPropertyPath))
+	{
+		bResolved = true;
+		return true;
+	}
 	Kind = EWidgetTransitionBindingKind::Property;
-	MaterialInstance.Reset();
-	MaterialParameter = NAME_None;
 	CachedPropertyPath = FDynamicPropertyPath(InPropertyPath);
-	bResolved = IsValid(InWidget) && CachedPropertyPath.IsValid() && CachedPropertyPath.Resolve(InWidget);
-	bUsesDouble = false;
-	ChannelCount = 0;
+	bResolved = CachedPropertyPath.IsValid() && CachedPropertyPath.Resolve(InWidget);
 	if (!bResolved)
 	{
 		return false;
@@ -312,6 +360,43 @@ bool FWidgetTransitionPropertyBinding::Apply(UWidget* Widget, const FVector4f& V
 	{
 		return false;
 	}
+	switch (Kind)
+	{
+	case EWidgetTransitionBindingKind::RenderOpacity:
+	{
+		Widget->SetRenderOpacity(Value.X);
+		return true;
+	}
+	case EWidgetTransitionBindingKind::RenderTransformTranslation:
+	{
+		Widget->SetRenderTranslation(FVector2D(Value.X, Value.Y));
+		return true;
+	}
+	case EWidgetTransitionBindingKind::RenderTransformScale:
+	{
+		Widget->SetRenderScale(FVector2D(Value.X, Value.Y));
+		return true;
+	}
+	case EWidgetTransitionBindingKind::RenderTransformShear:
+	{
+		Widget->SetRenderShear(FVector2D(Value.X, Value.Y));
+		return true;
+	}
+	case EWidgetTransitionBindingKind::RenderTransformAngle:
+	{
+		Widget->SetRenderTransformAngle(Value.X);
+		return true;
+	}
+	case EWidgetTransitionBindingKind::RenderTransformPivot:
+	{
+		Widget->SetRenderTransformPivot(FVector2D(Value.X, Value.Y));
+		return true;
+	}
+	default:
+	{
+		break;
+	}
+	}
 	if (Kind == EWidgetTransitionBindingKind::MaterialScalar || Kind == EWidgetTransitionBindingKind::MaterialVector)
 	{
 		UMaterialInstanceDynamic* DynamicMaterial = MaterialInstance.Get();
@@ -355,6 +440,49 @@ bool FWidgetTransitionPropertyBinding::Read(UWidget* Widget, FVector4f& OutValue
 	if (!bResolved || !IsValid(Widget))
 	{
 		return false;
+	}
+	switch (Kind)
+	{
+	case EWidgetTransitionBindingKind::RenderOpacity:
+	{
+		const float Value = Widget->GetRenderOpacity();
+		OutValue = FVector4f(Value, Value, Value, Value);
+		return true;
+	}
+	case EWidgetTransitionBindingKind::RenderTransformTranslation:
+	{
+		const FVector2D Value = Widget->GetRenderTransform().Translation;
+		OutValue = FVector4f(Value.X, Value.Y, 0.0f, 0.0f);
+		return true;
+	}
+	case EWidgetTransitionBindingKind::RenderTransformScale:
+	{
+		const FVector2D Value = Widget->GetRenderTransform().Scale;
+		OutValue = FVector4f(Value.X, Value.Y, 0.0f, 0.0f);
+		return true;
+	}
+	case EWidgetTransitionBindingKind::RenderTransformShear:
+	{
+		const FVector2D Value = Widget->GetRenderTransform().Shear;
+		OutValue = FVector4f(Value.X, Value.Y, 0.0f, 0.0f);
+		return true;
+	}
+	case EWidgetTransitionBindingKind::RenderTransformAngle:
+	{
+		const float Value = Widget->GetRenderTransformAngle();
+		OutValue = FVector4f(Value, Value, Value, Value);
+		return true;
+	}
+	case EWidgetTransitionBindingKind::RenderTransformPivot:
+	{
+		const FVector2D Value = Widget->GetRenderTransformPivot();
+		OutValue = FVector4f(Value.X, Value.Y, 0.0f, 0.0f);
+		return true;
+	}
+	default:
+	{
+		break;
+	}
 	}
 	if (Kind == EWidgetTransitionBindingKind::MaterialScalar || Kind == EWidgetTransitionBindingKind::MaterialVector)
 	{

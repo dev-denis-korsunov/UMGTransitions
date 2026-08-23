@@ -14,6 +14,7 @@
 | `ElasticUMG.WidgetTransition.Performance.Construction` | Сравнивает ручную сборку, `Create Widget Transition` и полную pure-цепочку на 100 000 экземпляров. |
 | `ElasticUMG.WidgetTransition.Performance.ConcurrentTick` | Измеряет горячий путь interpolation + `RenderOpacity` write при 1, 10, 100 и 500 активных переходах. |
 | `ElasticUMG.WidgetTransition.Performance.ModeMatrix` | Сравнивает Linear, CurveTable easing и Spring с binding и без него при 100 и 500 активных переходах. |
+| `ElasticUMG.WidgetTransition.Performance.FastBindings` | Измеряет direct adapters для `RenderOpacity`, `RenderTransform` и pivot при 500 активных переходах. |
 
 ## Методика performance-тестов
 
@@ -22,6 +23,7 @@
 - `Construction`: 100 000 итераций каждого варианта; в лог выводятся суммарное время и микросекунды на transition.
 - `ConcurrentTick`: после одного прогревочного кадра выполняются 300 кадров по `1/60` секунды. Каждый transition привязан к отдельному `UImage.RenderOpacity`, поэтому измеряется и вычисление значения, и запись binding. Лог выводит микросекунды на кадр и на transition для 1, 10, 100 и 500 одновременных переходов.
 - `ModeMatrix`: 300 кадров по `1/60` секунды для Linear, CurveTable easing и Spring. Каждый режим запускается с `RenderOpacity` binding и без него, при 100 и 500 transition. CurveTable содержит три ключа: `(0, 0)`, `(0.5, 0.2)`, `(1, 1)`.
+- `FastBindings`: 300 кадров по `1/60` секунды для 500 linear transition на каждый direct adapter. Проверяются `RenderOpacity`, `RenderTransform.Translation`, `Scale`, `Shear`, `Angle` и `RenderTransformPivot`.
 
 `FRealCurve` для easing резолвится один раз при добавлении transition в subsystem. Поэтому изменение CurveTable не меняет уже запущенные transition; их нужно добавить заново.
 
@@ -53,6 +55,9 @@
 | 2026-08-23 | UE 5.7 / Mac arm64 Development | `ElasticUMG.WidgetTransition.Performance.ModeMatrix` | Passed | Spring experiment A — cached frequency/damping: 500 без binding 8.986 μs/frame (0.018 μs/transition), было 11.485. С binding 18.163 μs/frame. |
 | 2026-08-23 | UE 5.7 / Mac arm64 Development | `ElasticUMG.WidgetTransition.Runtime.Spring.Converges` | Passed | После перехода на squared completion check spring сохранил сходимость к target. |
 | 2026-08-23 | UE 5.7 / Mac arm64 Development | `ElasticUMG.WidgetTransition.Performance.ModeMatrix` | Passed | Spring experiment B — cached parameters + squared completion check: 500 без binding 8.359 μs/frame (0.017 μs/transition), ещё −7%; с binding 23.081 μs/frame, значение шумное между commandlet-прогонами. |
+| 2026-08-23 | UE 5.7 / Mac arm64 Development | `ElasticUMG.WidgetTransition.Performance.FastBindings` | Passed | 500 transition: Opacity 5.880 μs/frame; Translation 6.036; Scale 5.912; Shear 5.797; Angle 5.664. Все 0.011–0.012 μs/transition. |
+| 2026-08-23 | UE 5.7 / Mac arm64 Development | `ElasticUMG.WidgetTransition.Runtime.PropertyBinding.Channels` | Passed | Direct adapters read/write `RenderOpacity`, все поля `RenderTransform` и `RenderTransformPivot`. |
+| 2026-08-23 | UE 5.7 / Mac arm64 Development | `ElasticUMG.WidgetTransition.Performance.FastBindings` | Passed | После добавления pivot, 500 transition: Opacity 5.995 μs/frame; Translation 6.078; Scale 5.700; Shear 6.224; Angle 5.600; Pivot 5.762. |
 
 ## История оптимизаций runtime
 
@@ -66,6 +71,24 @@
 | Cached curve | `FRealCurve*` резолвится при добавлении transition и затем вызывается напрямую. | 2.831 | 19.801 | `0fb420e` |
 
 Это убрало отдельную стоимость easing из hot-path: без binding она совпала с linear (`2.862 μs/frame`).
+
+### Fast widget property adapters
+
+| Этап | Изменение | 500 `RenderOpacity`, μs/frame | Эффект | Commit |
+| --- | --- | ---: | --- | --- |
+| Generic path | `FDynamicPropertyPath` resolve/apply. | 19.955 | Baseline | `0fb420e` |
+| Direct adapter | Прямой вызов `UWidget::Get/SetRenderOpacity`; аналогичные адаптеры для всех полей `RenderTransform` и pivot. | 5.995 | Около −70% в данном прогоне | Этот change |
+
+Adapter не уменьшает `sizeof(FWidgetTransitionPropertyBinding)`, но fast-случаи не создают динамические сегменты `FDynamicPropertyPath`. Произвольные свойства и material продолжают использовать универсальный fallback.
+
+#### Устройство и границы fast adapter
+
+1. При `Add Widget Transition` вызывается `FWidgetTransitionPropertyBinding::Resolve`.
+2. Точные имена стандартных полей сопоставляются с `EWidgetTransitionBindingKind`: `RenderOpacity`, `RenderTransform.Translation`, `Scale`, `Shear`, `Angle` и `RenderTransformPivot`.
+3. Для них binding хранит только tag, semantic type и channel count; `Read` и `Apply` вызывают публичные `UWidget::Get/Set...` без reflection.
+4. Любое другое имя идёт в неизменённый `FDynamicPropertyPath` fallback. Material-параметры сохраняют отдельный adapter через `UMaterialInstanceDynamic`.
+
+Это безопаснее прямого доступа к deprecated UPROPERTY: используются штатные setter/getter, поэтому Slate invalidation и будущая внутренняя реализация `UWidget` остаются в зоне ответственности движка. Недостаток — список fast-полей поддерживается вручную; новый adapter добавляется только вместе с resolve/read/apply тестом и benchmark.
 
 ### Spring
 

@@ -1,5 +1,38 @@
 # FWidgetTransition: память и производительность
 
+> Историческая часть ниже описывает раннюю typed-реализацию. Актуальные результаты и журнал измерений находятся в `TestResults.md`.
+
+## Актуальное дополнение: fast widget property adapters (2026-08-23)
+
+`FWidgetTransitionPropertyBinding` сначала распознаёт небольшой набор наиболее частых стандартных свойств `UWidget`, а затем использует прямые публичные getter/setter движка. Поддерживаются `RenderOpacity`, `RenderTransform.Translation`, `Scale`, `Shear`, `Angle` и `RenderTransformPivot`.
+
+### Маршрут binding
+
+```text
+WidgetProperty
+  ├─ стандартное имя UWidget → EWidgetTransitionBindingKind → UWidget::Get/Set...
+  ├─ Material.<Parameter>    → cached UMaterialInstanceDynamic
+  └─ любое другое имя        → FDynamicPropertyPath fallback
+```
+
+Fast route определяется один раз в `Resolve` при добавлении transition. В tick `Read`/`Apply` переходят по tag и не вызывают `PropertyPathHelpers`. Для fallback сохранены текущие возможности вложенных свойств, типовая проверка и material parameters.
+
+### Почему используются методы, а не прямой доступ к UPROPERTY
+
+Поля `UWidget::RenderOpacity` и `RenderTransform` помечены UE как deprecated для прямого доступа. Adapter вызывает `SetRenderOpacity`, `SetRenderTranslation`, `SetRenderScale`, `SetRenderShear`, `SetRenderTransformAngle` и `SetRenderTransformPivot`. Это сохраняет Slate invalidation и не зависит от внутреннего layout виджета.
+
+### Измеренный эффект
+
+В Development Editor, 500 linear transition, 300 кадров по `1/60`:
+
+| Путь | Время на кадр | Время на transition |
+| --- | ---: | ---: |
+| `FDynamicPropertyPath` для `RenderOpacity` | 19.955 μs | ~0.040 μs |
+| Fast `RenderOpacity` adapter | 5.880 μs | 0.012 μs |
+| Fast transform/pivot adapters | ~5.7–6.1 μs | ~0.012 μs |
+
+Абсолютные цифры commandlet могут меняться от нагрузки системы, но прямой adapter убирает reflection из hot-path. Inline-размер binding пока не меняется; fast routes дополнительно не аллоцируют сегменты `FDynamicPropertyPath`.
+
 Дата анализа: 2026-08-02. Документ описывает текущую typed-реализацию в ветке `experiment-2-alpha-transitions` и является планом изменений, а не спецификацией уже внесённого рефакторинга.
 
 ## Вывод
