@@ -3,6 +3,7 @@
 #include "Components/Border.h"
 #include "Components/Image.h"
 #include "Components/Widget.h"
+#include "Curves/RealCurve.h"
 #include "Engine/Engine.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "PropertyPathHelpers.h"
@@ -119,11 +120,14 @@ namespace WidgetTransition
 
 	static bool RestartTransition(FWidgetTransition& Transition)
 	{
-		if (Transition.RepeatCount != -1 && Transition.CompletedRepeats >= Transition.RepeatCount)
+		if (Transition.RepeatCount == 0)
 		{
 			return false;
 		}
-		++Transition.CompletedRepeats;
+		if (Transition.RepeatCount > 0)
+		{
+			--Transition.RepeatCount;
+		}
 		Transition.CurrentTime = 0.0f;
 		if (Transition.bYoYo)
 		{
@@ -161,7 +165,15 @@ namespace WidgetTransition
 			}
 			bool bEnd = !It->bUseSpring && (It->Time <= 0.0f || It->CurrentTime >= It->Delay + It->Time);
 			const float Alpha = It->Time <= 0.0f ? 1.0f : FMath::Clamp((It->CurrentTime - It->Delay) / It->Time, 0.0f, 1.0f);
-			const float EasedAlpha = It->Easing.IsNull() ? Alpha : It->Easing.Eval(Alpha, TEXT("Widget Transition"));
+			float EasedAlpha = Alpha;
+			if (!It->Easing.IsNull())
+			{
+#if UE_BUILD_SHIPPING
+				EasedAlpha = It->EasingCurve ? It->EasingCurve->Eval(Alpha) : 0.0f;
+#else
+				EasedAlpha = It->Easing.Eval(Alpha, TEXT("Widget Transition"));
+#endif
+			}
 			FVector4f Value = FMath::Lerp(It->FromValue.Channels, It->ToValue.Channels, EasedAlpha);
 			const bool bReachedSpringDeadline = It->bUseSpring && It->bFitSpringToTime && It->CurrentTime >= It->Delay + It->Time;
 			if (It->bUseSpring && It->SpringState.IsValid() && !bReachedSpringDeadline)
@@ -431,6 +443,9 @@ namespace WidgetTransition
 		Transition.RepeatCount = FMath::Max(-1, Transition.RepeatCount);
 		Transition.bBound = IsValid(TargetWidget) && !Transition.WidgetProperty.IsNone();
 		Transition.bHasCallbacks = Callbacks.HasBoundCallbacks();
+#if UE_BUILD_SHIPPING
+		Transition.EasingCurve = Transition.Easing.IsNull() ? nullptr : Transition.Easing.GetCurve(TEXT("Widget Transition"), false);
+#endif
 		if (Transition.bBound)
 		{
 			const bool bResolved = IsMaterialBinding(Transition.WidgetProperty)

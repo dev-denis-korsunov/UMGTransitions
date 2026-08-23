@@ -55,7 +55,20 @@ public:
 	const FWidgetTransitionEasing* FindEasing(FName Name) const;
 	float EvaluateEasing(FName Name, float Alpha) const;
 
-	virtual FName GetCategoryName() const override { return TEXT("Plugins"); }
-	virtual FName GetSectionName() const override { return TEXT("ElasticUMG"); }
-	virtual FText GetSectionText() const override { return NSLOCTEXT("ElasticUMG", "SettingsSection", "Elastic UMG"); }
+	virtual FName GetCategoryName() const override
+	{
+		return TEXT("Plugins");
+	}
+
+	virtual FName GetSectionName() const override
+	{
+		return TEXT("ElasticUMG");
+	}
+
+#if WITH_EDITOR
+	virtual FText GetSectionText() const override
+	{
+		return NSLOCTEXT("ElasticUMG", "SettingsSection", "Elastic UMG");
+	}
+#endif
 };

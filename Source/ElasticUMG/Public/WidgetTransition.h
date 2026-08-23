@@ -13,6 +13,7 @@
 
 class UWidget;
 class UMaterialInstanceDynamic;
+struct FRealCurve;
 
 DECLARE_DYNAMIC_DELEGATE_ThreeParams(FOnWidgetTransitionUpdate, UWidget*, Widget, float, NormalizedProgress, float, EasedProgress);
 DECLARE_DYNAMIC_DELEGATE_OneParam(FOnWidgetTransitionEvent, UWidget*, Widget);
@@ -132,15 +133,14 @@ struct ELASTICUMG_API FWidgetTransition
 	float SpringSpeed = 0.65f;
 	float SpringBounce = 0.45f;
 	int32 RepeatCount = 0;
-	int32 CompletedRepeats = 0;
 	uint16 bUseFrom : 1 = false;
 	/** Defers applying From Value until the transition starts after its delay. */
 	uint16 bChangeFromPropertyAfterDelay : 1 = false;
 	uint16 bYoYo : 1 = false;
 	uint16 bRemoveFromParent : 1 = false;
 	uint16 bUseSpring : 1 = false;
-	/** Derives spring frequency from Time so the simulation settles within its requested duration. */
 	uint16 bStarted : 1 = false;
+	/** Derives spring frequency from Time so the simulation settles within its requested duration. */
 	uint16 bFitSpringToTime : 1 = false;
 	/** Whether this transition has rare callbacks stored in the subsystem. */
 	uint16 bHasCallbacks : 1 = false;
@@ -149,6 +149,10 @@ struct ELASTICUMG_API FWidgetTransition
 	/** Stable key for rare callbacks in UWidgetTransitionSubsystem::Callbacks. */
 	uint64 TransitionId = 0;
 	TSharedPtr<FWidgetTransitionSpringState> SpringState;
+#if UE_BUILD_SHIPPING
+	/** Cached at transition start; CurveTable rows are immutable in a shipping build. */
+	const FRealCurve* EasingCurve = nullptr;
+#endif
 };
 
 UCLASS()
