@@ -87,7 +87,7 @@ namespace ElasticUMGEditor
 	{
 		const UK2Node_CallFunction* Node = Pin ? Cast<UK2Node_CallFunction>(Pin->GetOwningNode()) : nullptr;
 		const UFunction* Function = Node ? Node->GetTargetFunction() : nullptr;
-		return Function && Function->GetMetaData(TEXT("ElasticUMGTransitionBinding")) == TEXT("Combined") && Pin->PinName == TEXT("Binding");
+		return Function && Function->GetMetaData(TEXT("ElasticUMGTransitionBinding")) == TEXT("Combined") && (Pin->PinName == TEXT("WidgetProperty") || Pin->PinName == TEXT("Binding"));
 	}
 	static bool IsMaterialParameterPin(const UEdGraphPin* Pin)
 	{
@@ -136,7 +136,7 @@ namespace ElasticUMGEditor
 		void RefreshOptions()
 		{
 			Options.Reset();
-			if (bIncludeMaterialParameters) Options.Add(MakeShared<FPropertyOption>(FPropertyOption{ TEXT("Without Binding"), TEXT("None"), FLinearColor(0.55f, 0.55f, 0.55f) }));
+			if (bIncludeMaterialParameters) Options.Add(MakeShared<FPropertyOption>(FPropertyOption{ TEXT("None"), TEXT("None"), FLinearColor(0.55f, 0.55f, 0.55f) }));
 			AddProperties(GetWidgetClassForPin(GraphPinObj), FString(), 0, Options);
 			if (UWidget* Widget = GetDesignerWidget(GraphPinObj); Widget && Widget->Slot)
 			{
@@ -187,7 +187,7 @@ namespace ElasticUMGEditor
 			GraphPinObj->Modify();
 			GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, Option->Path);
 		}
-		FText GetCurrentValue() const { const FString Value = GraphPinObj->GetDefaultAsString(); return Value.IsEmpty() || Value == TEXT("None") ? NSLOCTEXT("ElasticUMG", "WithoutBinding", "Without Binding") : FText::FromString(Value); }
+		FText GetCurrentValue() const { const FString Value = GraphPinObj->GetDefaultAsString(); return Value.IsEmpty() || Value == TEXT("None") ? NSLOCTEXT("ElasticUMG", "NoBinding", "None") : FText::FromString(Value); }
 		TArray<TSharedPtr<FPropertyOption>> Options;
 		bool bIncludeMaterialParameters = false;
 	};
