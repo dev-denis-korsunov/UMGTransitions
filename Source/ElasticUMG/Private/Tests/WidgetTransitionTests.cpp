@@ -35,15 +35,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionBuilderTest, "ElasticUMG.Widge
 bool FWidgetTransitionBuilderTest::RunTest(const FString&)
 {
 	UImage* Widget = NewObject<UImage>(GetTransientPackage());
-	FWidgetTransition Transition;
-	Transition.ToValue.Channels.X = 0.8f;
-	Transition.ToValue.Type = EWidgetTransitionValueType::Float;
-	Transition.FromValue.Channels = FVector4f(0.2f, 0.4f, 0.0f, 0.0f);
-	Transition.FromValue.Type = EWidgetTransitionValueType::Vector2D;
-	Transition.bUseFrom = true;
-	Transition.Delay = 0.4f;
-	Transition.Time = 0.25f;
-	Transition = UWidgetTransitionFunctionLibrary::Bind(MoveTemp(Transition), Widget, TEXT("RenderTransform.Scale"));
+	FWidgetTransitionValue ToValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.8f);
+	FWidgetTransitionValue FromValue = UWidgetTransitionFunctionLibrary::MakeVectorTransitionValue(FVector2D(0.2f, 0.4f));
+	FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderTransform.Scale"), ToValue, FromValue, 0.25f, true, 0.4f);
 	Transition = UWidgetTransitionFunctionLibrary::Repeat(MoveTemp(Transition), 2);
 	Transition = UWidgetTransitionFunctionLibrary::YoYo(MoveTemp(Transition));
 	Transition = UWidgetTransitionFunctionLibrary::Spring(MoveTemp(Transition), 0.8f, 0.25f, true);
@@ -52,7 +46,7 @@ bool FWidgetTransitionBuilderTest::RunTest(const FString&)
 	TestTrue(TEXT("From modifier is enabled"), Transition.bUseFrom);
 	TestTrue(TEXT("Binding is retained"), Transition.Widget == Widget && Transition.WidgetProperty == TEXT("RenderTransform.Scale"));
 	TestTrue(TEXT("Repeat and spring modifiers are retained"), Transition.RepeatCount == 2 && Transition.bYoYo && Transition.bUseSpring && Transition.bFitSpringToTime);
-	Transition = UWidgetTransitionFunctionLibrary::BindMaterialParameter(MoveTemp(Transition), Widget, TEXT("Progress"));
+	Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("Material.Progress"), ToValue, FromValue, 0.25f, true, 0.4f);
 	TestTrue(TEXT("Material binding retains its virtual channel"), Transition.BindingKind == EWidgetTransitionBindingKind::Material && Transition.MaterialParameter == TEXT("Progress"));
 	return true;
 }
@@ -87,10 +81,8 @@ bool FWidgetTransitionSpringTest::RunTest(const FString&)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionMetadataTest, "ElasticUMG.WidgetTransition.Editor.Metadata", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionMetadataTest::RunTest(const FString&)
 {
-	const UFunction* Binding = UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, Bind));
-	TestTrue(TEXT("Binding function opts into the custom property pin"), Binding && Binding->HasMetaData(TEXT("ElasticUMGTransitionBinding")));
-	const UFunction* InternalCreate = UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(TEXT("CreateFloatWidgetTransition"));
-	TestTrue(TEXT("Typed create shim is hidden from the Blueprint palette"), InternalCreate && InternalCreate->HasMetaData(TEXT("BlueprintInternalUseOnly")));
+	const UFunction* Create = UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateWidgetTransition));
+	TestTrue(TEXT("Create function opts into the custom property pin"), Create && Create->HasMetaData(TEXT("ElasticUMGTransitionBinding")));
 	return true;
 }
 

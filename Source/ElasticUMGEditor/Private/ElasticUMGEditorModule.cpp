@@ -8,7 +8,6 @@
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
 #include "K2Node_CallFunction.h"
-#include "K2Node_WidgetTransition.h"
 #include "SGraphPin.h"
 #include "K2Node_VariableGet.h"
 #include "Materials/MaterialInterface.h"
@@ -80,14 +79,12 @@ namespace ElasticUMGEditor
 	}
 	static bool IsBindingPropertyPin(const UEdGraphPin* Pin)
 	{
-		if (Pin && Cast<UK2Node_WidgetTransition>(Pin->GetOwningNode())) return Pin->PinName == TEXT("WidgetProperty");
 		const UK2Node_CallFunction* Node = Pin ? Cast<UK2Node_CallFunction>(Pin->GetOwningNode()) : nullptr;
 		const UFunction* Function = Node ? Node->GetTargetFunction() : nullptr;
 		return Function && Function->HasMetaData(TEXT("ElasticUMGTransitionBinding")) && (Pin->PinName == TEXT("WidgetProperty") || Pin->PinName == TEXT("Binding"));
 	}
 	static bool IsCombinedBindingPin(const UEdGraphPin* Pin)
 	{
-		if (Pin && Cast<UK2Node_WidgetTransition>(Pin->GetOwningNode())) return Pin->PinName == TEXT("WidgetProperty");
 		const UK2Node_CallFunction* Node = Pin ? Cast<UK2Node_CallFunction>(Pin->GetOwningNode()) : nullptr;
 		const UFunction* Function = Node ? Node->GetTargetFunction() : nullptr;
 		return Function && Function->GetMetaData(TEXT("ElasticUMGTransitionBinding")) == TEXT("Combined") && Pin->PinName == TEXT("Binding");

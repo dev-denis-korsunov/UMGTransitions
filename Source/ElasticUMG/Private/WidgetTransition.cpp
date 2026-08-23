@@ -352,19 +352,19 @@ void UWidgetTransitionFunctionLibrary::StartWidgetTransitions(const UObject* Wor
 	for (FWidgetTransition& Transition : Transitions) WidgetTransition::StartTransition(WorldContextObject, MoveTemp(Transition));
 }
 
-FWidgetTransition UWidgetTransitionFunctionLibrary::CreateWidgetTransition(FWidgetTransitionValue ToValue, float Delay, float Time)
+FWidgetTransition UWidgetTransitionFunctionLibrary::CreateWidgetTransition(UWidget* Widget, FName WidgetProperty, FWidgetTransitionValue ToValue, FWidgetTransitionValue FromValue, float Time, bool bUseFrom, float Delay)
 {
 	FWidgetTransition Transition;
+	Transition.Widget = Widget;
+	Transition.WidgetProperty = WidgetProperty;
+	const FString BindingPath = WidgetProperty.ToString();
+	Transition.BindingKind = BindingPath.StartsWith(TEXT("Material.")) ? EWidgetTransitionBindingKind::Material : EWidgetTransitionBindingKind::Property;
+	Transition.MaterialParameter = Transition.BindingKind == EWidgetTransitionBindingKind::Material ? FName(*BindingPath.RightChop(9)) : NAME_None;
 	Transition.ToValue = MoveTemp(ToValue);
+	Transition.FromValue = MoveTemp(FromValue);
+	Transition.bUseFrom = bUseFrom;
 	Transition.Delay = FMath::Max(0.0f, Delay);
 	Transition.Time = FMath::Max(0.0f, Time);
-	return Transition;
-}
-
-FWidgetTransition UWidgetTransitionFunctionLibrary::SetFromTransition(FWidgetTransition Transition, FWidgetTransitionValue FromValue)
-{
-	Transition.FromValue = MoveTemp(FromValue);
-	Transition.bUseFrom = true;
 	return Transition;
 }
 
@@ -375,34 +375,6 @@ float UWidgetTransitionFunctionLibrary::AsFloat(FWidgetTransitionValue Value) { 
 FVector2D UWidgetTransitionFunctionLibrary::AsVector2D(FWidgetTransitionValue Value) { return FVector2D(Value.Channels.X, Value.Channels.Y); }
 FLinearColor UWidgetTransitionFunctionLibrary::AsColor(FWidgetTransitionValue Value) { return FLinearColor(Value.Channels.X, Value.Channels.Y, Value.Channels.Z, Value.Channels.W); }
 
-FWidgetTransition UWidgetTransitionFunctionLibrary::CreateFloatWidgetTransition(float ToValue, float Delay, float Time, int32 RepeatCount, bool bYoYo) { FWidgetTransition Transition; Transition.ToValue = WidgetTransition::MakeValue(ToValue); Transition.Delay = FMath::Max(0.0f, Delay); Transition.Time = FMath::Max(0.0f, Time); Transition.RepeatCount = FMath::Max(-1, RepeatCount); Transition.bYoYo = bYoYo; return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::CreateVectorWidgetTransition(FVector2D ToValue, float Delay, float Time, int32 RepeatCount, bool bYoYo) { FWidgetTransition Transition; Transition.ToValue = WidgetTransition::MakeValue(ToValue); Transition.Delay = FMath::Max(0.0f, Delay); Transition.Time = FMath::Max(0.0f, Time); Transition.RepeatCount = FMath::Max(-1, RepeatCount); Transition.bYoYo = bYoYo; return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::CreateColorWidgetTransition(FLinearColor ToValue, float Delay, float Time, int32 RepeatCount, bool bYoYo) { FWidgetTransition Transition; Transition.ToValue = WidgetTransition::MakeValue(ToValue); Transition.Delay = FMath::Max(0.0f, Delay); Transition.Time = FMath::Max(0.0f, Time); Transition.RepeatCount = FMath::Max(-1, RepeatCount); Transition.bYoYo = bYoYo; return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::Bind(FWidgetTransition Transition, UWidget* Widget, FName WidgetProperty)
-{
-	Transition.Widget = Widget;
-	const FString BindingPath = WidgetProperty.ToString();
-	Transition.BindingKind = BindingPath.StartsWith(TEXT("Material.")) ? EWidgetTransitionBindingKind::Material : EWidgetTransitionBindingKind::Property;
-	Transition.MaterialParameter = Transition.BindingKind == EWidgetTransitionBindingKind::Material ? FName(*BindingPath.RightChop(9)) : NAME_None;
-	Transition.WidgetProperty = WidgetProperty;
-	return Transition;
-}
-FWidgetTransition UWidgetTransitionFunctionLibrary::BindMaterialParameter(FWidgetTransition Transition, UWidget* Widget, FName ParameterName)
-{
-	Transition.Widget = Widget;
-	Transition.BindingKind = EWidgetTransitionBindingKind::Material;
-	Transition.MaterialParameter = ParameterName;
-	Transition.WidgetProperty = FName(*FString::Printf(TEXT("Material.%s"), *ParameterName.ToString()));
-	return Transition;
-}
-FWidgetTransition UWidgetTransitionFunctionLibrary::FromFloat(FWidgetTransition Transition, float FromValue)
-{
-	Transition.FromValue = WidgetTransition::MakeValue(FromValue); 
-	Transition.bUseFrom = true; 
-	return Transition;
-}
-FWidgetTransition UWidgetTransitionFunctionLibrary::FromVector(FWidgetTransition Transition, FVector2D FromValue) { Transition.FromValue = WidgetTransition::MakeValue(FromValue); Transition.bUseFrom = true; return Transition; }
-FWidgetTransition UWidgetTransitionFunctionLibrary::FromColor(FWidgetTransition Transition, FLinearColor FromValue) { Transition.FromValue = WidgetTransition::MakeValue(FromValue); Transition.bUseFrom = true; return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::Delay(FWidgetTransition Transition, float Delay, bool bApplyValueBeforeDelay) { Transition.Delay = FMath::Max(0.0f, Delay); Transition.bApplyValueBeforeDelay = bApplyValueBeforeDelay; return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::Easing(FWidgetTransition Transition, FCurveTableRowHandle Easing) { Transition.Easing = MoveTemp(Easing); Transition.bUseSpring = false; return Transition; }
 FWidgetTransition UWidgetTransitionFunctionLibrary::Repeat(FWidgetTransition Transition, int32 RepeatCount) { Transition.RepeatCount = FMath::Max(-1, RepeatCount); return Transition; }

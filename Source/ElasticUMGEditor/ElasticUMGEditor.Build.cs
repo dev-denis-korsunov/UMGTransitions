@@ -19,7 +19,6 @@ public class ElasticUMGEditor : ModuleRules
 				"GraphEditor",
 				"UnrealEd",
 				"BlueprintGraph",
-				"KismetCompiler",
 				"PropertyEditor",
 				"Settings"
 			});
