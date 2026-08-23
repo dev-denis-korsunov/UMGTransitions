@@ -128,7 +128,7 @@ namespace WidgetTransition
 		{
 			--Transition.RepeatCount;
 		}
-		Transition.CurrentTime = 0.0f;
+		Transition.CurrentTime = Transition.bIgnoreDelayOnRepeat ? Transition.Delay : 0.0f;
 		if (Transition.bYoYo)
 		{
 			Swap(Transition.FromValue, Transition.ToValue);
@@ -141,7 +141,7 @@ namespace WidgetTransition
 	{
 		for (auto It = Subsystem.Transitions.CreateIterator(); It; ++It)
 		{
-			if (It->bBound && !It->Widget.IsValid())
+			if (!It->Widget.IsValid())
 			{
 				Subsystem.Callbacks.Remove(It->TransitionId);
 				It.RemoveCurrent();
@@ -438,6 +438,10 @@ namespace WidgetTransition
 		{
 			return;
 		}
+		if (!IsValid(TargetWidget))
+		{
+			return;
+		}
 		Transition.Time = FMath::Max(0.0f, Transition.Time);
 		Transition.Delay = FMath::Max(0.0f, Transition.Delay);
 		Transition.RepeatCount = FMath::Max(-1, Transition.RepeatCount);
@@ -472,7 +476,7 @@ namespace WidgetTransition
 			{
 				return;
 			}
-			if (Transition.Delay > 0.0f && Transition.bUseFrom && !Transition.bChangeFromPropertyAfterDelay)
+			if (Transition.Delay > 0.0f && Transition.bUseFrom && !Transition.bDeferFromValue)
 			{
 				Transition.PropertyBinding.Apply(TargetWidget, Transition.FromValue.Channels);
 			}
@@ -540,9 +544,10 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::From(FWidgetTransition Trans
 	return Transition;
 }
 
-FWidgetTransition UWidgetTransitionFunctionLibrary::Options(FWidgetTransition Transition, bool bChangeFromPropertyAfterDelay)
+FWidgetTransition UWidgetTransitionFunctionLibrary::Options(FWidgetTransition Transition, bool bDeferFromValue, bool bIgnoreDelayOnRepeat)
 {
-	Transition.bChangeFromPropertyAfterDelay = bChangeFromPropertyAfterDelay;
+	Transition.bDeferFromValue = bDeferFromValue;
+	Transition.bIgnoreDelayOnRepeat = bIgnoreDelayOnRepeat;
 	return Transition;
 }
 

@@ -7,7 +7,6 @@
 #include "Kismet/BlueprintAsyncActionBase.h"
 #include "Spring.h"
 #include "Subsystems/WorldSubsystem.h"
-#include "WidgetTransitionSettings.h"
 
 #include "WidgetTransition.generated.h"
 
@@ -135,7 +134,9 @@ struct ELASTICUMG_API FWidgetTransition
 	int32 RepeatCount = 0;
 	uint16 bUseFrom : 1 = false;
 	/** Defers applying From Value until the transition starts after its delay. */
-	uint16 bChangeFromPropertyAfterDelay : 1 = false;
+	uint16 bDeferFromValue : 1 = false;
+	/** Skips Delay after the initial cycle when the transition repeats. */
+	uint16 bIgnoreDelayOnRepeat : 1 = false;
 	uint16 bYoYo : 1 = false;
 	uint16 bRemoveFromParent : 1 = false;
 	uint16 bUseSpring : 1 = false;
@@ -168,7 +169,7 @@ public:
 	static FWidgetTransition From(FWidgetTransition Transition, bool bUseFrom, FWidgetTransitionValue FromValue);
 	/** Configures optional transition behavior. */
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
-	static FWidgetTransition Options(FWidgetTransition Transition, bool bChangeFromPropertyAfterDelay = false);
+	static FWidgetTransition Options(FWidgetTransition Transition, UPARAM(meta = (ToolTip = "Defers applying From Value until the transition starts after Delay.")) bool bDeferFromValue = false, bool bIgnoreDelayOnRepeat = false);
 
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DataTablePin = "CurveTable", ReturnDisplayName = "Transition"))
 	static FWidgetTransition Easing(FWidgetTransition Transition, UCurveTable* CurveTable, FName RowName);
