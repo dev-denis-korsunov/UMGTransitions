@@ -287,24 +287,31 @@ bool FWidgetTransitionPropertyBinding::Read(UWidget* Widget, FVector4f& OutValue
 	}
 }
 
-void UWidgetTransitionFunctionLibrary::StartWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Description, UWidget* Widget, FName WidgetProperty, FName MaterialParameter)
+namespace WidgetTransition
 {
-	if (IsValid(Widget))
+	static void ApplyBinding(FWidgetTransition& Description, UWidget* Widget, FName Binding)
 	{
+		if (!IsValid(Widget) || Binding.IsNone()) return;
 		Description.Widget = Widget;
-		if (!MaterialParameter.IsNone())
+		const FString BindingPath = Binding.ToString();
+		if (BindingPath.StartsWith(TEXT("Material.")))
 		{
 			Description.BindingKind = EWidgetTransitionBindingKind::Material;
-			Description.MaterialParameter = MaterialParameter;
-			Description.WidgetProperty = FName(*FString::Printf(TEXT("Material.%s"), *MaterialParameter.ToString()));
+			Description.MaterialParameter = FName(*BindingPath.RightChop(9));
+			Description.WidgetProperty = Binding;
 		}
 		else
 		{
 			Description.BindingKind = EWidgetTransitionBindingKind::Property;
 			Description.MaterialParameter = NAME_None;
-			Description.WidgetProperty = WidgetProperty;
+			Description.WidgetProperty = Binding;
 		}
 	}
+}
+
+void UWidgetTransitionFunctionLibrary::StartWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Description, UWidget* Widget, FName Binding)
+{
+	WidgetTransition::ApplyBinding(Description, Widget, Binding);
 	const UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
 	UWidgetTransitionSubsystem* Subsystem = World ? World->GetSubsystem<UWidgetTransitionSubsystem>() : nullptr;
 	UWidget* TargetWidget = Description.Widget.Get();
@@ -404,26 +411,11 @@ void UWidgetTransitionFunctionLibrary::ClearAllWidgetTransitions(const UObject* 
 	if (IsValid(Widget) && Subsystem) WidgetTransition::ClearTransitionsForWidget(*Subsystem, Widget);
 }
 
-UWidgetTransitionAsyncAction* UWidgetTransitionAsyncAction::AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition, UWidget* Widget, FName WidgetProperty, FName MaterialParameter)
+UWidgetTransitionAsyncAction* UWidgetTransitionAsyncAction::AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition, UWidget* Widget, FName Binding)
 {
 	UWidgetTransitionAsyncAction* Action = NewObject<UWidgetTransitionAsyncAction>();
 	Action->PendingTransition = MoveTemp(Transition);
-	if (IsValid(Widget))
-	{
-		Action->PendingTransition.Widget = Widget;
-		if (!MaterialParameter.IsNone())
-		{
-			Action->PendingTransition.BindingKind = EWidgetTransitionBindingKind::Material;
-			Action->PendingTransition.MaterialParameter = MaterialParameter;
-			Action->PendingTransition.WidgetProperty = FName(*FString::Printf(TEXT("Material.%s"), *MaterialParameter.ToString()));
-		}
-		else
-		{
-			Action->PendingTransition.BindingKind = EWidgetTransitionBindingKind::Property;
-			Action->PendingTransition.MaterialParameter = NAME_None;
-			Action->PendingTransition.WidgetProperty = WidgetProperty;
-		}
-	}
+	WidgetTransition::ApplyBinding(Action->PendingTransition, Widget, Binding);
 	Action->WorldContextObject = WorldContextObject;
 	Action->RegisterWithGameInstance(WorldContextObject);
 	return Action;

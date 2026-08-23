@@ -195,8 +195,8 @@ public:
 	static FWidgetTransition OnUpdate(FWidgetTransition Transition, FOnWidgetTransitionUpdate OnUpdate);
 
 	/** Converts a transition description to compact runtime data and starts it. */
-	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (DisplayName = "Add Widget Transition", WorldContext = "WorldContextObject", ElasticUMGTransitionBinding = "true", ElasticUMGMaterialBinding = "true"))
-	static void StartWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition, UWidget* Widget = nullptr, UPARAM(meta = (ElasticUMGRole = "WidgetProperty")) FName WidgetProperty = NAME_None, FName MaterialParameter = NAME_None);
+	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (DisplayName = "Add Widget Transition", WorldContext = "WorldContextObject", DefaultToSelf = "Widget", ElasticUMGTransitionBinding = "Combined"))
+	static void StartWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition, UWidget* Widget = nullptr, FName Binding = NAME_None);
 
 	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject"))
 	static void ClearAllWidgetTransitions(const UObject* WorldContextObject, UWidget* Widget);
@@ -231,8 +231,8 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FOnWidgetTransitionAsyncEvent Finished;
 
-	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Add Widget Transition Async", ElasticUMGTransitionBinding = "true", ElasticUMGMaterialBinding = "true"), Category = "Widget Transition")
-	static UWidgetTransitionAsyncAction* AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition, UWidget* Widget = nullptr, UPARAM(meta = (ElasticUMGRole = "WidgetProperty")) FName WidgetProperty = NAME_None, FName MaterialParameter = NAME_None);
+	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DefaultToSelf = "Widget", DisplayName = "Add Widget Transition Async", ElasticUMGTransitionBinding = "Combined"), Category = "Widget Transition")
+	static UWidgetTransitionAsyncAction* AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition, UWidget* Widget = nullptr, FName Binding = NAME_None);
 
 	virtual void Activate() override;
 
