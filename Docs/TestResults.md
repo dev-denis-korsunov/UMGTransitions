@@ -54,6 +54,29 @@
 | 2026-08-23 | UE 5.7 / Mac arm64 Development | `ElasticUMG.WidgetTransition.Runtime.Spring.Converges` | Passed | После перехода на squared completion check spring сохранил сходимость к target. |
 | 2026-08-23 | UE 5.7 / Mac arm64 Development | `ElasticUMG.WidgetTransition.Performance.ModeMatrix` | Passed | Spring experiment B — cached parameters + squared completion check: 500 без binding 8.359 μs/frame (0.017 μs/transition), ещё −7%; с binding 23.081 μs/frame, значение шумное между commandlet-прогонами. |
 
+## История оптимизаций runtime
+
+### CurveTable easing
+
+Сравнение использует `500 CurveTable easing` из одинаковой mode matrix: active transition читает одну и ту же кривую с тремя ключами.
+
+| Этап | Изменение | Без binding, μs/frame | С binding, μs/frame | Commit |
+| --- | --- | ---: | ---: | --- |
+| Baseline | `FCurveTableRowHandle::Eval` ищет curve table row на каждом tick. | 26.301 | 34.491 | `0fb420e` |
+| Cached curve | `FRealCurve*` резолвится при добавлении transition и затем вызывается напрямую. | 2.831 | 19.801 | `0fb420e` |
+
+Это убрало отдельную стоимость easing из hot-path: без binding она совпала с linear (`2.862 μs/frame`).
+
+### Spring
+
+Эта таблица использует только вариант `500 Spring, without binding`: он исключает нестабильную цену reflective `RenderOpacity` write и позволяет сравнить именно вычисление spring.
+
+| Этап | Изменение | μs/frame | От исходного | Commit |
+| --- | --- | ---: | ---: | --- |
+| Baseline | Аналитический четырёхканальный spring, параметры и completion check вычисляются в tick. | 11.485 | — | `0fb420e` |
+| A | `Frequency`, damping ratio и damped frequency кешируются при создании spring. | 8.986 | −22% | `4f57a25` |
+| B | Completion check сравнивает квадраты длин, без двух `Sqrt` на tick. | 8.359 | −27% | `4f57a25` |
+
 ## Правило обновления
 
 Для каждого запуска добавляется отдельная строка с полным именем теста. Для `StorageLayout` в примечание переносятся значения из `AddInfo`; это будет baseline для сравнения после каждого structural refactor.
