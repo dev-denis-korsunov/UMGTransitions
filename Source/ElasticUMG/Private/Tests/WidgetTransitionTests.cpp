@@ -9,17 +9,19 @@
 namespace
 {
 	constexpr float Tolerance = 0.001f;
-	FString FormatBytes(const TCHAR* Name, SIZE_T Size, SIZE_T Alignment) { return FString::Printf(TEXT("%s: %llu B, alignment %llu B"), Name, static_cast<uint64>(Size), static_cast<uint64>(Alignment)); }
+	FString FormatBytes(const TCHAR* Name, SIZE_T Size, SIZE_T Alignment)
+	{
+		return FString::Printf(TEXT("%s: %llu B, alignment %llu B"), Name, static_cast<uint64>(Size), static_cast<uint64>(Alignment));
+	}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionStorageLayoutTest, "ElasticUMG.WidgetTransition.Runtime.StorageLayout", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionStorageLayoutTest::RunTest(const FString&)
-{
-	AddInfo(FormatBytes(TEXT("FWidgetTransition"), sizeof(FWidgetTransition), alignof(FWidgetTransition)));
-	AddInfo(FormatBytes(TEXT("FActiveWidgetTransition"), sizeof(FActiveWidgetTransition), alignof(FActiveWidgetTransition)));
-	AddInfo(FormatBytes(TEXT("FWidgetTransitionValue"), sizeof(FWidgetTransitionValue), alignof(FWidgetTransitionValue)));
-	AddInfo(FormatBytes(TEXT("FWidgetTransitionPropertyBinding"), sizeof(FWidgetTransitionPropertyBinding), alignof(FWidgetTransitionPropertyBinding)));
-	TestTrue(TEXT("Transition storage is non-empty"), sizeof(FActiveWidgetTransition) > 0);
+	{
+		AddInfo(FormatBytes(TEXT("FWidgetTransition"), sizeof(FWidgetTransition), alignof(FWidgetTransition)));
+		AddInfo(FormatBytes(TEXT("FWidgetTransitionValue"), sizeof(FWidgetTransitionValue), alignof(FWidgetTransitionValue)));
+		AddInfo(FormatBytes(TEXT("FWidgetTransitionPropertyBinding"), sizeof(FWidgetTransitionPropertyBinding), alignof(FWidgetTransitionPropertyBinding)));
+		TestTrue(TEXT("Transition storage is non-empty"), sizeof(FWidgetTransition) > 0);
 	return true;
 }
 

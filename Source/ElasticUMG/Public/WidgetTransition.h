@@ -112,9 +112,8 @@ struct ELASTICUMG_API FWidgetTransitionPropertyBinding
 };
 
 /**
- * Blueprint-facing transition description. It is intentionally cold data: it is
- * assembled by pure functions and converted into a compact runtime transition
- * only when StartWidgetTransition is called.
+ * Blueprint-facing transition definition and runtime instance. Pure functions
+ * construct a copy; Add Widget Transition normalizes that copy for ticking.
  */
 USTRUCT(BlueprintType)
 struct ELASTICUMG_API FWidgetTransition
@@ -126,41 +125,21 @@ struct ELASTICUMG_API FWidgetTransition
 	FWidgetTransitionValue FromValue;
 	FWidgetTransitionValue ToValue;
 	FCurveTableRowHandle Easing;
-	float Time = 0.2f;
-	float Delay = 0.0f;
-	float SpringSpeed = 0.65f;
-	float SpringBounce = 0.45f;
-	int32 RepeatCount = 0;
-	bool bUseFrom = false;
-	/** Defers applying From Value until the transition starts after its delay. */
-	bool bChangeFromPropertyAfterDelay = false;
-	bool bYoYo = false;
-	bool bRemoveFromParent = false;
-	bool bUseSpring = false;
-	/** Derives spring frequency from Time so the simulation settles within its requested duration. */
-	bool bFitSpringToTime = false;
-};
-
-	/** Runtime transition with normalized 1, 2, or 4 channel data. */
-struct FActiveWidgetTransition
-{
-	TWeakObjectPtr<UWidget> Widget;
-	FName WidgetProperty;
 	FWidgetTransitionPropertyBinding PropertyBinding;
-	FVector4f FromValue = FVector4f::Zero();
-	FVector4f ToValue = FVector4f::Zero();
-	FCurveTableRowHandle Easing;
 	float Time = 0.2f;
 	float Delay = 0.0f;
 	float CurrentTime = 0.0f;
-	int32 RepeatCount = 0;
-	int32 CompletedRepeats = 0;
-	/** Normalized designer controls. 0..1 maps to physical stiffness and damping ratio. */
 	float SpringSpeed = 0.65f;
 	float SpringBounce = 0.45f;
-	uint16 bRemoveFromParent : 1 = false;
-	uint16 bSpring : 1 = false;
+	int32 RepeatCount = 0;
+	int32 CompletedRepeats = 0;
+	uint16 bUseFrom : 1 = false;
+	/** Defers applying From Value until the transition starts after its delay. */
+	uint16 bChangeFromPropertyAfterDelay : 1 = false;
 	uint16 bYoYo : 1 = false;
+	uint16 bRemoveFromParent : 1 = false;
+	uint16 bUseSpring : 1 = false;
+	/** Derives spring frequency from Time so the simulation settles within its requested duration. */
 	uint16 bStarted : 1 = false;
 	uint16 bFitSpringToTime : 1 = false;
 	/** Whether this transition has rare callbacks stored in the subsystem. */
@@ -169,7 +148,7 @@ struct FActiveWidgetTransition
 	uint16 bBound : 1 = false;
 	/** Stable key for rare callbacks in UWidgetTransitionSubsystem::Callbacks. */
 	uint64 TransitionId = 0;
-	TUniquePtr<FWidgetTransitionSpringState> SpringState;
+	TSharedPtr<FWidgetTransitionSpringState> SpringState;
 };
 
 UCLASS()
@@ -275,7 +254,7 @@ public:
 	virtual TStatId GetStatId() const override { RETURN_QUICK_DECLARE_CYCLE_STAT(UWidgetTransitionSubsystem, STATGROUP_Tickables); }
 	virtual bool IsTickableInEditor() const override { return true; }
 
-	TSparseArray<FActiveWidgetTransition> Transitions;
+	TSparseArray<FWidgetTransition> Transitions;
 	/** Callbacks for the small subset of transitions that bind lifecycle or update events. */
 	TMap<uint64, FWidgetTransitionCallbacks> Callbacks;
 	/** Monotonic key source; a sparse-array index cannot be used because indices are reused. */

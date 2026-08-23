@@ -99,9 +99,9 @@ namespace WidgetTransition
 		}
 	}
 
-	static void StartSprings(FActiveWidgetTransition& Transition)
+	static void StartSprings(FWidgetTransition& Transition)
 	{
-		if (!Transition.bSpring || !IsSpringCompatible(Transition.PropertyBinding.ChannelCount))
+		if (!Transition.bUseSpring || !IsSpringCompatible(Transition.PropertyBinding.ChannelCount))
 		{
 			return;
 		}
@@ -113,11 +113,11 @@ namespace WidgetTransition
 									: 4.0f * FMath::Pow(6.0f, FMath::Clamp(Transition.SpringSpeed, 0.0f, 1.0f));
 		const float SpringFactor = Frequency * Frequency;
 		const float DampingFactor = 2.0f * DampingRatio * Frequency;
-		Transition.SpringState = MakeUnique<FWidgetTransitionSpringState>(SpringFactor, DampingFactor);
-		Transition.SpringState->Spring.Start(Transition.FromValue, Transition.ToValue);
+		Transition.SpringState = MakeShared<FWidgetTransitionSpringState>(SpringFactor, DampingFactor);
+		Transition.SpringState->Spring.Start(Transition.FromValue.Channels, Transition.ToValue.Channels);
 	}
 
-	static bool RestartTransition(FActiveWidgetTransition& Transition)
+	static bool RestartTransition(FWidgetTransition& Transition)
 	{
 		if (Transition.RepeatCount != -1 && Transition.CompletedRepeats >= Transition.RepeatCount)
 		{
@@ -159,12 +159,12 @@ namespace WidgetTransition
 					}
 				}
 			}
-			bool bEnd = !It->bSpring && (It->Time <= 0.0f || It->CurrentTime >= It->Delay + It->Time);
+			bool bEnd = !It->bUseSpring && (It->Time <= 0.0f || It->CurrentTime >= It->Delay + It->Time);
 			const float Alpha = It->Time <= 0.0f ? 1.0f : FMath::Clamp((It->CurrentTime - It->Delay) / It->Time, 0.0f, 1.0f);
 			const float EasedAlpha = It->Easing.IsNull() ? Alpha : It->Easing.Eval(Alpha, TEXT("Widget Transition"));
-			FVector4f Value = FMath::Lerp(It->FromValue, It->ToValue, EasedAlpha);
-			const bool bReachedSpringDeadline = It->bSpring && It->bFitSpringToTime && It->CurrentTime >= It->Delay + It->Time;
-			if (It->bSpring && It->SpringState.IsValid() && !bReachedSpringDeadline)
+			FVector4f Value = FMath::Lerp(It->FromValue.Channels, It->ToValue.Channels, EasedAlpha);
+			const bool bReachedSpringDeadline = It->bUseSpring && It->bFitSpringToTime && It->CurrentTime >= It->Delay + It->Time;
+			if (It->bUseSpring && It->SpringState.IsValid() && !bReachedSpringDeadline)
 			{
 				It->SpringState->Spring.Tick(DeltaTime);
 				Value = It->SpringState->Spring.GetValue();
@@ -172,7 +172,7 @@ namespace WidgetTransition
 			}
 			if (bReachedSpringDeadline)
 			{
-				Value = It->ToValue;
+				Value = It->ToValue.Channels;
 				bEnd = true;
 			}
 			if (It->bBound)
@@ -417,71 +417,60 @@ bool FWidgetTransitionPropertyBinding::Read(UWidget* Widget, FVector4f& OutValue
 
 namespace WidgetTransition
 {
-	static void StartTransition(const UObject* WorldContextObject, FWidgetTransition Description, FWidgetTransitionCallbacks Callbacks = {})
+	static void StartTransition(const UObject* WorldContextObject, FWidgetTransition Transition, FWidgetTransitionCallbacks Callbacks = {})
 	{
 		const UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
 		UWidgetTransitionSubsystem* Subsystem = World ? World->GetSubsystem<UWidgetTransitionSubsystem>() : nullptr;
-		UWidget* TargetWidget = Description.Widget.Get();
+		UWidget* TargetWidget = Transition.Widget.Get();
 		if (!Subsystem)
 		{
 			return;
 		}
-		FActiveWidgetTransition Transition;
-		Transition.Widget = TargetWidget;
-		Transition.WidgetProperty = Description.WidgetProperty;
-		Transition.Time = FMath::Max(0.0f, Description.Time);
-		Transition.Delay = FMath::Max(0.0f, Description.Delay);
-		Transition.Easing = MoveTemp(Description.Easing);
-		Transition.RepeatCount = FMath::Max(-1, Description.RepeatCount);
-		Transition.bYoYo = Description.bYoYo;
-		Transition.bRemoveFromParent = Description.bRemoveFromParent;
-		Transition.bSpring = Description.bUseSpring;
-		Transition.bFitSpringToTime = Description.bFitSpringToTime;
-		Transition.bBound = IsValid(TargetWidget) && !Description.WidgetProperty.IsNone();
-		Transition.SpringSpeed = Description.SpringSpeed;
-		Transition.SpringBounce = Description.SpringBounce;
+		Transition.Time = FMath::Max(0.0f, Transition.Time);
+		Transition.Delay = FMath::Max(0.0f, Transition.Delay);
+		Transition.RepeatCount = FMath::Max(-1, Transition.RepeatCount);
+		Transition.bBound = IsValid(TargetWidget) && !Transition.WidgetProperty.IsNone();
 		Transition.bHasCallbacks = Callbacks.HasBoundCallbacks();
 		if (Transition.bBound)
 		{
-			const bool bResolved = IsMaterialBinding(Description.WidgetProperty)
-									   ? Transition.PropertyBinding.ResolveMaterial(TargetWidget, GetMaterialParameter(Description.WidgetProperty))
-									   : Transition.PropertyBinding.Resolve(TargetWidget, Description.WidgetProperty.ToString());
+			const bool bResolved = IsMaterialBinding(Transition.WidgetProperty)
+									   ? Transition.PropertyBinding.ResolveMaterial(TargetWidget, GetMaterialParameter(Transition.WidgetProperty))
+									   : Transition.PropertyBinding.Resolve(TargetWidget, Transition.WidgetProperty.ToString());
 			if (!bResolved)
 			{
 				return;
 			}
-			if (!WidgetTransition::NormalizeValue(Description.ToValue, Transition.PropertyBinding.ChannelCount, Transition.ToValue))
+			if (!WidgetTransition::NormalizeValue(Transition.ToValue, Transition.PropertyBinding.ChannelCount, Transition.ToValue.Channels))
 			{
-				UE_LOG(LogTemp, Warning, TEXT("Widget Transition: target value type is incompatible with '%s'."), *Description.WidgetProperty.ToString());
+				UE_LOG(LogTemp, Warning, TEXT("Widget Transition: target value type is incompatible with '%s'."), *Transition.WidgetProperty.ToString());
 				return;
 			}
-			if (Description.bUseFrom)
+			if (Transition.bUseFrom)
 			{
-				if (!WidgetTransition::NormalizeValue(Description.FromValue, Transition.PropertyBinding.ChannelCount, Transition.FromValue))
+				if (!WidgetTransition::NormalizeValue(Transition.FromValue, Transition.PropertyBinding.ChannelCount, Transition.FromValue.Channels))
 				{
-					UE_LOG(LogTemp, Warning, TEXT("Widget Transition: From value type is incompatible with '%s'."), *Description.WidgetProperty.ToString());
+					UE_LOG(LogTemp, Warning, TEXT("Widget Transition: From value type is incompatible with '%s'."), *Transition.WidgetProperty.ToString());
 					return;
 				}
 			}
-			else if (!Transition.PropertyBinding.Read(TargetWidget, Transition.FromValue))
+			else if (!Transition.PropertyBinding.Read(TargetWidget, Transition.FromValue.Channels))
 			{
 				return;
 			}
-			if (Transition.Delay > 0.0f && Description.bUseFrom && !Description.bChangeFromPropertyAfterDelay)
+			if (Transition.Delay > 0.0f && Transition.bUseFrom && !Transition.bChangeFromPropertyAfterDelay)
 			{
-				Transition.PropertyBinding.Apply(TargetWidget, Transition.FromValue);
+				Transition.PropertyBinding.Apply(TargetWidget, Transition.FromValue.Channels);
 			}
 		}
 		else
 		{
-			Transition.PropertyBinding.ChannelCount = Description.ToValue.Type == EWidgetTransitionValueType::Float ? 1 : Description.ToValue.Type == EWidgetTransitionValueType::Vector2D ? 2
-																																														   : 4;
-			Transition.ToValue = Description.ToValue.Channels;
-			Transition.FromValue = Description.bUseFrom ? Description.FromValue.Channels : FVector4f::Zero();
+			Transition.PropertyBinding.ChannelCount = Transition.ToValue.Type == EWidgetTransitionValueType::Float ? 1 : Transition.ToValue.Type == EWidgetTransitionValueType::Vector2D ? 2
+																																   : 4;
+			Transition.FromValue.Channels = Transition.bUseFrom ? Transition.FromValue.Channels : FVector4f::Zero();
 		}
 		if (!WidgetTransition::IsSpringCompatible(Transition.PropertyBinding.ChannelCount))
 		{
-			Transition.bSpring = false;
+			Transition.bUseSpring = false;
 		}
 		Transition.TransitionId = Subsystem->NextTransitionId++;
 		if (Subsystem->NextTransitionId == 0)
@@ -491,7 +480,7 @@ namespace WidgetTransition
 		WidgetTransition::StartSprings(Transition);
 		for (auto It = Subsystem->Transitions.CreateIterator(); Transition.bBound && It; ++It)
 		{
-			if (It->Widget == TargetWidget && It->WidgetProperty == Description.WidgetProperty)
+			if (It->Widget == TargetWidget && It->WidgetProperty == Transition.WidgetProperty)
 			{
 				Subsystem->Callbacks.Remove(It->TransitionId);
 				It.RemoveCurrent();
