@@ -34,8 +34,14 @@ float FWidgetTransitionEasing::EvaluateCubicBezier(FVector2D InControlPoint1, FV
 	for (int32 Iteration = 0; Iteration < 12; ++Iteration)
 	{
 		const float T = (Low + High) * 0.5f;
-		if (Cubic(FMath::Clamp(InControlPoint1.X, 0.0f, 1.0f), FMath::Clamp(InControlPoint2.X, 0.0f, 1.0f), T) < Alpha) Low = T;
-		else High = T;
+		if (Cubic(FMath::Clamp(InControlPoint1.X, 0.0f, 1.0f), FMath::Clamp(InControlPoint2.X, 0.0f, 1.0f), T) < Alpha)
+		{
+			Low = T;
+		}
+		else
+		{
+			High = T;
+		}
 	}
 	return Cubic(InControlPoint1.Y, InControlPoint2.Y, (Low + High) * 0.5f);
 }
@@ -48,7 +54,10 @@ const FWidgetTransitionEasing* UWidgetTransitionSettings::FindEasing(FName Name)
 float UWidgetTransitionSettings::EvaluateEasing(FName Name, float Alpha) const
 {
 	const FWidgetTransitionEasing* Easing = FindEasing(Name);
-	if (!Easing) return Alpha;
+	if (!Easing)
+	{
+		return Alpha;
+	}
 
 	return Easing->Evaluate(Alpha);
 }

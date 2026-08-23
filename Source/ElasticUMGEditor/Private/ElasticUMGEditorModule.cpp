@@ -35,11 +35,20 @@ namespace ElasticUMGEditor
 	}
 	static bool HasBindableDescendant(const UStruct* Struct, int32 Depth)
 	{
-		if (!Struct || Depth > 8) return false;
+		if (!Struct || Depth > 8)
+		{
+			return false;
+		}
 		for (TFieldIterator<FProperty> It(Struct, EFieldIterationFlags::None); It; ++It)
 		{
-			if (IsBindableProperty(*It)) return true;
-			if (const FStructProperty* Nested = CastField<FStructProperty>(*It); Nested && HasBindableDescendant(Nested->Struct, Depth + 1)) return true;
+			if (IsBindableProperty(*It))
+			{
+				return true;
+			}
+			if (const FStructProperty* Nested = CastField<FStructProperty>(*It); Nested && HasBindableDescendant(Nested->Struct, Depth + 1))
+			{
+				return true;
+			}
 		}
 		return false;
 	}
@@ -51,15 +60,24 @@ namespace ElasticUMGEditor
 	}
 	static void AddProperties(const UStruct* Struct, const FString& Prefix, int32 Depth, TArray<TSharedPtr<FPropertyOption>>& OutOptions)
 	{
-		if (!Struct || Depth > 8) return;
+		if (!Struct || Depth > 8)
+		{
+			return;
+		}
 		for (TFieldIterator<FProperty> It(Struct, EFieldIterationFlags::None); It; ++It)
 		{
 			const FProperty* Property = *It;
 			const FString Path = Prefix + Property->GetName();
-			if (IsBindableProperty(Property)) OutOptions.Add(MakeShared<FPropertyOption>(FPropertyOption{ Path, Path, GetTypeColor(Property) }));
+			if (IsBindableProperty(Property))
+			{
+				OutOptions.Add(MakeShared<FPropertyOption>(FPropertyOption{ Path, Path, GetTypeColor(Property) }));
+			}
 			if (const FStructProperty* Nested = CastField<FStructProperty>(Property); Nested && HasBindableDescendant(Nested->Struct, Depth + 1))
 			{
-				if (!IsBindableProperty(Property)) OutOptions.Add(MakeShared<FPropertyOption>(FPropertyOption{ Path, FString(), FLinearColor::White, true }));
+				if (!IsBindableProperty(Property))
+				{
+					OutOptions.Add(MakeShared<FPropertyOption>(FPropertyOption{ Path, FString(), FLinearColor::White, true }));
+				}
 				AddProperties(Nested->Struct, Path + TEXT("."), Depth + 1, OutOptions);
 			}
 		}
@@ -103,13 +121,22 @@ namespace ElasticUMGEditor
 	}
 	static UClass* GetWidgetClassForPin(const UEdGraphPin* PropertyPin)
 	{
-		if (UEdGraphPin* Source = GetWidgetSource(PropertyPin)) return Cast<UClass>(Source->PinType.PinSubCategoryObject.Get());
+		if (UEdGraphPin* Source = GetWidgetSource(PropertyPin))
+		{
+			return Cast<UClass>(Source->PinType.PinSubCategoryObject.Get());
+		}
 		return UWidget::StaticClass();
 	}
 	static UMaterialInterface* GetDesignerMaterial(const UEdGraphPin* Pin)
 	{
-		if (const UImage* Image = Cast<UImage>(GetDesignerWidget(Pin))) return Cast<UMaterialInterface>(Image->GetBrush().GetResourceObject());
-		if (const UBorder* Border = Cast<UBorder>(GetDesignerWidget(Pin))) return Cast<UMaterialInterface>(Border->Background.GetResourceObject());
+		if (const UImage* Image = Cast<UImage>(GetDesignerWidget(Pin)))
+		{
+			return Cast<UMaterialInterface>(Image->GetBrush().GetResourceObject());
+		}
+		if (const UBorder* Border = Cast<UBorder>(GetDesignerWidget(Pin)))
+		{
+			return Cast<UMaterialInterface>(Border->Background.GetResourceObject());
+		}
 		return nullptr;
 	}
 
@@ -130,7 +157,10 @@ namespace ElasticUMGEditor
 		void RefreshOptions()
 		{
 			Options.Reset();
-			if (bIncludeMaterialParameters) Options.Add(MakeShared<FPropertyOption>(FPropertyOption{ TEXT("None"), TEXT("None"), FLinearColor(0.55f, 0.55f, 0.55f) }));
+			if (bIncludeMaterialParameters)
+			{
+				Options.Add(MakeShared<FPropertyOption>(FPropertyOption{ TEXT("None"), TEXT("None"), FLinearColor(0.55f, 0.55f, 0.55f) }));
+			}
 			AddProperties(GetWidgetClassForPin(GraphPinObj), FString(), 0, Options);
 			if (UWidget* Widget = GetDesignerWidget(GraphPinObj); Widget && Widget->Slot)
 			{
@@ -140,14 +170,24 @@ namespace ElasticUMGEditor
 			if (bIncludeMaterialParameters)
 			{
 				UMaterialInterface* Material = GetDesignerMaterial(GraphPinObj);
-				if (!Material) return;
+				if (!Material)
+				{
+					return;
+				}
 				Options.Add(MakeShared<FPropertyOption>(FPropertyOption{ TEXT("Material Parameters"), FString(), FLinearColor::White, true }));
 				TArray<FMaterialParameterInfo> Parameters;
 				TArray<FGuid> Ids;
 				const auto AddMaterialParameters = [this, &Material, &Parameters, &Ids](bool bVector)
 				{
 					Parameters.Reset(); Ids.Reset();
-					if (bVector) Material->GetAllVectorParameterInfo(Parameters, Ids); else Material->GetAllScalarParameterInfo(Parameters, Ids);
+					if (bVector)
+					{
+						Material->GetAllVectorParameterInfo(Parameters, Ids);
+					}
+					else
+					{
+						Material->GetAllScalarParameterInfo(Parameters, Ids);
+					}
 					const FLinearColor TypeColor = bVector ? FLinearColor(0.25f, 0.65f, 1.0f) : FLinearColor(0.35f, 0.85f, 0.35f);
 					for (const FMaterialParameterInfo& Parameter : Parameters)
 					{
@@ -173,7 +213,10 @@ namespace ElasticUMGEditor
 		}
 		void SelectOption(TSharedPtr<FPropertyOption> Option, ESelectInfo::Type)
 		{
-			if (!Option.IsValid() || Option->bHeader || GraphPinObj->GetDefaultAsString() == Option->Path) return;
+			if (!Option.IsValid() || Option->bHeader || GraphPinObj->GetDefaultAsString() == Option->Path)
+			{
+				return;
+			}
 			GraphPinObj->Modify();
 			GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, Option->Path);
 		}
@@ -187,7 +230,10 @@ namespace ElasticUMGEditor
 	public:
 		virtual TSharedPtr<SGraphPin> CreatePin(UEdGraphPin* Pin) const override
 		{
-			if (IsBindingPropertyPin(Pin)) return SNew(SWidgetPropertyPathPin, Pin);
+			if (IsBindingPropertyPin(Pin))
+			{
+				return SNew(SWidgetPropertyPathPin, Pin);
+			}
 			return nullptr;
 		}
 	};

@@ -73,11 +73,14 @@ bool FWidgetTransitionPropertyBindingTest::RunTest(const FString&)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionSpringTest, "ElasticUMG.WidgetTransition.Runtime.Spring.Converges", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionSpringTest::RunTest(const FString&)
 {
-	FSpringVector2D Spring(144.0f, 18.0f);
-	Spring.Start(FVector2D::ZeroVector, FVector2D(100.0, -50.0));
-	for (int32 Step = 0; Step < 1200 && !Spring.IsCompleted(); ++Step) Spring.Tick(1.0f / 120.0f);
-	TestTrue(TEXT("Vector spring completes"), Spring.IsCompleted());
-	TestTrue(TEXT("Vector spring settles at target"), Spring.GetValue().Equals(FVector2D(100.0, -50.0), Tolerance));
+	FSpringVector4f Spring(144.0f, 18.0f);
+	Spring.Start(FVector4f::Zero(), FVector4f(100.0f, -50.0f, 25.0f, 1.0f));
+	for (int32 Step = 0; Step < 1200 && !Spring.IsCompleted(); ++Step)
+	{
+		Spring.Tick(1.0f / 120.0f);
+	}
+	TestTrue(TEXT("Four-channel spring completes"), Spring.IsCompleted());
+	TestTrue(TEXT("Four-channel spring settles at target"), Spring.GetValue().Equals(FVector4f(100.0f, -50.0f, 25.0f, 1.0f), Tolerance));
 	return true;
 }
 

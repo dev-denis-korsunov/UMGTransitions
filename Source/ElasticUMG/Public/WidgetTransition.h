@@ -62,10 +62,15 @@ struct ELASTICUMG_API FWidgetTransitionValue
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWidgetTransitionAsyncEvent, FWidgetTransitionValue, Value);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnWidgetTransitionAsyncUpdate, FWidgetTransitionValue, Value, float, NormalizedProgress, float, EasedProgress);
 
-/** Heap-allocated spring state; only present for a float or Vector2D spring transition. */
+/** Heap-allocated spring state; only present for a spring transition. */
 struct FWidgetTransitionSpringState
 {
-	TVariant<FEmptyVariantState, FSpringFloat, FSpringVector2D> Spring;
+	FWidgetTransitionSpringState(float SpringFactor, float DampingFactor)
+		: Spring(SpringFactor, DampingFactor)
+	{
+	}
+
+	FSpringVector4f Spring;
 };
 
 /** Cached access to a transition property on a widget. */
