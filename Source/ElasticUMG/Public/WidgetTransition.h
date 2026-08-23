@@ -179,40 +179,40 @@ class ELASTICUMG_API UWidgetTransitionFunctionLibrary final : public UBlueprintF
 
 public:
 	/** Creates a transition bound to a widget property or a Material.Parameter entry. */
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Create Widget Transition", ElasticUMGTransitionBinding = "Combined"))
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Create Widget Transition", ElasticUMGTransitionBinding = "Combined", ReturnDisplayName = "Transition"))
 	static FWidgetTransition CreateWidgetTransition(UWidget* Widget, UPARAM(meta = (ElasticUMGRole = "WidgetProperty")) FName WidgetProperty, FWidgetTransitionValue ToValue, float Time = 0.2f, float Delay = 0.0f);
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (CPP_Default_bUseFrom = "true"))
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (CPP_Default_bUseFrom = "true", ReturnDisplayName = "Transition"))
 	static FWidgetTransition From(FWidgetTransition Transition, bool bUseFrom, FWidgetTransitionValue FromValue);
 
-	UFUNCTION(BlueprintPure, Category = "Widget Transition")
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
 	static FWidgetTransition Delay(FWidgetTransition Transition, float Delay, bool bApplyValueBeforeDelay = true);
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DataTablePin = "CurveTable"))
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DataTablePin = "CurveTable", ReturnDisplayName = "Transition"))
 	static FWidgetTransition Easing(FWidgetTransition Transition, UCurveTable* CurveTable, FName RowName);
-	UFUNCTION(BlueprintPure, Category = "Widget Transition")
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
 	static FWidgetTransition Repeat(FWidgetTransition Transition, int32 RepeatCount);
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Yo Yo"))
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Yo Yo", ReturnDisplayName = "Transition"))
 	static FWidgetTransition YoYo(FWidgetTransition Transition, bool bYoYo = true);
-	UFUNCTION(BlueprintPure, Category = "Widget Transition")
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
 	static FWidgetTransition Spring(FWidgetTransition Transition, float SpringSpeed = 0.65f, float SpringBounce = 0.45f, bool bFitSimulationToTime = false);
-	UFUNCTION(BlueprintPure, Category = "Widget Transition")
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
 	static FWidgetTransition RemoveFromParent(FWidgetTransition Transition, bool bRemoveFromParent = true);
-	UFUNCTION(BlueprintPure, Category = "Widget Transition")
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
 	static FWidgetTransition Events(FWidgetTransition Transition, FOnWidgetTransitionEvent OnStarted, FOnWidgetTransitionEvent OnFinished);
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "On Start"))
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "On Start", ReturnDisplayName = "Transition"))
 	static FWidgetTransition OnStart(FWidgetTransition Transition, FOnWidgetTransitionEvent OnStarted);
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "On Finish"))
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "On Finish", ReturnDisplayName = "Transition"))
 	static FWidgetTransition OnFinish(FWidgetTransition Transition, FOnWidgetTransitionEvent OnFinished);
-	UFUNCTION(BlueprintPure, Category = "Widget Transition")
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
 	static FWidgetTransition OnUpdate(FWidgetTransition Transition, FOnWidgetTransitionUpdate OnUpdate);
 
 	/** Makes a scalar transition endpoint. */
-	UFUNCTION(BlueprintPure, Category = "Widget Transition|Transition Value", meta = (DisplayName = "Make Float Transition Value"))
+	UFUNCTION(BlueprintPure, Category = "Widget Transition|Transition Value", meta = (DisplayName = "Make Float Transition Value", ReturnDisplayName = "Transition Value"))
 	static FWidgetTransitionValue MakeFloatTransitionValue(float Value);
 	/** Makes a two-dimensional transition endpoint. */
-	UFUNCTION(BlueprintPure, Category = "Widget Transition|Transition Value", meta = (DisplayName = "Make Vector2D Transition Value"))
+	UFUNCTION(BlueprintPure, Category = "Widget Transition|Transition Value", meta = (DisplayName = "Make Vector2D Transition Value", ReturnDisplayName = "Transition Value"))
 	static FWidgetTransitionValue MakeVectorTransitionValue(FVector2D Value);
 	/** Makes a color transition endpoint. */
-	UFUNCTION(BlueprintPure, Category = "Widget Transition|Transition Value", meta = (DisplayName = "Make Color Transition Value"))
+	UFUNCTION(BlueprintPure, Category = "Widget Transition|Transition Value", meta = (DisplayName = "Make Color Transition Value", ReturnDisplayName = "Transition Value"))
 	static FWidgetTransitionValue MakeColorTransitionValue(FLinearColor Value);
 	/** Returns the first channel of a transition endpoint. */
 	UFUNCTION(BlueprintPure, Category = "Widget Transition|Transition Value", meta = (DisplayName = "As Float"))
