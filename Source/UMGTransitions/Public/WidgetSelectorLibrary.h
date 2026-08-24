@@ -17,7 +17,7 @@ class UWidget;
  * return an empty array (or nullptr for singular queries).
  */
 UCLASS()
-class ELASTICUMG_API UWidgetSelectorLibrary final : public UBlueprintFunctionLibrary
+class UMGTRANSITIONS_API UWidgetSelectorLibrary final : public UBlueprintFunctionLibrary
 {
 	GENERATED_BODY()
 

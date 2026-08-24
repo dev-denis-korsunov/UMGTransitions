@@ -1,8 +1,8 @@
 using UnrealBuildTool;
 
-public class ElasticUMG : ModuleRules
+public class UMGTransitions : ModuleRules
 {
-	public ElasticUMG(ReadOnlyTargetRules Target) : base(Target)
+	public UMGTransitions(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 

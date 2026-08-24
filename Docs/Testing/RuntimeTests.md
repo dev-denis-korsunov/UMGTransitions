@@ -10,7 +10,7 @@
 | `Runtime.PropertyBinding.Channels` | Fast binding resolve/read/write для `RenderOpacity`, всех поддержанных полей `RenderTransform` и pivot; проверяет число каналов. | Защищает публичные getter/setter пути UE и соответствие между типом Widget Property и числом каналов transition value. |
 | `Runtime.Spring.Converges` | Единый четырёхканальный spring достигает target. | После оптимизаций частоты, damping и completion check пружина обязана сохранять корректную сходимость для float, vector и color каналов. |
 | `Runtime.RemoveAtSwap` | Удаление transition с spring перемещает последний transition и spring без рассинхронизации `SpringIndex` и `SpringTransitionIndices`. | `TArray<FWidgetTransition>` использует нестабильные индексы. Это главный структурный инвариант архитектуры с dense spring pass. |
-| `Editor.Metadata` | `CreateWidgetTransition` сохраняет metadata `ElasticUMGTransitionBinding`. | Кастомный pin Widget Property в Blueprint строится на этой мета-информации. Без теста рефакторинг UFUNCTION может тихо сломать редакторский UX. |
+| `Editor.Metadata` | `CreateWidgetTransition` сохраняет metadata `UMGTransitionsBinding`. | Кастомный pin Widget Property в Blueprint строится на этой мета-информации. Без теста рефакторинг UFUNCTION может тихо сломать редакторский UX. |
 
 ## Что не покрывают runtime-тесты
 

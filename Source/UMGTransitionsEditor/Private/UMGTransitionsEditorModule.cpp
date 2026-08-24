@@ -17,7 +17,7 @@
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Text/STextBlock.h"
 
-namespace ElasticUMGEditor
+namespace UMGTransitionsEditor
 {
 	struct FPropertyOption
 	{
@@ -99,13 +99,13 @@ namespace ElasticUMGEditor
 	{
 		const UK2Node_CallFunction* Node = Pin ? Cast<UK2Node_CallFunction>(Pin->GetOwningNode()) : nullptr;
 		const UFunction* Function = Node ? Node->GetTargetFunction() : nullptr;
-		return Function && Function->HasMetaData(TEXT("ElasticUMGTransitionBinding")) && (Pin->PinName == TEXT("WidgetProperty") || Pin->PinName == TEXT("Binding"));
+		return Function && Function->HasMetaData(TEXT("UMGTransitionsBinding")) && (Pin->PinName == TEXT("WidgetProperty") || Pin->PinName == TEXT("Binding"));
 	}
 	static bool IsCombinedBindingPin(const UEdGraphPin* Pin)
 	{
 		const UK2Node_CallFunction* Node = Pin ? Cast<UK2Node_CallFunction>(Pin->GetOwningNode()) : nullptr;
 		const UFunction* Function = Node ? Node->GetTargetFunction() : nullptr;
-		return Function && Function->GetMetaData(TEXT("ElasticUMGTransitionBinding")) == TEXT("Combined") && (Pin->PinName == TEXT("WidgetProperty") || Pin->PinName == TEXT("Binding"));
+		return Function && Function->GetMetaData(TEXT("UMGTransitionsBinding")) == TEXT("Combined") && (Pin->PinName == TEXT("WidgetProperty") || Pin->PinName == TEXT("Binding"));
 	}
 	static UEdGraphPin* GetWidgetSource(const UEdGraphPin* PropertyPin)
 	{
@@ -220,7 +220,7 @@ namespace ElasticUMGEditor
 			GraphPinObj->Modify();
 			GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, Option->Path);
 		}
-		FText GetCurrentValue() const { const FString Value = GraphPinObj->GetDefaultAsString(); return Value.IsEmpty() || Value == TEXT("None") ? NSLOCTEXT("ElasticUMG", "NoBinding", "None") : FText::FromString(Value); }
+		FText GetCurrentValue() const { const FString Value = GraphPinObj->GetDefaultAsString(); return Value.IsEmpty() || Value == TEXT("None") ? NSLOCTEXT("UMGTransitions", "NoBinding", "None") : FText::FromString(Value); }
 		TArray<TSharedPtr<FPropertyOption>> Options;
 		bool bIncludeMaterialParameters = false;
 	};
@@ -239,13 +239,13 @@ namespace ElasticUMGEditor
 	};
 }
 
-class FElasticUMGEditorModule final : public IModuleInterface
+class FUMGTransitionsEditorModule final : public IModuleInterface
 {
 public:
-	virtual void StartupModule() override { PinFactory = MakeShared<ElasticUMGEditor::FTransitionPinFactory>(); FEdGraphUtilities::RegisterVisualPinFactory(PinFactory); }
+	virtual void StartupModule() override { PinFactory = MakeShared<UMGTransitionsEditor::FTransitionPinFactory>(); FEdGraphUtilities::RegisterVisualPinFactory(PinFactory); }
 	virtual void ShutdownModule() override { if (PinFactory.IsValid()) { FEdGraphUtilities::UnregisterVisualPinFactory(PinFactory); PinFactory.Reset(); } }
 private:
 	TSharedPtr<FGraphPanelPinFactory> PinFactory;
 };
 
-IMPLEMENT_MODULE(FElasticUMGEditorModule, ElasticUMGEditor)
+IMPLEMENT_MODULE(FUMGTransitionsEditorModule, UMGTransitionsEditor)

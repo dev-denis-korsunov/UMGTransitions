@@ -1,6 +1,6 @@
-# ElasticUMG
+# UMGTransitions
 
-ElasticUMG is an Unreal Engine 5 plugin for runtime UMG transitions. It provides compact Blueprint nodes for animating widget properties, CurveTable easing, spring motion, lifecycle events, and selection of widgets from nested UMG hierarchies.
+UMGTransitions is an Unreal Engine 5 plugin for runtime UMG transitions. It provides compact Blueprint nodes for animating widget properties, CurveTable easing, spring motion, lifecycle events, and selection of widgets from nested UMG hierarchies.
 
 ## Requirements
 
@@ -9,9 +9,9 @@ ElasticUMG is an Unreal Engine 5 plugin for runtime UMG transitions. It provides
 
 ## Installation
 
-1. Copy `ElasticUMG` into your project's `Plugins/` directory.
+1. Copy `UMGTransitions` into your project's `Plugins/` directory.
 2. Regenerate project files if Unreal asks for it, then build the project.
-3. Enable **ElasticUMG** in **Edit → Plugins** and restart the editor.
+3. Enable **UMGTransitions** in **Edit → Plugins** and restart the editor.
 
 The plugin includes runtime code and an editor module for the Widget Property picker.
 
@@ -49,4 +49,4 @@ Automation tests and benchmark notes are documented in [Docs/Testing.md](Docs/Te
 
 ## License
 
-ElasticUMG is released under the [MIT License](LICENSE).
+UMGTransitions is released under the [MIT License](LICENSE).

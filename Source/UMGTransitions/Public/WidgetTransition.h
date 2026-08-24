@@ -56,7 +56,7 @@ enum class EWidgetTransitionBindingKind : uint8
  * count of the selected binding before the transition starts.
  */
 USTRUCT(BlueprintType)
-struct ELASTICUMG_API FWidgetTransitionValue
+struct UMGTRANSITIONS_API FWidgetTransitionValue
 {
 	GENERATED_BODY()
 
@@ -73,7 +73,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnWidgetTransitionAsyncUpdate, F
 
 /** Cached access to a transition property on a widget. */
 USTRUCT()
-struct ELASTICUMG_API FWidgetTransitionPropertyBinding
+struct UMGTRANSITIONS_API FWidgetTransitionPropertyBinding
 {
 	GENERATED_BODY()
 
@@ -111,7 +111,7 @@ struct ELASTICUMG_API FWidgetTransitionPropertyBinding
  * construct a copy; Add Widget Transition normalizes that copy for ticking.
  */
 USTRUCT(BlueprintType)
-struct ELASTICUMG_API FWidgetTransition
+struct UMGTRANSITIONS_API FWidgetTransition
 {
 	GENERATED_BODY()
 
@@ -151,14 +151,14 @@ struct ELASTICUMG_API FWidgetTransition
 };
 
 UCLASS()
-class ELASTICUMG_API UWidgetTransitionFunctionLibrary final : public UBlueprintFunctionLibrary
+class UMGTRANSITIONS_API UWidgetTransitionFunctionLibrary final : public UBlueprintFunctionLibrary
 {
 	GENERATED_BODY()
 
 public:
 	/** Creates a transition bound to a widget property or a Material.Parameter entry. */
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Create Widget Transition", ElasticUMGTransitionBinding = "Combined", ReturnDisplayName = "Transition"))
-	static FWidgetTransition CreateWidgetTransition(UWidget* Widget, UPARAM(meta = (ElasticUMGRole = "WidgetProperty")) FName WidgetProperty, FWidgetTransitionValue ToValue, float Time = 0.2f, float Delay = 0.0f);
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Create Widget Transition", UMGTransitionsBinding = "Combined", ReturnDisplayName = "Transition"))
+	static FWidgetTransition CreateWidgetTransition(UWidget* Widget, UPARAM(meta = (UMGTransitionsRole = "WidgetProperty")) FName WidgetProperty, FWidgetTransitionValue ToValue, float Time = 0.2f, float Delay = 0.0f);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (CPP_Default_bUseFrom = "true", ReturnDisplayName = "Transition"))
 	static FWidgetTransition From(FWidgetTransition Transition, bool bUseFrom, FWidgetTransitionValue FromValue);
 	/** Configures optional transition behavior. */
@@ -207,7 +207,7 @@ public:
 
 /** Blueprint async action which exposes transition lifecycle callbacks as execution outputs. */
 UCLASS()
-class ELASTICUMG_API UWidgetTransitionAsyncAction final : public UBlueprintAsyncActionBase
+class UMGTRANSITIONS_API UWidgetTransitionAsyncAction final : public UBlueprintAsyncActionBase
 {
 	GENERATED_BODY()
 
@@ -243,7 +243,7 @@ private:
 };
 
 UCLASS()
-class ELASTICUMG_API UWidgetTransitionSubsystem final : public UTickableWorldSubsystem
+class UMGTRANSITIONS_API UWidgetTransitionSubsystem final : public UTickableWorldSubsystem
 {
 	GENERATED_BODY()
 

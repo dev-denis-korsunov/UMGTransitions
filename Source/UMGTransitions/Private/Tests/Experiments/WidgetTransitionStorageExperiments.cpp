@@ -14,7 +14,7 @@ namespace
 	}
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionSpringStorageExperiment, "ElasticUMG.WidgetTransition.Experiments.SpringStorage", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionSpringStorageExperiment, "UMGTransitions.WidgetTransition.Experiments.SpringStorage", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
 bool FWidgetTransitionSpringStorageExperiment::RunTest(const FString&)
 {
 	constexpr int32 ActiveSpringCount = 500;
@@ -71,7 +71,7 @@ bool FWidgetTransitionSpringStorageExperiment::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionArrayStorageExperiment, "ElasticUMG.WidgetTransition.Experiments.ArrayTransitionStorage", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionArrayStorageExperiment, "UMGTransitions.WidgetTransition.Experiments.ArrayTransitionStorage", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
 bool FWidgetTransitionArrayStorageExperiment::RunTest(const FString&)
 {
 	constexpr int32 ActiveTransitionCount = 500;

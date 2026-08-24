@@ -2,26 +2,26 @@
 	"FileVersion": 3,
 	"Version": 1,
 	"VersionName": "1.0.0",
-	"FriendlyName": "ElasticUMG",
+	"FriendlyName": "UMGTransitions",
 	"Description": "Runtime UMG property transitions, spring motion, and widget hierarchy selection for Blueprints.",
 	"Category": "User Interface",
 	"CreatedBy": "Denis Korsunov",
 	"CreatedByURL": "",
 	"DocsURL": "",
 	"MarketplaceURL": "",
-	"CanContainContent": true,
+	"CanContainContent": false,
 	"EnabledByDefault": true,
 	"IsBetaVersion": false,
 	"IsExperimentalVersion": false,
 	"Installed": false,
 	"Modules": [
 		{
-			"Name": "ElasticUMG",
+			"Name": "UMGTransitions",
 			"Type": "Runtime",
 			"LoadingPhase": "PreDefault"
 		},
 		{
-			"Name": "ElasticUMGEditor",
+			"Name": "UMGTransitionsEditor",
 			"Type": "Editor",
 			"LoadingPhase": "Default"
 		}

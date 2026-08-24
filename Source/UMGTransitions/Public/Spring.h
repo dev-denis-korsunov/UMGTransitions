@@ -3,7 +3,7 @@
 #include "CoreMinimal.h"
 
 /** Heap-allocated four-channel spring used by spring transitions. */
-struct ELASTICUMG_API FWidgetTransitionSpring
+struct UMGTRANSITIONS_API FWidgetTransitionSpring
 {
 	FWidgetTransitionSpring(float SpringFactor, float DampingFactor);
 

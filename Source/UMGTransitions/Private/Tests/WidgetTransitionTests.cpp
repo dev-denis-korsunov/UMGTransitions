@@ -101,7 +101,7 @@ namespace
 	}
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionStorageLayoutTest, "ElasticUMG.WidgetTransition.Diagnostics.StorageLayout", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionStorageLayoutTest, "UMGTransitions.WidgetTransition.Diagnostics.StorageLayout", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionStorageLayoutTest::RunTest(const FString&)
 {
 	AddInfo(FormatBytes(TEXT("FWidgetTransition"), sizeof(FWidgetTransition), alignof(FWidgetTransition)));
@@ -115,7 +115,7 @@ bool FWidgetTransitionStorageLayoutTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetSelectorHierarchyTest, "ElasticUMG.WidgetSelector.Runtime.Hierarchy", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetSelectorHierarchyTest, "UMGTransitions.WidgetSelector.Runtime.Hierarchy", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetSelectorHierarchyTest::RunTest(const FString&)
 {
 	UVerticalBox* Root = NewObject<UVerticalBox>(GetTransientPackage(), TEXT("Root"));
@@ -150,7 +150,7 @@ bool FWidgetSelectorHierarchyTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionBuilderTest, "ElasticUMG.WidgetTransition.Runtime.SpecBuilders", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionBuilderTest, "UMGTransitions.WidgetTransition.Runtime.SpecBuilders", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionBuilderTest::RunTest(const FString&)
 {
 	UImage* Widget = NewObject<UImage>(GetTransientPackage());
@@ -173,7 +173,7 @@ bool FWidgetTransitionBuilderTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionPropertyBindingTest, "ElasticUMG.WidgetTransition.Runtime.PropertyBinding.Channels", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionPropertyBindingTest, "UMGTransitions.WidgetTransition.Runtime.PropertyBinding.Channels", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionPropertyBindingTest::RunTest(const FString&)
 {
 	UImage* Widget = NewObject<UImage>(GetTransientPackage());
@@ -203,7 +203,7 @@ bool FWidgetTransitionPropertyBindingTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionSpringTest, "ElasticUMG.WidgetTransition.Runtime.Spring.Converges", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionSpringTest, "UMGTransitions.WidgetTransition.Runtime.Spring.Converges", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionSpringTest::RunTest(const FString&)
 {
 	FWidgetTransitionSpring Spring(144.0f, 18.0f);
@@ -217,7 +217,7 @@ bool FWidgetTransitionSpringTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionRemoveAtSwapTest, "ElasticUMG.WidgetTransition.Runtime.RemoveAtSwap", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionRemoveAtSwapTest, "UMGTransitions.WidgetTransition.Runtime.RemoveAtSwap", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionRemoveAtSwapTest::RunTest(const FString&)
 {
 	UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
@@ -246,7 +246,7 @@ bool FWidgetTransitionRemoveAtSwapTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionMetadataTest, "ElasticUMG.WidgetTransition.Editor.Metadata", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionMetadataTest, "UMGTransitions.WidgetTransition.Editor.Metadata", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionMetadataTest::RunTest(const FString&)
 {
 	const UFunction* Create = UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateWidgetTransition));
@@ -255,17 +255,17 @@ bool FWidgetTransitionMetadataTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	TestEqual(TEXT("Create function opts into the combined custom property pin"), Create->GetMetaData(TEXT("ElasticUMGTransitionBinding")), FString(TEXT("Combined")));
+	TestEqual(TEXT("Create function opts into the combined custom property pin"), Create->GetMetaData(TEXT("UMGTransitionsBinding")), FString(TEXT("Combined")));
 	const FProperty* WidgetProperty = Create->FindPropertyByName(TEXT("WidgetProperty"));
 	TestTrue(TEXT("Widget Property parameter exists"), WidgetProperty != nullptr);
 	if (WidgetProperty)
 	{
-		TestEqual(TEXT("Widget Property opts into the custom selector role"), WidgetProperty->GetMetaData(TEXT("ElasticUMGRole")), FString(TEXT("WidgetProperty")));
+		TestEqual(TEXT("Widget Property opts into the custom selector role"), WidgetProperty->GetMetaData(TEXT("UMGTransitionsRole")), FString(TEXT("WidgetProperty")));
 	}
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionConstructionPerformanceTest, "ElasticUMG.WidgetTransition.Performance.Construction", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionConstructionPerformanceTest, "UMGTransitions.WidgetTransition.Performance.Construction", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
 bool FWidgetTransitionConstructionPerformanceTest::RunTest(const FString&)
 {
 	constexpr int32 IterationCount = 100000;
@@ -313,7 +313,7 @@ bool FWidgetTransitionConstructionPerformanceTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionConcurrentTickPerformanceTest, "ElasticUMG.WidgetTransition.Performance.ConcurrentTick", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionConcurrentTickPerformanceTest, "UMGTransitions.WidgetTransition.Performance.ConcurrentTick", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
 bool FWidgetTransitionConcurrentTickPerformanceTest::RunTest(const FString&)
 {
 	constexpr int32 FrameCount = 300;
@@ -349,7 +349,7 @@ bool FWidgetTransitionConcurrentTickPerformanceTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionModeMatrixPerformanceTest, "ElasticUMG.WidgetTransition.Performance.ModeMatrix", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionModeMatrixPerformanceTest, "UMGTransitions.WidgetTransition.Performance.ModeMatrix", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
 bool FWidgetTransitionModeMatrixPerformanceTest::RunTest(const FString&)
 {
 	constexpr int32 FrameCount = 300;
@@ -405,7 +405,7 @@ bool FWidgetTransitionModeMatrixPerformanceTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionFastBindingPerformanceTest, "ElasticUMG.WidgetTransition.Performance.FastBindings", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionFastBindingPerformanceTest, "UMGTransitions.WidgetTransition.Performance.FastBindings", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
 bool FWidgetTransitionFastBindingPerformanceTest::RunTest(const FString&)
 {
 	constexpr int32 TransitionCount = 500;

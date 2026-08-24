@@ -14,7 +14,7 @@ namespace
 	}
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionModeIndicesExperiment, "ElasticUMG.WidgetTransition.Experiments.ModeIndices", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionModeIndicesExperiment, "UMGTransitions.WidgetTransition.Experiments.ModeIndices", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
 bool FWidgetTransitionModeIndicesExperiment::RunTest(const FString&)
 {
 	constexpr int32 TransitionCount = 500;

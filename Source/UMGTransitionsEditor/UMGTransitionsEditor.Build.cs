@@ -1,8 +1,8 @@
 using UnrealBuildTool;
 
-public class ElasticUMGEditor : ModuleRules
+public class UMGTransitionsEditor : ModuleRules
 {
-	public ElasticUMGEditor(ReadOnlyTargetRules Target) : base(Target)
+	public UMGTransitionsEditor(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
@@ -10,7 +10,7 @@ public class ElasticUMGEditor : ModuleRules
 				"Core",
 				"CoreUObject",
 				"Engine",
-				"ElasticUMG",
+				"UMGTransitions",
 				"UMG",
 				"UMGEditor",
 				"InputCore",

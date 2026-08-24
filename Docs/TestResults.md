@@ -1,4 +1,4 @@
-# ElasticUMG — журнал automation-тестов
+# UMGTransitions — журнал automation-тестов
 
 Здесь записываются только завершённые прогоны. Описание покрытия находится в [Testing.md](Testing.md), методика perf-тестов — в [PerformanceTests.md](Testing/PerformanceTests.md), причины архитектурных решений — в [OptimizationHistory.md](Testing/OptimizationHistory.md).
 
