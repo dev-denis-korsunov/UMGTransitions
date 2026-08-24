@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Blueprint/UserWidget.h"
 #include "Components/Widget.h"
 #include "CoreMinimal.h"
 
@@ -20,4 +21,10 @@ public:
 
 	int32 StartedCount = 0;
 	TWeakObjectPtr<UWidget> LastWidget;
+};
+
+UCLASS()
+class UWidgetSelectorTestUserWidget final : public UUserWidget
+{
+	GENERATED_BODY()
 };

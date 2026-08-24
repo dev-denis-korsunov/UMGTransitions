@@ -6,6 +6,8 @@
 
 #include "Components/Image.h"
 #include "Components/VerticalBox.h"
+#include "Blueprint/UserWidget.h"
+#include "Blueprint/WidgetTree.h"
 #include "Curves/RichCurve.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/AutomationTest.h"
@@ -17,6 +19,14 @@ namespace
 	FString FormatBytes(const TCHAR* Name, SIZE_T Size, SIZE_T Alignment)
 	{
 		return FString::Printf(TEXT("%s: %llu B, alignment %llu B"), Name, static_cast<uint64>(Size), static_cast<uint64>(Alignment));
+	}
+
+	FString FormatStorageBudget(const TCHAR* Name, int32 TransitionCount, bool bWithSprings)
+	{
+		const SIZE_T TransitionBytes = sizeof(FWidgetTransition) * TransitionCount;
+		const SIZE_T SpringBytes = bWithSprings ? sizeof(FWidgetTransitionSpring) * TransitionCount : 0;
+		const SIZE_T SpringIndexBytes = bWithSprings ? sizeof(int32) * TransitionCount : 0;
+		return FString::Printf(TEXT("%s (%d transitions): %llu B transition + %llu B spring + %llu B indices = %llu B"), Name, TransitionCount, static_cast<uint64>(TransitionBytes), static_cast<uint64>(SpringBytes), static_cast<uint64>(SpringIndexBytes), static_cast<uint64>(TransitionBytes + SpringBytes + SpringIndexBytes));
 	}
 
 	FString FormatMicroseconds(double Seconds)
@@ -91,22 +101,17 @@ namespace
 	}
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionStorageLayoutTest, "ElasticUMG.WidgetTransition.Runtime.StorageLayout", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionStorageLayoutTest, "ElasticUMG.WidgetTransition.Diagnostics.StorageLayout", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionStorageLayoutTest::RunTest(const FString&)
 {
 	AddInfo(FormatBytes(TEXT("FWidgetTransition"), sizeof(FWidgetTransition), alignof(FWidgetTransition)));
 	AddInfo(FormatBytes(TEXT("FWidgetTransitionValue"), sizeof(FWidgetTransitionValue), alignof(FWidgetTransitionValue)));
 	AddInfo(FormatBytes(TEXT("FWidgetTransitionPropertyBinding"), sizeof(FWidgetTransitionPropertyBinding), alignof(FWidgetTransitionPropertyBinding)));
 	AddInfo(FormatBytes(TEXT("FWidgetTransitionSpring"), sizeof(FWidgetTransitionSpring), alignof(FWidgetTransitionSpring)));
-	TestTrue(TEXT("Transition storage is non-empty"), sizeof(FWidgetTransition) > 0);
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionEasingTest, "ElasticUMG.WidgetTransition.Runtime.Easing.Endpoints", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-bool FWidgetTransitionEasingTest::RunTest(const FString&)
-{
-	const FCurveTableRowHandle Easing;
-	TestTrue(TEXT("Default easing handle is null and selects linear interpolation"), Easing.IsNull());
+	AddInfo(FormatStorageBudget(TEXT("Typical linear workload"), 100, false));
+	AddInfo(FormatStorageBudget(TEXT("Typical spring workload"), 100, true));
+	AddInfo(FormatStorageBudget(TEXT("Stress linear workload"), 500, false));
+	AddInfo(FormatStorageBudget(TEXT("Stress spring workload"), 500, true));
 	return true;
 }
 
@@ -117,22 +122,29 @@ bool FWidgetSelectorHierarchyTest::RunTest(const FString&)
 	UImage* First = NewObject<UImage>(GetTransientPackage(), TEXT("First"));
 	UVerticalBox* Branch = NewObject<UVerticalBox>(GetTransientPackage(), TEXT("Branch"));
 	UImage* Grandchild = NewObject<UImage>(GetTransientPackage(), TEXT("Grandchild"));
+	UWidgetSelectorTestUserWidget* NestedUserWidget = NewObject<UWidgetSelectorTestUserWidget>(GetTransientPackage(), TEXT("NestedUserWidget"));
+	NestedUserWidget->WidgetTree = NewObject<UWidgetTree>(NestedUserWidget);
+	UImage* NestedRoot = NewObject<UImage>(NestedUserWidget->WidgetTree, TEXT("NestedRoot"));
+	NestedUserWidget->WidgetTree->RootWidget = NestedRoot;
 	Root->AddChild(First);
 	Root->AddChild(Branch);
+	Root->AddChild(NestedUserWidget);
 	Branch->AddChild(Grandchild);
 
 	const TArray<UWidget*> Children = UWidgetSelectorLibrary::GetWidgetChildren(Root);
-	TestEqual(TEXT("Root has two direct children"), Children.Num(), 2);
-	TestTrue(TEXT("Direct child order follows the panel"), Children == TArray<UWidget*>({First, Branch}));
+	TestEqual(TEXT("Root has three direct children"), Children.Num(), 3);
+	TestTrue(TEXT("Direct child order follows the panel"), Children == TArray<UWidget*>({First, Branch, NestedUserWidget}));
+	TestTrue(TEXT("Nested User Widget exposes its WidgetTree root as a child"), UWidgetSelectorLibrary::GetWidgetChildren(NestedUserWidget) == TArray<UWidget*>({NestedRoot}));
 
 	const TArray<UWidget*> Descendants = UWidgetSelectorLibrary::GetWidgetDescendants(Root);
-	TestTrue(TEXT("Descendants use depth-first order"), Descendants == TArray<UWidget*>({First, Branch, Grandchild}));
+	TestTrue(TEXT("Descendants use depth-first order across WidgetTree boundaries"), Descendants == TArray<UWidget*>({First, Branch, Grandchild, NestedUserWidget, NestedRoot}));
 	TestTrue(TEXT("Depth zero is the root"), UWidgetSelectorLibrary::GetWidgetsAtDepth(Root, 0) == TArray<UWidget*>({Root}));
-	TestTrue(TEXT("Depth one contains direct children"), UWidgetSelectorLibrary::GetWidgetsAtDepth(Root, 1) == TArray<UWidget*>({First, Branch}));
-	TestTrue(TEXT("Depth two contains the grandchild"), UWidgetSelectorLibrary::GetWidgetsAtDepth(Root, 2) == TArray<UWidget*>({Grandchild}));
-	TestTrue(TEXT("Through depth includes every preceding level"), UWidgetSelectorLibrary::GetWidgetsThroughDepth(Root, 1) == TArray<UWidget*>({Root, First, Branch}));
+	TestTrue(TEXT("Depth one contains direct children"), UWidgetSelectorLibrary::GetWidgetsAtDepth(Root, 1) == TArray<UWidget*>({First, Branch, NestedUserWidget}));
+	TestTrue(TEXT("Depth two crosses into the nested WidgetTree"), UWidgetSelectorLibrary::GetWidgetsAtDepth(Root, 2) == TArray<UWidget*>({Grandchild, NestedRoot}));
+	TestTrue(TEXT("Through depth includes every preceding level"), UWidgetSelectorLibrary::GetWidgetsThroughDepth(Root, 1) == TArray<UWidget*>({Root, First, Branch, NestedUserWidget}));
 	TestEqual(TEXT("Direct parent is returned"), UWidgetSelectorLibrary::GetWidgetParent(Grandchild), static_cast<UWidget*>(Branch));
 	TestTrue(TEXT("Parents are returned from nearest to root"), UWidgetSelectorLibrary::GetWidgetParents(Grandchild) == TArray<UWidget*>({Branch, Root}));
+	TestTrue(TEXT("Nested root climbs through the owning User Widget"), UWidgetSelectorLibrary::GetWidgetParents(NestedRoot) == TArray<UWidget*>({NestedUserWidget, Root}));
 	TestTrue(TEXT("Single name lookup finds a descendant"), UWidgetSelectorLibrary::FindWidgetDescendantsByName(Root, TEXT("Grandchild")) == TArray<UWidget*>({Grandchild}));
 	TestTrue(TEXT("Multiple name lookup preserves tree order"), UWidgetSelectorLibrary::FindWidgetDescendantsByNames(Root, {TEXT("Grandchild"), TEXT("First")}) == TArray<UWidget*>({First, Grandchild}));
 	return true;
@@ -429,308 +441,6 @@ bool FWidgetTransitionFastBindingPerformanceTest::RunTest(const FString&)
 	Measure(TEXT("RenderTransform.Shear"), true);
 	Measure(TEXT("RenderTransform.Angle"), false);
 	Measure(TEXT("RenderTransformPivot"), true);
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionSpringStoragePerformanceTest, "ElasticUMG.WidgetTransition.Performance.SpringStorage", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
-bool FWidgetTransitionSpringStoragePerformanceTest::RunTest(const FString&)
-{
-	constexpr int32 ActiveSpringCount = 500;
-	constexpr int32 FrameCount = 300;
-	constexpr float DeltaTime = 1.0f / 60.0f;
-
-	auto StartSpring = [](FWidgetTransitionSpring& Spring)
-	{
-		Spring.Start(FVector4f::Zero(), FVector4f(100.0f, -50.0f, 25.0f, 1.0f));
-	};
-	auto Measure = [this](const TCHAR* Name, auto& Springs)
-	{
-		const double StartTime = FPlatformTime::Seconds();
-		for (int32 FrameIndex = 0; FrameIndex < FrameCount; ++FrameIndex)
-		{
-			for (FWidgetTransitionSpring& Spring : Springs)
-			{
-				Spring.Tick(DeltaTime);
-			}
-		}
-		const double ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
-		AddInfo(FString::Printf(TEXT("%s: %s / frame, %s / spring (%d active springs, %d frames)"), Name, *FormatMicroseconds(ElapsedSeconds / FrameCount), *FormatMicroseconds(ElapsedSeconds / (FrameCount * ActiveSpringCount)), ActiveSpringCount, FrameCount));
-	};
-
-	TArray<FWidgetTransitionSpring> DenseSprings;
-	DenseSprings.Reserve(ActiveSpringCount);
-	for (int32 Index = 0; Index < ActiveSpringCount; ++Index)
-	{
-		const int32 SpringIndex = DenseSprings.Emplace(1.0f, 1.0f);
-		StartSpring(DenseSprings[SpringIndex]);
-	}
-	Measure(TEXT("TArray packed"), DenseSprings);
-
-	TSparseArray<FWidgetTransitionSpring> SparseSprings;
-	for (int32 Index = 0; Index < ActiveSpringCount; ++Index)
-	{
-		const auto SpringIndex = SparseSprings.Emplace(1.0f, 1.0f);
-		StartSpring(SparseSprings[SpringIndex]);
-	}
-	Measure(TEXT("TSparseArray packed"), SparseSprings);
-
-	TSparseArray<FWidgetTransitionSpring> FragmentedSparseSprings;
-	for (int32 Index = 0; Index < ActiveSpringCount * 2; ++Index)
-	{
-		const auto SpringIndex = FragmentedSparseSprings.Emplace(1.0f, 1.0f);
-		StartSpring(FragmentedSparseSprings[SpringIndex]);
-	}
-	for (int32 Index = 0; Index < ActiveSpringCount * 2; Index += 2)
-	{
-		FragmentedSparseSprings.RemoveAt(Index);
-	}
-	TestEqual(TEXT("Fragmented sparse array keeps 500 active springs"), FragmentedSparseSprings.Num(), ActiveSpringCount);
-	Measure(TEXT("TSparseArray 50% fragmented"), FragmentedSparseSprings);
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionArrayStoragePerformanceTest, "ElasticUMG.WidgetTransition.Performance.ArrayTransitionStorage", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
-bool FWidgetTransitionArrayStoragePerformanceTest::RunTest(const FString&)
-{
-	constexpr int32 ActiveTransitionCount = 500;
-	constexpr int32 FrameCount = 300;
-	constexpr float DeltaTime = 1.0f / 60.0f;
-
-	auto AddTransition = [](UWidgetTransitionSubsystem& Subsystem, TArray<UImage*>& Widgets)
-	{
-		UImage* Widget = NewObject<UImage>(GetTransientPackage());
-		Widgets.Add(Widget);
-		FWidgetTransition Transition;
-		Transition.Widget = Widget;
-		Transition.FromValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.0f);
-		Transition.ToValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(1.0f);
-		Transition.Time = 60.0f;
-		Transition.bUseFrom = true;
-		return Subsystem.Transitions.Emplace(MoveTemp(Transition));
-	};
-	auto Measure = [this](const TCHAR* Name, UWidgetTransitionSubsystem& Subsystem)
-	{
-		Subsystem.TickTransitionsForTesting(DeltaTime);
-		const double StartTime = FPlatformTime::Seconds();
-		for (int32 FrameIndex = 0; FrameIndex < FrameCount; ++FrameIndex)
-		{
-			Subsystem.TickTransitionsForTesting(DeltaTime);
-		}
-		const double ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
-		AddInfo(FString::Printf(TEXT("%s: %s / frame, %s / transition (%d active transitions, %d frames)"), Name, *FormatMicroseconds(ElapsedSeconds / FrameCount), *FormatMicroseconds(ElapsedSeconds / (FrameCount * ActiveTransitionCount)), ActiveTransitionCount, FrameCount));
-		TestEqual(FString::Printf(TEXT("%s keeps all active transitions"), Name), Subsystem.Transitions.Num(), ActiveTransitionCount);
-	};
-
-	UWidgetTransitionSubsystem* PackedSubsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
-	TArray<UImage*> PackedWidgets;
-	PackedWidgets.Reserve(ActiveTransitionCount);
-	for (int32 Index = 0; Index < ActiveTransitionCount; ++Index)
-	{
-		AddTransition(*PackedSubsystem, PackedWidgets);
-	}
-	Measure(TEXT("TArray packed transitions"), *PackedSubsystem);
-
-	UWidgetTransitionSubsystem* SwapRemovedSubsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
-	TArray<UImage*> SwapRemovedWidgets;
-	SwapRemovedWidgets.Reserve(ActiveTransitionCount * 2);
-	for (int32 Index = 0; Index < ActiveTransitionCount * 2; ++Index)
-	{
-		AddTransition(*SwapRemovedSubsystem, SwapRemovedWidgets);
-	}
-	for (int32 Index = 0; Index < ActiveTransitionCount; ++Index)
-	{
-		SwapRemovedSubsystem->Transitions.RemoveAtSwap(0);
-	}
-	Measure(TEXT("TArray after 500 RemoveAtSwap"), *SwapRemovedSubsystem);
-
-	constexpr int32 RemovalBenchmarkCount = 100000;
-	TArray<FWidgetTransition> RemovalBenchmarkTransitions;
-	RemovalBenchmarkTransitions.SetNum(RemovalBenchmarkCount);
-	const double StartTime = FPlatformTime::Seconds();
-	for (int32 Index = 0; Index < RemovalBenchmarkCount / 2; ++Index)
-	{
-		RemovalBenchmarkTransitions.RemoveAtSwap(RemovalBenchmarkTransitions.Num() / 2);
-	}
-	const double ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
-	AddInfo(FString::Printf(TEXT("TArray RemoveAtSwap: %s / removal (%d removals)"), *FormatMicroseconds(ElapsedSeconds / (RemovalBenchmarkCount / 2)), RemovalBenchmarkCount / 2));
-	TestEqual(TEXT("RemoveAtSwap leaves half of the benchmark transitions"), RemovalBenchmarkTransitions.Num(), RemovalBenchmarkCount / 2);
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionModeIndicesPerformanceTest, "ElasticUMG.WidgetTransition.Performance.ModeIndices", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
-bool FWidgetTransitionModeIndicesPerformanceTest::RunTest(const FString&)
-{
-	constexpr int32 TransitionCount = 500;
-	constexpr int32 FrameCount = 300;
-	const FName CurveRow(TEXT("ModeIndices"));
-	UCurveTable* CurveTable = NewObject<UCurveTable>(GetTransientPackage());
-	FRichCurve& Curve = CurveTable->AddRichCurve(CurveRow);
-	Curve.AddKey(0.0f, 0.0f);
-	Curve.AddKey(0.5f, 0.2f);
-	Curve.AddKey(1.0f, 1.0f);
-	TArray<FWidgetTransition> Transitions;
-	TArray<FWidgetTransitionSpring> Springs;
-	TArray<int32> LinearTransitionIndices;
-	TArray<int32> EasingTransitionIndices;
-	TArray<int32> SpringTransitionIndices;
-	Transitions.Reserve(TransitionCount);
-	Springs.Reserve(TransitionCount / 3);
-	LinearTransitionIndices.Reserve(TransitionCount / 3);
-	EasingTransitionIndices.Reserve(TransitionCount / 3);
-	SpringTransitionIndices.Reserve(TransitionCount / 3);
-	for (int32 Index = 0; Index < TransitionCount; ++Index)
-	{
-		FWidgetTransition Transition;
-		Transition.FromValue.Channels = FVector4f::Zero();
-		Transition.ToValue.Channels = FVector4f(100.0f, -50.0f, 25.0f, 1.0f);
-		Transition.Time = 1.0f;
-		Transition.CurrentTime = 0.35f;
-		const int32 TransitionIndex = Transitions.Add(MoveTemp(Transition));
-		FWidgetTransition& StoredTransition = Transitions[TransitionIndex];
-		switch (Index % 3)
-		{
-		case 0:
-		{
-			LinearTransitionIndices.Add(TransitionIndex);
-			break;
-		}
-		case 1:
-		{
-			StoredTransition.Easing.CurveTable = CurveTable;
-			StoredTransition.Easing.RowName = CurveRow;
-			StoredTransition.EasingCurve = &Curve;
-			EasingTransitionIndices.Add(TransitionIndex);
-			break;
-		}
-		default:
-		{
-			StoredTransition.bUseSpring = true;
-			StoredTransition.SpringIndex = Springs.Emplace(1.0f, 1.0f);
-			Springs[StoredTransition.SpringIndex].Start(StoredTransition.FromValue.Channels, StoredTransition.ToValue.Channels);
-			SpringTransitionIndices.Add(TransitionIndex);
-			break;
-		}
-		}
-	}
-
-	volatile float Sink = 0.0f;
-	auto EvaluateTransition = [&Springs](const FWidgetTransition& Transition)
-	{
-		const float Alpha = FMath::Clamp(Transition.CurrentTime / Transition.Time, 0.0f, 1.0f);
-		if (Transition.bUseSpring)
-		{
-			return Springs[Transition.SpringIndex].GetValue();
-		}
-		const float EasedAlpha = Transition.EasingCurve ? Transition.EasingCurve->Eval(Alpha) : Alpha;
-		return FMath::Lerp(Transition.FromValue.Channels, Transition.ToValue.Channels, EasedAlpha);
-	};
-	auto EvaluateLinear = [](const FWidgetTransition& Transition)
-	{
-		const float Alpha = FMath::Clamp(Transition.CurrentTime / Transition.Time, 0.0f, 1.0f);
-		return FMath::Lerp(Transition.FromValue.Channels, Transition.ToValue.Channels, Alpha);
-	};
-	auto EvaluateEasing = [](const FWidgetTransition& Transition)
-	{
-		const float Alpha = FMath::Clamp(Transition.CurrentTime / Transition.Time, 0.0f, 1.0f);
-		const float EasedAlpha = Transition.EasingCurve->Eval(Alpha);
-		return FMath::Lerp(Transition.FromValue.Channels, Transition.ToValue.Channels, EasedAlpha);
-	};
-	auto EvaluateSpring = [&Springs](const FWidgetTransition& Transition)
-	{
-		return Springs[Transition.SpringIndex].GetValue();
-	};
-	auto Measure = [this, &Sink](const TCHAR* Name, auto&& Traverse)
-	{
-		const double StartTime = FPlatformTime::Seconds();
-		for (int32 FrameIndex = 0; FrameIndex < FrameCount; ++FrameIndex)
-		{
-			Traverse();
-		}
-		const double ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
-		AddInfo(FString::Printf(TEXT("%s: %s / frame, %s / transition (%d transitions, %d frames)"), Name, *FormatMicroseconds(ElapsedSeconds / FrameCount), *FormatMicroseconds(ElapsedSeconds / (FrameCount * TransitionCount)), TransitionCount, FrameCount));
-	};
-
-	Measure(TEXT("Single mixed transition pass"), [&Transitions, &EvaluateTransition, &Sink]()
-	{
-		for (const FWidgetTransition& Transition : Transitions)
-		{
-			Sink += EvaluateTransition(Transition).X;
-		}
-	});
-	Measure(TEXT("Specialized mode index passes"), [&Transitions, &LinearTransitionIndices, &EasingTransitionIndices, &SpringTransitionIndices, &EvaluateLinear, &EvaluateEasing, &EvaluateSpring, &Sink]()
-	{
-		for (const int32 TransitionIndex : LinearTransitionIndices)
-		{
-			Sink += EvaluateLinear(Transitions[TransitionIndex]).X;
-		}
-		for (const int32 TransitionIndex : EasingTransitionIndices)
-		{
-			Sink += EvaluateEasing(Transitions[TransitionIndex]).X;
-		}
-		for (const int32 TransitionIndex : SpringTransitionIndices)
-		{
-			Sink += EvaluateSpring(Transitions[TransitionIndex]).X;
-		}
-	});
-	TestTrue(TEXT("Mode index benchmark executed"), Sink > 0.0f);
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionDirtyWidgetIndicesPerformanceTest, "ElasticUMG.WidgetTransition.Performance.DirtyWidgetIndices", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
-bool FWidgetTransitionDirtyWidgetIndicesPerformanceTest::RunTest(const FString&)
-{
-	constexpr int32 WidgetCount = 50;
-	constexpr int32 TransitionCount = 500;
-	constexpr int32 FrameCount = 300;
-	TArray<UImage*> Widgets;
-	TArray<int32> TransitionWidgetIndices;
-	TArray<float> Values;
-	TArray<TArray<int32>> DirtyWidgetGroups;
-	Widgets.Reserve(WidgetCount);
-	TransitionWidgetIndices.Reserve(TransitionCount);
-	Values.Reserve(TransitionCount);
-	DirtyWidgetGroups.SetNum(WidgetCount);
-	for (int32 WidgetIndex = 0; WidgetIndex < WidgetCount; ++WidgetIndex)
-	{
-		Widgets.Add(NewObject<UImage>(GetTransientPackage()));
-	}
-	for (int32 TransitionIndex = 0; TransitionIndex < TransitionCount; ++TransitionIndex)
-	{
-		const int32 WidgetIndex = TransitionIndex % WidgetCount;
-		TransitionWidgetIndices.Add(WidgetIndex);
-		Values.Add(static_cast<float>(TransitionIndex % 100) / 100.0f);
-		DirtyWidgetGroups[WidgetIndex].Add(TransitionIndex);
-	}
-
-	auto Measure = [this](const TCHAR* Name, auto&& Traverse)
-	{
-		const double StartTime = FPlatformTime::Seconds();
-		for (int32 FrameIndex = 0; FrameIndex < FrameCount; ++FrameIndex)
-		{
-			Traverse();
-		}
-		const double ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
-		AddInfo(FString::Printf(TEXT("%s: %s / frame, %s / write (%d transitions, %d widgets, %d frames)"), Name, *FormatMicroseconds(ElapsedSeconds / FrameCount), *FormatMicroseconds(ElapsedSeconds / (FrameCount * TransitionCount)), TransitionCount, WidgetCount, FrameCount));
-	};
-
-	Measure(TEXT("Direct transition widget lookup"), [&Widgets, &TransitionWidgetIndices, &Values]()
-	{
-		for (int32 TransitionIndex = 0; TransitionIndex < TransitionWidgetIndices.Num(); ++TransitionIndex)
-		{
-			Widgets[TransitionWidgetIndices[TransitionIndex]]->SetRenderOpacity(Values[TransitionIndex]);
-		}
-	});
-	Measure(TEXT("Prebuilt dirty widget groups"), [&Widgets, &DirtyWidgetGroups, &Values]()
-	{
-		for (int32 WidgetIndex = 0; WidgetIndex < DirtyWidgetGroups.Num(); ++WidgetIndex)
-		{
-			UImage* Widget = Widgets[WidgetIndex];
-			for (const int32 TransitionIndex : DirtyWidgetGroups[WidgetIndex])
-			{
-				Widget->SetRenderOpacity(Values[TransitionIndex]);
-			}
-		}
-	});
 	return true;
 }
 

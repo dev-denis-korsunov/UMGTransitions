@@ -4,8 +4,8 @@
 
 | Тест | Что проверяется | Почему это важно |
 | --- | --- | --- |
-| `Runtime.StorageLayout` | Печатает `sizeof` и `alignof` ключевых runtime-типов: transition, value, property binding и spring. | Изменение поля или выравнивания способно увеличить память сотен активных transition незаметно для компилятора. Тест создаёт измеряемый baseline, но не задаёт жёсткий лимит размера. |
-| `Runtime.Easing.Endpoints` | Пустой `FCurveTableRowHandle` распознаётся как linear fallback. | Transition без выбранной кривой не должен случайно переходить в нулевое easing-значение. Сейчас тест покрывает именно fallback; key sampling пользовательской curve нужно добавлять отдельным тестом при изменении алгоритма. |
+| `Diagnostics.StorageLayout` | Печатает `sizeof`/`alignof` ключевых типов и расчётный объём памяти для 100 и 500 linear/spring transition. | Это диагностический бюджет, а не ложный pass/fail лимит: изменение layout становится видимым в журнале до профилирования. |
+| `WidgetSelector.Runtime.Hierarchy` | DFS-порядок, уровни, имена, parents и переход через вложенный `WidgetTree → UUserWidget`. | Защищает selector от обрыва поиска на границе составного UserWidget. |
 | `Runtime.SpecBuilders` | Pure-функции `Create`, `From`, `Options`, `Repeat`, `YoYo` и `Spring` сохраняют независимые параметры, типы значений и binding. | Blueprint pure-цепочка строит value-semantics объект; тест не даёт одному modifier потерять данные другого. |
 | `Runtime.PropertyBinding.Channels` | Fast binding resolve/read/write для `RenderOpacity`, всех поддержанных полей `RenderTransform` и pivot; проверяет число каналов. | Защищает публичные getter/setter пути UE и соответствие между типом Widget Property и числом каналов transition value. |
 | `Runtime.Spring.Converges` | Единый четырёхканальный spring достигает target. | После оптимизаций частоты, damping и completion check пружина обязана сохранять корректную сходимость для float, vector и color каналов. |
