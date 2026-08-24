@@ -52,11 +52,11 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Widget Selector", meta = (DisplayName = "Get Widgets through Depth"))
 	static TArray<UWidget*> GetWidgetsThroughDepth(UWidget* Root, int32 Depth);
 
-	/** Returns the direct parent panel of Widget, if it has one. */
+	/** Returns the direct hierarchy parent, crossing from a WidgetTree root to its owning User Widget. */
 	UFUNCTION(BlueprintPure, Category = "Widget Selector", meta = (DisplayName = "Get Widget Parent"))
 	static UWidget* GetWidgetParent(UWidget* Widget);
 
-	/** Returns parent panels from the direct parent up to the root. */
+	/** Returns hierarchy parents from the direct parent up to the root, including owning User Widgets. */
 	UFUNCTION(BlueprintPure, Category = "Widget Selector", meta = (DisplayName = "Get Widget Parents"))
 	static TArray<UWidget*> GetWidgetParents(UWidget* Widget);
 

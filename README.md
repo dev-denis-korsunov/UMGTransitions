@@ -1,60 +1,52 @@
 # ElasticUMG
 
-**ElasticUMG** — это плагин для Unreal Engine 5, разработанный для быстрого прототипирования интерфейсов (UMG). Он позволяет анимировать свойства виджетов прямо из кода или блупринтов с помощью простых правил интерполяции и физики, полностью отказываясь от жесткого встроенного редактора анимаций (Sequencer).
+ElasticUMG is an Unreal Engine 5 plugin for runtime UMG transitions. It provides compact Blueprint nodes for animating widget properties, CurveTable easing, spring motion, lifecycle events, and selection of widgets from nested UMG hierarchies.
 
----
+## Requirements
 
-## 💎 Базовые принципы (База)
+- Unreal Engine 5.7 or later
+- C++ project, or a Blueprint project with a C++ toolchain available to build the plugin
 
-Вся работа плагина строится вокруг четырех фундаментальных идей:
+## Installation
 
-### 1. Гибкость без привязки к конкретным узлам
-*   Анимации в ElasticUMG не «привязаны» намертво к конкретному виджету или иерархии в дизайнере. 
-*   Вы создаете **логическое правило перехода** (например, «плавно изменить масштаб с 0 до 1 за 0.3 секунды») и можете применить его к **любому** виджету на экране или перенести на другой проект.
-*   Анимация без проблем ложится на любые свойства самого виджета или структуру его контейнера (например, `Slot.Padding` или `Slot.Position`), позволяя легко двигать элементы разметки.
+1. Copy `ElasticUMG` into your project's `Plugins/` directory.
+2. Regenerate project files if Unreal asks for it, then build the project.
+3. Enable **ElasticUMG** in **Edit → Plugins** and restart the editor.
 
-### 2. Предельно простая настройка (Всего 2 ключа)
-*   Вам больше не нужно открывать таймлайны и расставлять десятки точек. 
-*   Любая анимация здесь — это переход от **Начального значения (From)** к **Конечному значению (To)** с заданной кривой интерполяции. Настройка сводится к паре понятных параметров.
+The plugin includes runtime code and an editor module for the Widget Property picker.
 
-### 3. Полный контроль (Прослушка и Управление)
-*   Вы можете тонко управлять жизненным циклом анимации: мгновенно прерывать, очищать все активные переходы на виджете или подписываться на события (когда анимация началась, когда обновилась и когда полностью завершилась).
+## Widget transitions
 
-### 4. Физика пружин (Spring-эффект)
-*   Вместо классических графиков сглаживания вы можете включить физический симулятор. Элементы интерфейса начинают вести себя как физические тела с заданной жесткостью пружины и демпфированием (массой/сопротивлением). Они реалистично ускоряются, слегка «пролетают» целевую точку и пружинят обратно.
+Build a transition with pure nodes, then start it with **Add Widget Transition** or **Add Widget Transition Array**.
 
----
+1. Create a `Transition Value` with **Make Float Transition Value**, **Make Vector2D Transition Value**, or **Make Color Transition Value**.
+2. Use **Create Widget Transition** to choose a target `Widget` and `Widget Property`.
+3. Optionally compose **From**, **Options**, **Easing**, **Repeat**, **Yo Yo**, **Spring**, and **Remove From Parent**.
+4. Start the result with **Add Widget Transition**.
 
-## 📊 ElasticUMG против стандартного редактора UE5 (Sequencer)
+The Widget Property picker exposes supported numeric widget properties, slot properties, and material parameters for supported Image and Border widgets. Frequently used UMG fields (`RenderOpacity`, transform translation/scale/shear/angle, and pivot) use direct runtime adapters; other compatible float, `Vector2D`, and `LinearColor` properties use the property-path fallback.
 
-| Что сравниваем | Стандартный Sequencer в UE5 | ElasticUMG |
-| :--- | :--- | :--- |
-| **Связь с виджетом** | Жесткая. Анимация пишется внутри конкретного Widget Blueprint и привязана к его компонентам. | Полная независимость. Логика анимации описывается отдельно и применяется к любому виджету. |
-| **Создание анимаций** | Мышкой на таймлайне: вручную расставлять ключи и дорожки. | Кодом или нодами: задать свойства и целевые значения прямо в логике. |
-| **Скорость работы** | Медленно. Нужно заходить в каждый виджет и настраивать ключи. | Очень быстро. Настройка анимации занимает несколько секунд. |
-| **Сложные сценарии** | Сложно. Приходится писать запутанные блупринты для запуска цепочек. | Просто. Анимации легко связываются друг за другом (метод `Pipe`). |
-| **Динамика** | Плохо. Сложно изменить конечную точку анимации во время игры. | Отлично. Конечная точка рассчитывается прямо в рантайме. |
-| **Анимация разметки** | Практически невозможно анимировать сложные параметры вроде отступов слота. | Легко. Можно плавно менять любые свойства вроде `Slot.Padding`. |
-| **Производительность** | Нагружает систему при большом количестве одновременно играющих анимаций. | Очень легкий. Работает через оптимизированную C++ подсистему. |
-| **Эффект пружины** | Приходится вручную рисовать кривые отскока. | Встроен по умолчанию. Достаточно вызвать ноду `Spring`. |
+`Repeat Count = -1` repeats indefinitely. Spring settings use normalized `Spring Speed` and `Spring Bounce` values in the range 0–1. CurveTable rows are resolved when the transition is added, so changing a curve affects transitions created afterwards.
 
-### 👍 Плюсы:
-*   Полная отвязка логики анимации от верстки UI — одну анимацию можно переиспользовать на сотнях кнопок.
-*   Не нужно тратить время на расстановку ключей анимации вручную.
-*   Легко делать «умные» сдвиги интерфейса, которые подстраиваются под размер экрана.
-*   Минимальное влияние на производительность игры.
+For execution pins, use **Add Widget Transition Async**. It exposes `Started`, `Updated`, and `Finished` while retaining the same transition definition.
 
-### 👎 Минусы:
-*   Нет визуального редактора с таймлайном (все настраивается параметрами).
-*   Работает только с числами с плавающей точкой (`float` свойства).
+## Widget Selector
 
----
+`Widget Selector` is a Blueprint function library for traversing UMG hierarchies:
 
-## 🛠️ Основные ноды в Блупринтах
+- get a User Widget's tree root or a named widget;
+- select direct children, all descendants, a specific depth, or all levels through a depth;
+- navigate to a parent or the full parent chain;
+- find descendants by one or several names.
 
-### Создание анимации:
-*   `Create Widget Transition` — один узел с wildcard-пинами `From Value` и `To Value`.
+Traversal is depth-first and crosses nested `WidgetTree → UUserWidget` boundaries, so composed User Widgets behave as one hierarchy.
 
-Узел принимает виджет и `Widget Property`. После выбора свойства wildcard-пины получают его тип: Float, Bool или Vector2D. `From Value` находится в Advanced и необязателен: если его не подключать, переход начинается с текущего значения свойства. Picker рекурсивно отражает свойства подключённого виджета и его слота: например, показывает как `RenderTransform.Scale`, так и отдельные компоненты `RenderTransform.Scale.X` и `.Y`.
+## Examples and tests
 
-Переходы хранятся в отдельных типизированных контейнерах сабсистемы. Дополнительные builder-ноды (`YoYo`, `Repeat`, `From`, `Pipe`, `Spring`, `Curve`, `BindOnUpdate`) не используются: все параметры запуска задаются непосредственно в узле создания.
+Example assets are included under `Content/TransitionExamples`.
+
+Automation tests and benchmark notes are documented in [Docs/Testing.md](Docs/Testing.md). The regular regression suite is separate from historical performance experiments.
+
+## License
+
+ElasticUMG is released under the [MIT License](LICENSE).

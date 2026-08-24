@@ -8,7 +8,7 @@
 
 namespace
 {
-	FString FormatMicroseconds(double Seconds)
+	FString FormatIndexExperimentMicroseconds(double Seconds)
 	{
 		return FString::Printf(TEXT("%.3f us"), Seconds * 1000000.0);
 	}
@@ -96,7 +96,7 @@ bool FWidgetTransitionModeIndicesExperiment::RunTest(const FString&)
 	{
 		return Springs[Transition.SpringIndex].GetValue();
 	};
-	auto Measure = [this, &Sink](const TCHAR* Name, auto&& Traverse)
+	auto Measure = [this, &Sink, FrameCount, TransitionCount](const TCHAR* Name, auto&& Traverse)
 	{
 		const double StartTime = FPlatformTime::Seconds();
 		for (int32 FrameIndex = 0; FrameIndex < FrameCount; ++FrameIndex)
@@ -104,7 +104,7 @@ bool FWidgetTransitionModeIndicesExperiment::RunTest(const FString&)
 			Traverse();
 		}
 		const double ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
-		AddInfo(FString::Printf(TEXT("%s: %s / frame, %s / transition (%d transitions, %d frames)"), Name, *FormatMicroseconds(ElapsedSeconds / FrameCount), *FormatMicroseconds(ElapsedSeconds / (FrameCount * TransitionCount)), TransitionCount, FrameCount));
+		AddInfo(FString::Printf(TEXT("%s: %s / frame, %s / transition (%d transitions, %d frames)"), Name, *FormatIndexExperimentMicroseconds(ElapsedSeconds / FrameCount), *FormatIndexExperimentMicroseconds(ElapsedSeconds / (FrameCount * TransitionCount)), TransitionCount, FrameCount));
 	};
 
 	Measure(TEXT("Single mixed transition pass"), [&Transitions, &EvaluateTransition, &Sink]()

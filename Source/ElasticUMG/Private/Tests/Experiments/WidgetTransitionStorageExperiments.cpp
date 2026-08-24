@@ -8,7 +8,7 @@
 
 namespace
 {
-	FString FormatMicroseconds(double Seconds)
+	FString FormatStorageExperimentMicroseconds(double Seconds)
 	{
 		return FString::Printf(TEXT("%.3f us"), Seconds * 1000000.0);
 	}
@@ -25,7 +25,7 @@ bool FWidgetTransitionSpringStorageExperiment::RunTest(const FString&)
 	{
 		Spring.Start(FVector4f::Zero(), FVector4f(100.0f, -50.0f, 25.0f, 1.0f));
 	};
-	auto Measure = [this](const TCHAR* Name, auto& Springs)
+	auto Measure = [this, ActiveSpringCount, FrameCount, DeltaTime](const TCHAR* Name, auto& Springs)
 	{
 		const double StartTime = FPlatformTime::Seconds();
 		for (int32 FrameIndex = 0; FrameIndex < FrameCount; ++FrameIndex)
@@ -36,7 +36,7 @@ bool FWidgetTransitionSpringStorageExperiment::RunTest(const FString&)
 			}
 		}
 		const double ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
-		AddInfo(FString::Printf(TEXT("%s: %s / frame, %s / spring (%d active springs, %d frames)"), Name, *FormatMicroseconds(ElapsedSeconds / FrameCount), *FormatMicroseconds(ElapsedSeconds / (FrameCount * ActiveSpringCount)), ActiveSpringCount, FrameCount));
+		AddInfo(FString::Printf(TEXT("%s: %s / frame, %s / spring (%d active springs, %d frames)"), Name, *FormatStorageExperimentMicroseconds(ElapsedSeconds / FrameCount), *FormatStorageExperimentMicroseconds(ElapsedSeconds / (FrameCount * ActiveSpringCount)), ActiveSpringCount, FrameCount));
 	};
 
 	TArray<FWidgetTransitionSpring> DenseSprings;
@@ -90,7 +90,7 @@ bool FWidgetTransitionArrayStorageExperiment::RunTest(const FString&)
 		Transition.bUseFrom = true;
 		return Subsystem.Transitions.Emplace(MoveTemp(Transition));
 	};
-	auto Measure = [this](const TCHAR* Name, UWidgetTransitionSubsystem& Subsystem)
+	auto Measure = [this, ActiveTransitionCount, FrameCount, DeltaTime](const TCHAR* Name, UWidgetTransitionSubsystem& Subsystem)
 	{
 		Subsystem.TickTransitionsForTesting(DeltaTime);
 		const double StartTime = FPlatformTime::Seconds();
@@ -99,7 +99,7 @@ bool FWidgetTransitionArrayStorageExperiment::RunTest(const FString&)
 			Subsystem.TickTransitionsForTesting(DeltaTime);
 		}
 		const double ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
-		AddInfo(FString::Printf(TEXT("%s: %s / frame, %s / transition (%d active transitions, %d frames)"), Name, *FormatMicroseconds(ElapsedSeconds / FrameCount), *FormatMicroseconds(ElapsedSeconds / (FrameCount * ActiveTransitionCount)), ActiveTransitionCount, FrameCount));
+		AddInfo(FString::Printf(TEXT("%s: %s / frame, %s / transition (%d active transitions, %d frames)"), Name, *FormatStorageExperimentMicroseconds(ElapsedSeconds / FrameCount), *FormatStorageExperimentMicroseconds(ElapsedSeconds / (FrameCount * ActiveTransitionCount)), ActiveTransitionCount, FrameCount));
 		TestEqual(FString::Printf(TEXT("%s keeps all active transitions"), Name), Subsystem.Transitions.Num(), ActiveTransitionCount);
 	};
 
@@ -134,7 +134,7 @@ bool FWidgetTransitionArrayStorageExperiment::RunTest(const FString&)
 		RemovalBenchmarkTransitions.RemoveAtSwap(RemovalBenchmarkTransitions.Num() / 2);
 	}
 	const double ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
-	AddInfo(FString::Printf(TEXT("TArray RemoveAtSwap: %s / removal (%d removals)"), *FormatMicroseconds(ElapsedSeconds / (RemovalBenchmarkCount / 2)), RemovalBenchmarkCount / 2));
+	AddInfo(FString::Printf(TEXT("TArray RemoveAtSwap: %s / removal (%d removals)"), *FormatStorageExperimentMicroseconds(ElapsedSeconds / (RemovalBenchmarkCount / 2)), RemovalBenchmarkCount / 2));
 	TestEqual(TEXT("RemoveAtSwap leaves half of the benchmark transitions"), RemovalBenchmarkTransitions.Num(), RemovalBenchmarkCount / 2);
 	return true;
 }

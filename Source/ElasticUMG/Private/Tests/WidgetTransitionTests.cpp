@@ -250,7 +250,18 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionMetadataTest, "ElasticUMG.Widg
 bool FWidgetTransitionMetadataTest::RunTest(const FString&)
 {
 	const UFunction* Create = UWidgetTransitionFunctionLibrary::StaticClass()->FindFunctionByName(GET_FUNCTION_NAME_CHECKED(UWidgetTransitionFunctionLibrary, CreateWidgetTransition));
-	TestTrue(TEXT("Create function opts into the custom property pin"), Create && Create->HasMetaData(TEXT("ElasticUMGTransitionBinding")));
+	TestTrue(TEXT("Create function exists"), Create != nullptr);
+	if (!Create)
+	{
+		return false;
+	}
+	TestEqual(TEXT("Create function opts into the combined custom property pin"), Create->GetMetaData(TEXT("ElasticUMGTransitionBinding")), FString(TEXT("Combined")));
+	const FProperty* WidgetProperty = Create->FindPropertyByName(TEXT("WidgetProperty"));
+	TestTrue(TEXT("Widget Property parameter exists"), WidgetProperty != nullptr);
+	if (WidgetProperty)
+	{
+		TestEqual(TEXT("Widget Property opts into the custom selector role"), WidgetProperty->GetMetaData(TEXT("ElasticUMGRole")), FString(TEXT("WidgetProperty")));
+	}
 	return true;
 }
 
@@ -263,7 +274,7 @@ bool FWidgetTransitionConstructionPerformanceTest::RunTest(const FString&)
 	const FWidgetTransitionValue ToValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(1.0f);
 	volatile uint64 Sink = 0;
 
-	auto Measure = [this, &Sink](const TCHAR* Name, auto&& Construct)
+	auto Measure = [this, &Sink, IterationCount](const TCHAR* Name, auto&& Construct)
 	{
 		const double StartTime = FPlatformTime::Seconds();
 		for (int32 Index = 0; Index < IterationCount; ++Index)
@@ -401,7 +412,7 @@ bool FWidgetTransitionFastBindingPerformanceTest::RunTest(const FString&)
 	constexpr int32 FrameCount = 300;
 	constexpr float DeltaTime = 1.0f / 60.0f;
 
-	auto Measure = [this](FName PropertyName, bool bVector)
+	auto Measure = [this, TransitionCount, FrameCount](FName PropertyName, bool bVector)
 	{
 		UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
 		TArray<UImage*> Widgets;
