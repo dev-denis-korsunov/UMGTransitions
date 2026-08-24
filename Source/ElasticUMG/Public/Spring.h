@@ -8,7 +8,7 @@ struct ELASTICUMG_API FWidgetTransitionSpring
 	FWidgetTransitionSpring(float SpringFactor, float DampingFactor);
 
 	void Tick(float DeltaTime);
-	void Start(FVector4f InStartValue, FVector4f InTargetValue);
+	void Start(FVector4f InStartValue, FVector4f InTargetValue, float InDelay = 0.0f);
 
 	FORCEINLINE const FVector4f& GetValue() const { return CurrentValue; }
 	FORCEINLINE bool IsCompleted() const { return bCompleted; }
@@ -21,6 +21,8 @@ private:
 	FVector4f TargetValue = FVector4f::Zero();
 	FVector4f CurrentValue = FVector4f::Zero();
 	FVector4f Velocity = FVector4f::Zero();
+	float Delay = 0.0f;
+	float CurrentDelay = 0.0f;
 	float CompletionThresholdSquared = 0.0f;
 	uint8 bStarted : 1;
 	uint8 bCompleted : 1;

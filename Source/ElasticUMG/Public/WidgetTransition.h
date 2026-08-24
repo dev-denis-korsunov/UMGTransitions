@@ -144,7 +144,8 @@ struct ELASTICUMG_API FWidgetTransition
 	uint16 bBound : 1 = false;
 	/** Stable key for rare callbacks in UWidgetTransitionSubsystem::Callbacks. */
 	uint64 TransitionId = 0;
-	TSharedPtr<FWidgetTransitionSpring> Spring;
+	/** Index into UWidgetTransitionSubsystem::Springs when bUseSpring is enabled. */
+	int32 SpringIndex = INDEX_NONE;
 	/** Resolved once when the transition is added, avoiding a CurveTable lookup every tick. */
 	const FRealCurve* EasingCurve = nullptr;
 };
@@ -252,10 +253,15 @@ public:
 	virtual TStatId GetStatId() const override { RETURN_QUICK_DECLARE_CYCLE_STAT(UWidgetTransitionSubsystem, STATGROUP_Tickables); }
 	virtual bool IsTickableInEditor() const override { return true; }
 
-	TSparseArray<FWidgetTransition> Transitions;
+	/** Dense transition records; removal uses RemoveAtSwap and repairs spring-owner indices. */
+	TArray<FWidgetTransition> Transitions;
+	/** Dense spring simulation pass, stored separately from transition records. */
+	TArray<FWidgetTransitionSpring> Springs;
+	/** Owning transition array index for every entry in Springs. */
+	TArray<int32> SpringTransitionIndices;
 	/** Callbacks for the small subset of transitions that bind lifecycle or update events. */
 	TMap<uint64, FWidgetTransitionCallbacks> Callbacks;
-	/** Monotonic key source; a sparse-array index cannot be used because indices are reused. */
+	/** Monotonic key source; array indices are unstable after RemoveAtSwap. */
 	uint64 NextTransitionId = 1;
 
 #if WITH_DEV_AUTOMATION_TESTS

@@ -18,11 +18,13 @@ FWidgetTransitionSpring::FWidgetTransitionSpring(float InSpringFactor, float InD
 {
 }
 
-void FWidgetTransitionSpring::Start(FVector4f InStartValue, FVector4f InTargetValue)
+void FWidgetTransitionSpring::Start(FVector4f InStartValue, FVector4f InTargetValue, float InDelay)
 {
 	CurrentValue = InStartValue;
 	TargetValue = InTargetValue;
 	Velocity = FVector4f::Zero();
+	Delay = FMath::Max(0.0f, InDelay);
+	CurrentDelay = 0.0f;
 	CompletionThresholdSquared = FMath::Max(0.00000001f, LengthSquared(TargetValue - CurrentValue) * 0.000001f);
 	bStarted = true;
 	bCompleted = false;
@@ -33,6 +35,14 @@ void FWidgetTransitionSpring::Tick(float DeltaTime)
 	if (!bStarted || bCompleted)
 	{
 		return;
+	}
+	if (CurrentDelay < Delay)
+	{
+		CurrentDelay += DeltaTime;
+		if (CurrentDelay < Delay)
+		{
+			return;
+		}
 	}
 	const FVector4f Offset = CurrentValue - TargetValue;
 	if (DampingRatio < 1.0f)

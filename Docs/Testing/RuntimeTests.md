@@ -1,0 +1,21 @@
+# Runtime и editor-тесты
+
+Эти тесты имеют `EngineFilter`: они проверяют поведение и инварианты, а не скорость. Их задача — сделать безопасными изменения структуры `FWidgetTransition`, spring storage, binding и Blueprint-метаданных.
+
+| Тест | Что проверяется | Почему это важно |
+| --- | --- | --- |
+| `Runtime.StorageLayout` | Печатает `sizeof` и `alignof` ключевых runtime-типов: transition, value, property binding и spring. | Изменение поля или выравнивания способно увеличить память сотен активных transition незаметно для компилятора. Тест создаёт измеряемый baseline, но не задаёт жёсткий лимит размера. |
+| `Runtime.Easing.Endpoints` | Пустой `FCurveTableRowHandle` распознаётся как linear fallback. | Transition без выбранной кривой не должен случайно переходить в нулевое easing-значение. Сейчас тест покрывает именно fallback; key sampling пользовательской curve нужно добавлять отдельным тестом при изменении алгоритма. |
+| `Runtime.SpecBuilders` | Pure-функции `Create`, `From`, `Options`, `Repeat`, `YoYo` и `Spring` сохраняют независимые параметры, типы значений и binding. | Blueprint pure-цепочка строит value-semantics объект; тест не даёт одному modifier потерять данные другого. |
+| `Runtime.PropertyBinding.Channels` | Fast binding resolve/read/write для `RenderOpacity`, всех поддержанных полей `RenderTransform` и pivot; проверяет число каналов. | Защищает публичные getter/setter пути UE и соответствие между типом Widget Property и числом каналов transition value. |
+| `Runtime.Spring.Converges` | Единый четырёхканальный spring достигает target. | После оптимизаций частоты, damping и completion check пружина обязана сохранять корректную сходимость для float, vector и color каналов. |
+| `Runtime.RemoveAtSwap` | Удаление transition с spring перемещает последний transition и spring без рассинхронизации `SpringIndex` и `SpringTransitionIndices`. | `TArray<FWidgetTransition>` использует нестабильные индексы. Это главный структурный инвариант архитектуры с dense spring pass. |
+| `Editor.Metadata` | `CreateWidgetTransition` сохраняет metadata `ElasticUMGTransitionBinding`. | Кастомный pin Widget Property в Blueprint строится на этой мета-информации. Без теста рефакторинг UFUNCTION может тихо сломать редакторский UX. |
+
+## Что не покрывают runtime-тесты
+
+- Они не измеряют Blueprint UI, Slate layout и интерактивность editor pin widgets.
+- Они не проверяют произвольный `FDynamicPropertyPath` и material parameter на всех типах widget — это остаётся зоной integration-тестов проекта.
+- Они не устанавливают performance-бюджет: для этого существуют отдельные perf-тесты.
+
+При добавлении нового fast adapter необходимы минимум две проверки: корректность `Resolve`/`Read`/`Apply` в `Runtime.PropertyBinding.Channels` и отдельная строка в `Performance.FastBindings`.
