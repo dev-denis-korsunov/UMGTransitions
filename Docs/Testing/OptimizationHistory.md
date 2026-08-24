@@ -49,3 +49,13 @@
 | 50 000 `RemoveAtSwap` | 0.034 μs/removal | Удаление достаточно дешёвое для ожидаемого числа transition. |
 
 `TArray` делает внутренние индексы нестабильными. Это компенсируется в двух helper-ах: при swap spring обновляется `SpringIndex` владельца, при swap transition обновляется `SpringTransitionIndices` владельца spring. Внешний API использует монотонный `TransitionId`, а не индекс массива.
+
+## Индексы режимов и widget
+
+| Эксперимент, 500 transition / 300 frames | Прямой обход, μs/frame | Индексный обход, μs/frame | Вывод |
+| --- | ---: | ---: | --- |
+| Mixed Linear/Easing/Spring → три mode pass, общий evaluator | 1.438 | 1.368 | Предварительный сигнал: проверки режима ещё остались. |
+| Mixed Linear/Easing/Spring → специализированные mode pass, среднее 3 прогонов | 1.537 | 1.268 | −17.5%. Специализация окупает indirection в compute path; требуется runtime-интеграция. |
+| 500 opacity writes / 50 widget → группы widget | 1.707 | 1.656 | Только небольшая locality-выгода; runtime пока не усложняется. |
+
+Mode transition не меняет режим после `Add`, поэтому индексы `LinearTransitionIndices`, `EasingTransitionIndices` и `SpringTransitionIndices` не потребуют миграции по ходу жизни transition. При удалении остаётся обычный `RemoveAtSwap` bookkeeping для одной соответствующей группы. В отличие от этого, dirty widget grouping сам по себе не уменьшает число публичных setter или invalidation UE, поэтому его нельзя принимать лишь по этому микробенчмарку.

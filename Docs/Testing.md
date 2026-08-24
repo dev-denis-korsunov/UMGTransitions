@@ -7,6 +7,7 @@
 | [RuntimeTests.md](Testing/RuntimeTests.md) | Runtime- и editor-тесты: что защищают и почему они нужны. |
 | [PerformanceTests.md](Testing/PerformanceTests.md) | Performance-тесты, их методика, границы интерпретации и текущие baseline. |
 | [OptimizationHistory.md](Testing/OptimizationHistory.md) | Решения по оптимизации, принятые и отклонённые эксперименты. |
+| [ModeAndDirtyIndexExperiments.md](Testing/ModeAndDirtyIndexExperiments.md) | Гипотезы и методика экспериментов для индексов режимов и dirty widget. |
 | [TestResults.md](TestResults.md) | Хронологический журнал завершённых запусков. |
 
 Все тесты находятся в `Source/ElasticUMG/Private/Tests/WidgetTransitionTests.cpp` и включены только при `WITH_DEV_AUTOMATION_TESTS`.

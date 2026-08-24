@@ -27,6 +27,9 @@
 | 2026-08-24 | UE 5.7 / Mac arm64 Development | `Performance.ModeMatrix` | Passed | После `TArray` transition, 500: Linear 2.340/5.499; easing 2.351/5.493; spring 6.402/9.297 μs/frame. |
 | 2026-08-24 | UE 5.7 / Mac arm64 Development | `Runtime.StorageLayout` | Passed, rejected experiment | Spring с `int32 TransitionIndex` внутри: 96 B/16 против 80 B/16 без него. |
 | 2026-08-24 | UE 5.7 / Mac arm64 Development | `Performance.ModeMatrix` | Passed, rejected experiment | Owner-индекс внутри spring: 500 spring 6.558/9.461 μs/frame; разница по скорости в пределах шума, память хуже. |
+| 2026-08-24 | UE 5.7 / Mac arm64 Development | `Performance.ModeIndices` | Passed | 500 mixed transition / 300 frames: single pass 1.438; три индексных pass 1.368 μs/frame (−4.9%). |
+| 2026-08-24 | UE 5.7 / Mac arm64 Development | `Performance.DirtyWidgetIndices` | Passed | 500 `RenderOpacity` writes / 50 widget / 300 frames: direct 1.707; группы 1.656 μs/frame (−3.0%). |
+| 2026-08-24 | UE 5.7 / Mac arm64 Development | `Performance.ModeIndices` | Passed | Специализированные Linear/Easing/Spring passes, 3 прогона: mixed 1.571/1.520/1.520; indexed 1.291/1.256/1.256 μs/frame. Среднее −17.5%. |
 
 ## Актуальный baseline
 
