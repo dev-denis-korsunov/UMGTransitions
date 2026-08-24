@@ -1,9 +1,11 @@
 #include "WidgetTransition.h"
+#include "WidgetSelectorLibrary.h"
 #include "Tests/WidgetTransitionTestTypes.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Components/Image.h"
+#include "Components/VerticalBox.h"
 #include "Curves/RichCurve.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/AutomationTest.h"
@@ -105,6 +107,34 @@ bool FWidgetTransitionEasingTest::RunTest(const FString&)
 {
 	const FCurveTableRowHandle Easing;
 	TestTrue(TEXT("Default easing handle is null and selects linear interpolation"), Easing.IsNull());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetSelectorHierarchyTest, "ElasticUMG.WidgetSelector.Runtime.Hierarchy", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetSelectorHierarchyTest::RunTest(const FString&)
+{
+	UVerticalBox* Root = NewObject<UVerticalBox>(GetTransientPackage(), TEXT("Root"));
+	UImage* First = NewObject<UImage>(GetTransientPackage(), TEXT("First"));
+	UVerticalBox* Branch = NewObject<UVerticalBox>(GetTransientPackage(), TEXT("Branch"));
+	UImage* Grandchild = NewObject<UImage>(GetTransientPackage(), TEXT("Grandchild"));
+	Root->AddChild(First);
+	Root->AddChild(Branch);
+	Branch->AddChild(Grandchild);
+
+	const TArray<UWidget*> Children = UWidgetSelectorLibrary::GetWidgetChildren(Root);
+	TestEqual(TEXT("Root has two direct children"), Children.Num(), 2);
+	TestTrue(TEXT("Direct child order follows the panel"), Children == TArray<UWidget*>({First, Branch}));
+
+	const TArray<UWidget*> Descendants = UWidgetSelectorLibrary::GetWidgetDescendants(Root);
+	TestTrue(TEXT("Descendants use depth-first order"), Descendants == TArray<UWidget*>({First, Branch, Grandchild}));
+	TestTrue(TEXT("Depth zero is the root"), UWidgetSelectorLibrary::GetWidgetsAtDepth(Root, 0) == TArray<UWidget*>({Root}));
+	TestTrue(TEXT("Depth one contains direct children"), UWidgetSelectorLibrary::GetWidgetsAtDepth(Root, 1) == TArray<UWidget*>({First, Branch}));
+	TestTrue(TEXT("Depth two contains the grandchild"), UWidgetSelectorLibrary::GetWidgetsAtDepth(Root, 2) == TArray<UWidget*>({Grandchild}));
+	TestTrue(TEXT("Through depth includes every preceding level"), UWidgetSelectorLibrary::GetWidgetsThroughDepth(Root, 1) == TArray<UWidget*>({Root, First, Branch}));
+	TestEqual(TEXT("Direct parent is returned"), UWidgetSelectorLibrary::GetWidgetParent(Grandchild), static_cast<UWidget*>(Branch));
+	TestTrue(TEXT("Parents are returned from nearest to root"), UWidgetSelectorLibrary::GetWidgetParents(Grandchild) == TArray<UWidget*>({Branch, Root}));
+	TestTrue(TEXT("Single name lookup finds a descendant"), UWidgetSelectorLibrary::FindWidgetDescendantsByName(Root, TEXT("Grandchild")) == TArray<UWidget*>({Grandchild}));
+	TestTrue(TEXT("Multiple name lookup preserves tree order"), UWidgetSelectorLibrary::FindWidgetDescendantsByNames(Root, {TEXT("Grandchild"), TEXT("First")}) == TArray<UWidget*>({First, Grandchild}));
 	return true;
 }
 
