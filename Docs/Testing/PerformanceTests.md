@@ -9,6 +9,7 @@
 | `Performance.Construction` | 100 000 раз сравнивает ручную сборку структуры, `Create Widget Transition` и полную pure-цепочку. | Показывает цену удобного Blueprint API до попадания transition в subsystem. |
 | `Performance.ConcurrentTick` | После прогрева выполняет 300 кадров по `1/60` для 1, 10, 100 и 500 transition с `UImage.RenderOpacity` binding. | Даёт общую картину стоимости hot path вместе с применением свойства. |
 | `Performance.Callbacks` | Сравнивает 20, 30, 50 и 100 linear transition без callback, с lifecycle-only (`Started` + `Finished`) и с `Updated` dynamic delegate, с binding и без него; каждый случай измеряется 300 кадров после прогрева. | Проверяет hot/cold split callback-ов и изолирует цену registry, копирования delegate, dispatch и reentrancy-проверки. |
+| `Performance.UpdateRate` | 100 linear transition с bound `Updated`, без binding property, при интервале 1, 2, 3 и 6 кадров. | Проверяет, что сокращение callback dispatch масштабирует hot-path стоимость ожидаемо. |
 | `Performance.AsyncTextCounter` | Измеряет 100 async transition без `Widget Property`: output `Updated` интерполирует float `0→100`, а receiver записывает целое значение в `UTextBlock`. | Показывает цену пользовательского обновления счётчика без property binding плагина. |
 | `Performance.ModeMatrix` | 300 кадров для Linear, CurveTable easing и Spring, с binding и без него, при 100 и 500 transition. CurveTable содержит `(0,0)`, `(0.5,0.2)`, `(1,1)`. | Главный сравнительный тест алгоритмов. Вариант без binding выделяет математику; с binding показывает цену типичного использования. |
 | `Performance.FastBindings` | 500 linear transition для каждого direct adapter: opacity, translation, scale, shear, angle, pivot. | Не даёт fast paths незаметно деградировать до reflective fallback. |
@@ -36,6 +37,19 @@ Stress-case, 500 linear transition / 300 кадров:
 | `RenderOpacity` | 5.424 | 138.431 | 133.007 μs/frame, ~0.266 μs/transition |
 
 Это стоимость реального Blueprint dynamic delegate: lookup в registry, копирование delegate, dispatch и вызов receiver. `Started` и `Finished` редки и не входят в hot-path benchmark. Не добавляйте `Updated` массово без необходимости; 500 подписок заметно дороже самой интерполяции.
+
+## Update rate baseline
+
+Прогон 2026-08-25, UE 5.7.4 / Mac arm64 Development, 100 linear transition без property binding / 300 кадров. `Update Every N Frames` ограничивает только bound `Updated`; вычисление transition и запись property не меняются.
+
+| Frames | μs/frame | μs/transition |
+| ---: | ---: | ---: |
+| 1 | 27.515 | 0.275 |
+| 2 (async default) | 14.094 | 0.141 |
+| 3 | 9.291 | 0.093 |
+| 6 | 5.102 | 0.051 |
+
+Rate `2` почти вдвое сокращает hot-path стоимость callback. Завершающий `Updated` выполняется принудительно, чтобы consumer всегда получил target, даже если transition закончился до следующего интервала.
 
 ## Counter update baseline
 

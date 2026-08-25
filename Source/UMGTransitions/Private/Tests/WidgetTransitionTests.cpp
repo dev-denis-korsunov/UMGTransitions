@@ -322,6 +322,53 @@ bool FWidgetTransitionInvalidEasingFallbackTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionUpdateRateTest, "UMGTransitions.WidgetTransition.Runtime.UpdateRate", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetTransitionUpdateRateTest::RunTest(const FString&)
+{
+	{
+		UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+		UImage* Widget = NewObject<UImage>(GetTransientPackage());
+		UWidgetTransitionTestEventReceiver* Receiver = NewObject<UWidgetTransitionTestEventReceiver>(GetTransientPackage());
+		FWidgetTransition Transition;
+		Transition.Widget = Widget;
+		Transition.Time = 60.0f;
+		Transition.TransitionId = 1;
+		Transition.UpdateEveryNFrames = 2;
+		Transition.bHasUpdatedCallback = true;
+		FWidgetTransitionCallbacks Callbacks;
+		Callbacks.OnUpdated.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleUpdated);
+		Subsystem->Callbacks.Add(Transition.TransitionId, MoveTemp(Callbacks));
+		Subsystem->Transitions.Add(MoveTemp(Transition));
+
+		for (int32 FrameIndex = 0; FrameIndex < 5; ++FrameIndex)
+		{
+			Subsystem->TickTransitionsForTesting(1.0f / 60.0f);
+		}
+		TestEqual(TEXT("UpdateEveryNFrames=2 dispatches on every second tick"), Receiver->UpdatedCount, 2);
+	}
+
+	{
+		UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+		UImage* Widget = NewObject<UImage>(GetTransientPackage());
+		UWidgetTransitionTestEventReceiver* Receiver = NewObject<UWidgetTransitionTestEventReceiver>(GetTransientPackage());
+		FWidgetTransition Transition;
+		Transition.Widget = Widget;
+		Transition.Time = 0.0f;
+		Transition.TransitionId = 1;
+		Transition.UpdateEveryNFrames = 6;
+		Transition.bHasUpdatedCallback = true;
+		FWidgetTransitionCallbacks Callbacks;
+		Callbacks.OnUpdated.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleUpdated);
+		Subsystem->Callbacks.Add(Transition.TransitionId, MoveTemp(Callbacks));
+		Subsystem->Transitions.Add(MoveTemp(Transition));
+
+		Subsystem->TickTransitionsForTesting(1.0f / 60.0f);
+		TestEqual(TEXT("Completed transition dispatches its final update before the rate interval"), Receiver->UpdatedCount, 1);
+	}
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionCallbackReentrancyTest, "UMGTransitions.WidgetTransition.Runtime.CallbackReentrancy", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionCallbackReentrancyTest::RunTest(const FString&)
 {
@@ -607,6 +654,52 @@ bool FWidgetTransitionCallbacksPerformanceTest::RunTest(const FString&)
 			Measure(TransitionCount, bWithBinding, ECallbackMode::Lifecycle);
 			Measure(TransitionCount, bWithBinding, ECallbackMode::Updated);
 		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionUpdateRatePerformanceTest, "UMGTransitions.WidgetTransition.Performance.UpdateRate", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
+bool FWidgetTransitionUpdateRatePerformanceTest::RunTest(const FString&)
+{
+	constexpr int32 TransitionCount = 100;
+	constexpr int32 FrameCount = 300;
+	constexpr float DeltaTime = 1.0f / 60.0f;
+	for (const uint8 UpdateEveryNFrames : { static_cast<uint8>(1), static_cast<uint8>(2), static_cast<uint8>(3), static_cast<uint8>(6) })
+	{
+		UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+		UWidgetTransitionTestEventReceiver* Receiver = NewObject<UWidgetTransitionTestEventReceiver>(GetTransientPackage());
+		TArray<UImage*> Widgets;
+		Widgets.Reserve(TransitionCount);
+		for (int32 Index = 0; Index < TransitionCount; ++Index)
+		{
+			UImage* Widget = NewObject<UImage>(GetTransientPackage());
+			FWidgetTransition Transition;
+			Transition.Widget = Widget;
+			Transition.Time = 60.0f;
+			Transition.TransitionId = static_cast<uint64>(Index + 1);
+			Transition.UpdateEveryNFrames = UpdateEveryNFrames;
+			Transition.bHasUpdatedCallback = true;
+			FWidgetTransitionCallbacks Callbacks;
+			Callbacks.OnUpdated.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleUpdated);
+			Subsystem->Callbacks.Add(Transition.TransitionId, MoveTemp(Callbacks));
+			Subsystem->Transitions.Add(MoveTemp(Transition));
+			Widgets.Add(Widget);
+		}
+
+		Subsystem->TickTransitionsForTesting(DeltaTime);
+		for (FWidgetTransition& Transition : Subsystem->Transitions)
+		{
+			Transition.UpdateFrameCounter = 0;
+		}
+		Receiver->UpdatedCount = 0;
+		const double StartTime = FPlatformTime::Seconds();
+		for (int32 FrameIndex = 0; FrameIndex < FrameCount; ++FrameIndex)
+		{
+			Subsystem->TickTransitionsForTesting(DeltaTime);
+		}
+		const double ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
+		AddInfo(FString::Printf(TEXT("%d Updated callbacks every %d frame(s): %s / frame, %s / transition"), TransitionCount, UpdateEveryNFrames, *FormatMicroseconds(ElapsedSeconds / FrameCount), *FormatMicroseconds(ElapsedSeconds / (FrameCount * TransitionCount))));
+		TestEqual(FString::Printf(TEXT("Updated callbacks at rate %d"), UpdateEveryNFrames), Receiver->UpdatedCount, TransitionCount * (FrameCount / UpdateEveryNFrames));
 	}
 	return true;
 }

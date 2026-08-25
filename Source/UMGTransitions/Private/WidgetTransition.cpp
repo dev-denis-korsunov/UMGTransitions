@@ -310,8 +310,9 @@ namespace WidgetTransition
 			{
 				Transition.PropertyBinding.Apply(Transition.Widget.Get(), Value);
 			}
-			if (Transition.bHasUpdatedCallback)
+			if (Transition.bHasUpdatedCallback && (bEnd || ++Transition.UpdateFrameCounter >= Transition.UpdateEveryNFrames))
 			{
+				Transition.UpdateFrameCounter = 0;
 				ExecuteUpdatedCallback(Subsystem, TransitionId, Transition.Widget.Get(), Alpha, EasedAlpha);
 				if (!IsTransitionAtIndex(Subsystem, TransitionIndex, TransitionId))
 				{
@@ -656,6 +657,7 @@ namespace WidgetTransition
 		Transition.Time = FMath::Max(0.0f, Transition.Time);
 		Transition.Delay = FMath::Max(0.0f, Transition.Delay);
 		Transition.RepeatCount = FMath::Max(-1, Transition.RepeatCount);
+		Transition.UpdateEveryNFrames = FMath::Max<uint8>(Transition.UpdateEveryNFrames, 1);
 		Transition.bBound = IsValid(TargetWidget) && !Transition.WidgetProperty.IsNone();
 		Transition.bHasStartedCallback = Callbacks.OnStarted.IsBound();
 		Transition.bHasUpdatedCallback = Callbacks.OnUpdated.IsBound();
@@ -835,10 +837,11 @@ void UWidgetTransitionFunctionLibrary::ClearAllWidgetTransitions(const UObject* 
 	}
 }
 
-UWidgetTransitionAsyncAction* UWidgetTransitionAsyncAction::AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition)
+UWidgetTransitionAsyncAction* UWidgetTransitionAsyncAction::AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition, int32 UpdateEveryNFrames)
 {
 	UWidgetTransitionAsyncAction* Action = NewObject<UWidgetTransitionAsyncAction>();
 	Action->PendingTransition = MoveTemp(Transition);
+	Action->PendingTransition.UpdateEveryNFrames = static_cast<uint8>(FMath::Clamp(UpdateEveryNFrames, 1, 255));
 	Action->EventTargetValue = Action->PendingTransition.ToValue;
 	Action->EventStartValue = Action->PendingTransition.bUseFrom ? Action->PendingTransition.FromValue : FWidgetTransitionValue();
 	Action->EventStartValue.Type = Action->EventTargetValue.Type;
