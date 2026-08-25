@@ -24,6 +24,20 @@
 
 Решение принято: fast adapters для частых стандартных свойств; произвольные свойства и material parameters сохраняют fallback.
 
+## Callback hot/cold split
+
+Lifecycle callbacks (`Started`, `Finished`) происходят один раз, а `Updated` — каждый кадр. Раньше один `bHasCallbacks` направлял все три случая через lookup в `Callbacks` и update ветвление каждого активного transition.
+
+| 100 linear transition | Без binding, μs/frame | С `RenderOpacity`, μs/frame |
+| --- | ---: | ---: |
+| No callback | 0.503 | 1.143 |
+| Lifecycle-only (`Started` + `Finished`) | 0.537 | 1.190 |
+| Bound `Updated` | 27.771 | 28.043 |
+
+Решение принято: хранить отдельные bitfield-флаги `bHasStartedCallback`, `bHasUpdatedCallback` и `bHasFinishedCallback`; async action привязывает внутренний delegate только для подключённого execution output. Lifecycle-only переходы не платят per-frame стоимость. `Updated` остаётся явной opt-in ценой Blueprint dynamic delegate — около 0.27–0.28 μs/transition/frame.
+
+Временный unsafe-эксперимент без локальной копии `Updated` delegate дал для 100 callback 26.020 вместо 27.771 μs/frame (около −6.3%), но он позволяет callback удалить запись `TMap` во время её исполнения и потому отклонён. Это не heap allocation: `TScriptDelegate` в UE при копировании переносит только weak object pointer и `FName`. Основная цена остаётся в dynamic `ProcessEvent`; безопасная копия сохраняется.
+
 ## Spring
 
 | Этап | 500 spring без binding, μs/frame | Решение |

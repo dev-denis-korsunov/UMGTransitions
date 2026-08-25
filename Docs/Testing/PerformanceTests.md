@@ -8,7 +8,8 @@
 | --- | --- | --- |
 | `Performance.Construction` | 100 000 раз сравнивает ручную сборку структуры, `Create Widget Transition` и полную pure-цепочку. | Показывает цену удобного Blueprint API до попадания transition в subsystem. |
 | `Performance.ConcurrentTick` | После прогрева выполняет 300 кадров по `1/60` для 1, 10, 100 и 500 transition с `UImage.RenderOpacity` binding. | Даёт общую картину стоимости hot path вместе с применением свойства. |
-| `Performance.Callbacks` | Сравнивает 20, 30, 50 и 100 linear transition с `Updated` dynamic delegate и без callback, с binding и без него; каждый случай измеряется 300 кадров после прогрева. | Изолирует цену callback registry, копирования delegate, dispatch и reentrancy-проверки в реалистичном диапазоне подписок. |
+| `Performance.Callbacks` | Сравнивает 20, 30, 50 и 100 linear transition без callback, с lifecycle-only (`Started` + `Finished`) и с `Updated` dynamic delegate, с binding и без него; каждый случай измеряется 300 кадров после прогрева. | Проверяет hot/cold split callback-ов и изолирует цену registry, копирования delegate, dispatch и reentrancy-проверки. |
+| `Performance.AsyncTextCounter` | Измеряет 100 async transition без `Widget Property`: output `Updated` интерполирует float `0→100`, а receiver записывает целое значение в `UTextBlock`. | Показывает цену пользовательского обновления счётчика без property binding плагина. |
 | `Performance.ModeMatrix` | 300 кадров для Linear, CurveTable easing и Spring, с binding и без него, при 100 и 500 transition. CurveTable содержит `(0,0)`, `(0.5,0.2)`, `(1,1)`. | Главный сравнительный тест алгоритмов. Вариант без binding выделяет математику; с binding показывает цену типичного использования. |
 | `Performance.FastBindings` | 500 linear transition для каждого direct adapter: opacity, translation, scale, shear, angle, pivot. | Не даёт fast paths незаметно деградировать до reflective fallback. |
 
@@ -18,14 +19,14 @@
 
 Прогон 2026-08-25, UE 5.7.4 / Mac arm64 Development, 20–100 linear transition / 300 кадров:
 
-| Count | Без binding, μs/frame | `Updated`, μs/frame | С `RenderOpacity`, μs/frame | `Updated` + binding, μs/frame |
-| ---: | ---: | ---: | ---: | ---: |
-| 20 | 0.109 | 5.443 | 0.200 | 5.359 |
-| 30 | 0.150 | 8.283 | 0.317 | 8.689 |
-| 50 | 0.253 | 13.221 | 0.548 | 14.015 |
-| 100 | 0.503 | 27.532 | 1.106 | 27.917 |
+| Count | No callback | Lifecycle-only | `Updated` | No callback + binding | Lifecycle-only + binding | `Updated` + binding |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 20 | 0.117 | 0.107 | 5.479 | 0.213 | 0.215 | 5.741 |
+| 30 | 0.147 | 0.147 | 8.229 | 0.315 | 0.316 | 8.435 |
+| 50 | 0.239 | 0.254 | 13.698 | 0.558 | 0.555 | 14.186 |
+| 100 | 0.503 | 0.537 | 27.771 | 1.143 | 1.190 | 28.043 |
 
-Итоговая цена bound `Updated` — около `0.27 μs/transition/frame`; она линейно масштабируется с числом подписок. Предыдущий стресс-прогон на 500 transition дал 134.044 μs/frame без binding и 138.431 с binding.
+Значения — μs/frame. Отдельные флаги `Started`, `Updated` и `Finished` убирают map lookup и dynamic delegate из hot path lifecycle-only transition: их результат в пределах шума совпадает с no-callback baseline. Цена bound `Updated` остаётся около `0.27–0.28 μs/transition/frame` и линейно масштабируется с числом подписок. Предыдущий стресс-прогон на 500 transition дал 134.044 μs/frame без binding и 138.431 с binding.
 
 Stress-case, 500 linear transition / 300 кадров:
 
@@ -35,6 +36,22 @@ Stress-case, 500 linear transition / 300 кадров:
 | `RenderOpacity` | 5.424 | 138.431 | 133.007 μs/frame, ~0.266 μs/transition |
 
 Это стоимость реального Blueprint dynamic delegate: lookup в registry, копирование delegate, dispatch и вызов receiver. `Started` и `Finished` редки и не входят в hot-path benchmark. Не добавляйте `Updated` массово без необходимости; 500 подписок заметно дороже самой интерполяции.
+
+## Counter update baseline
+
+Прогон 2026-08-25, UE 5.7.4 / Mac arm64 Development, 100 `UWidgetTransitionAsyncAction::HandleUpdated` / 300 кадров, `Widget Property = None`, float `0→100` и `UTextBlock::SetText(FText::AsNumber(...))` в receiver:
+
+| Сценарий | μs/frame | μs/counter |
+| --- | ---: | ---: |
+| Plain counter: direct `SetText` | 11.002 | 0.110 |
+| Async text counter без binding | 36.604 | 0.366 |
+| Async path overhead | 25.602 | 0.256 |
+
+Plain и async сценарии используют одинаковые 100 `UTextBlock`, последовательность `0→100`, `FText::AsNumber` и `SetText`. Async path дополнительно интерполирует `FromValue`/`ToValue` и dispatch-ит Blueprint dynamic multicast. Его разница с plain — 0.256 μs/counter — совпадает с core `Updated` callback baseline (~0.27 μs), значит binding здесь действительно ни при чём.
+
+## Отклонённые эксперименты
+
+`SystemUpdateById` проверял один subsystem-wide dynamic delegate, который передаёт id и progress, а receiver ищет `UTextBlock` в `TMap<TransitionId, UTextBlock>`. Для 100 transition он показал 35.844 μs/frame (0.358 μs/transition) против 36.604 μs/frame у async-счётчика. Выигрыш ~2% находится в пределах шума, поэтому test hook и benchmark удалены из кода. Центральный dispatcher не устраняет Blueprint `ProcessEvent` и `SetText`; возвращаться к этой архитектуре стоит только при отдельной выгоде для API или владения данными.
 
 ## Текущие ориентиры
 

@@ -3,10 +3,12 @@
 #include "Blueprint/UserWidget.h"
 #include "Components/Widget.h"
 #include "CoreMinimal.h"
+#include "WidgetTransition.h"
 
 #include "WidgetTransitionTestTypes.generated.h"
 
 class UWidgetTransitionSubsystem;
+class UTextBlock;
 
 UCLASS()
 class UWidgetTransitionTestEventReceiver final : public UObject
@@ -20,11 +22,15 @@ public:
 	void HandleUpdated(UWidget* InWidget, float NormalizedProgress, float EasedProgress);
 	UFUNCTION()
 	void HandleFinished(UWidget* InWidget);
+	UFUNCTION()
+	void HandleAsyncUpdated(FWidgetTransitionValue InValue, float NormalizedProgress, float EasedProgress);
 
 	int32 StartedCount = 0;
 	int32 UpdatedCount = 0;
 	int32 FinishedCount = 0;
+	int32 AsyncValueUpdateCount = 0;
 	TWeakObjectPtr<UWidget> LastWidget;
+	TWeakObjectPtr<UTextBlock> CounterText;
 	TWeakObjectPtr<UWidgetTransitionSubsystem> SubsystemToClear;
 	TWeakObjectPtr<UWidget> WidgetToClear;
 	bool bAppendTransitionsOnUpdate = false;

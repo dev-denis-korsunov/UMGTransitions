@@ -33,6 +33,9 @@
 | 2026-08-24 | UE 5.7 / Mac arm64 Development | `WidgetSelector.Runtime.Hierarchy` | Passed | DFS, уровни, имена, parent chain и переход через вложенный `WidgetTree → UUserWidget`. |
 | 2026-08-25 | UE 5.7.4 / Mac arm64 Development | `Performance.Callbacks` | Passed | 500 linear: without binding 2.648 → 134.044 μs/frame с bound `Updated`; with binding 5.424 → 138.431. Dynamic callback добавляет ~0.263 μs/transition/frame. |
 | 2026-08-25 | UE 5.7.4 / Mac arm64 Development | `Performance.Callbacks` | Passed | Реалистичный диапазон 20/30/50/100 `Updated`: 5.443/8.283/13.221/27.532 μs/frame без binding; 5.359/8.689/14.015/27.917 с binding. Цена callback ~0.27 μs/transition/frame. |
+| 2026-08-25 | UE 5.7.4 / Mac arm64 Development | `Performance.Callbacks` | Passed | После разделения lifecycle/update флагов 100 `Started+Finished`: 0.537 μs/frame без binding и 1.190 с binding, в пределах baseline 0.503/1.143. 100 `Updated`: 27.771/28.043. |
+| 2026-08-25 | UE 5.7.4 / Mac arm64 Development | `Performance.AsyncTextCounter` | Passed | 100 plain text-счётчиков: 11.002 μs/frame; async без `Widget Property`: 36.604. Overhead async: 25.602 μs/frame, 0.256 μs/counter. |
+| 2026-08-25 | UE 5.7.4 / Mac arm64 Development | `Performance.SystemUpdateById` | Passed, rejected experiment | 100 subsystem-wide update event + `TMap` lookup по `TransitionId`: 35.844 μs/frame, 0.358 μs/transition. Выигрыш ~2% против async-счётчика — в пределах шума; код удалён. |
 
 ## Актуальный baseline
 

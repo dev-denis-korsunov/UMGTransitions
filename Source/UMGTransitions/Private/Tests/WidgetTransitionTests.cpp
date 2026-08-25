@@ -5,6 +5,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Components/Image.h"
+#include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetTree.h"
@@ -140,6 +141,15 @@ void UWidgetTransitionTestEventReceiver::HandleFinished(UWidget* InWidget)
 	if (UWidgetTransitionSubsystem* Subsystem = SubsystemToClear.Get())
 	{
 		Subsystem->ClearTransitionsForTesting(WidgetToClear.Get());
+	}
+}
+
+void UWidgetTransitionTestEventReceiver::HandleAsyncUpdated(FWidgetTransitionValue InValue, float /*NormalizedProgress*/, float /*EasedProgress*/)
+{
+	++AsyncValueUpdateCount;
+	if (UTextBlock* Text = CounterText.Get())
+	{
+		Text->SetText(FText::AsNumber(FMath::RoundToInt(InValue.Channels.X)));
 	}
 }
 
@@ -321,7 +331,9 @@ bool FWidgetTransitionCallbackReentrancyTest::RunTest(const FString&)
 		Transition.Widget = Widget;
 		Transition.Time = Time;
 		Transition.bStarted = bStarted;
-		Transition.bHasCallbacks = true;
+		Transition.bHasStartedCallback = Callbacks.OnStarted.IsBound();
+		Transition.bHasUpdatedCallback = Callbacks.OnUpdated.IsBound();
+		Transition.bHasFinishedCallback = Callbacks.OnFinished.IsBound();
 		Transition.TransitionId = 1;
 		Subsystem->Callbacks.Add(Transition.TransitionId, MoveTemp(Callbacks));
 		Subsystem->Transitions.Add(MoveTemp(Transition));
@@ -525,7 +537,13 @@ bool FWidgetTransitionCallbacksPerformanceTest::RunTest(const FString&)
 	constexpr int32 TransitionCounts[] = { 20, 30, 50, 100 };
 	constexpr int32 FrameCount = 300;
 	constexpr float DeltaTime = 1.0f / 60.0f;
-	auto Measure = [this](int32 TransitionCount, bool bWithBinding, bool bWithUpdatedCallbacks)
+	enum class ECallbackMode : uint8
+	{
+		None,
+		Lifecycle,
+		Updated,
+	};
+	auto Measure = [this](int32 TransitionCount, bool bWithBinding, ECallbackMode CallbackMode)
 	{
 		UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
 		UWidgetTransitionTestEventReceiver* Receiver = NewObject<UWidgetTransitionTestEventReceiver>(GetTransientPackage());
@@ -543,18 +561,29 @@ bool FWidgetTransitionCallbacksPerformanceTest::RunTest(const FString&)
 				Transition.PropertyBinding.Invalidate();
 				Transition.PropertyBinding.ChannelCount = 1;
 			}
-			if (bWithUpdatedCallbacks)
+			if (CallbackMode != ECallbackMode::None)
 			{
 				Transition.TransitionId = static_cast<uint64>(Index + 1);
-				Transition.bHasCallbacks = true;
 				FWidgetTransitionCallbacks Callbacks;
-				Callbacks.OnUpdated.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleUpdated);
+				if (CallbackMode == ECallbackMode::Lifecycle)
+				{
+					Transition.bHasStartedCallback = true;
+					Transition.bHasFinishedCallback = true;
+					Callbacks.OnStarted.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleStarted);
+					Callbacks.OnFinished.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleFinished);
+				}
+				else
+				{
+					Transition.bHasUpdatedCallback = true;
+					Callbacks.OnUpdated.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleUpdated);
+				}
 				Subsystem->Callbacks.Add(Transition.TransitionId, MoveTemp(Callbacks));
 			}
 			Subsystem->Transitions.Add(MoveTemp(Transition));
 		}
 
 		Subsystem->TickTransitionsForTesting(DeltaTime);
+		const int32 StartedCountAfterWarmup = Receiver->StartedCount;
 		Receiver->UpdatedCount = 0;
 		const double StartTime = FPlatformTime::Seconds();
 		for (int32 FrameIndex = 0; FrameIndex < FrameCount; ++FrameIndex)
@@ -563,19 +592,99 @@ bool FWidgetTransitionCallbacksPerformanceTest::RunTest(const FString&)
 		}
 		const double ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
 		const TCHAR* BindingName = bWithBinding ? TEXT("with binding") : TEXT("without binding");
-		const TCHAR* CallbackName = bWithUpdatedCallbacks ? TEXT("Updated callbacks") : TEXT("no callbacks");
+		const TCHAR* CallbackName = CallbackMode == ECallbackMode::None ? TEXT("no callbacks") : CallbackMode == ECallbackMode::Lifecycle ? TEXT("lifecycle callbacks") : TEXT("Updated callbacks");
 		AddInfo(FString::Printf(TEXT("%d linear transitions, %s, %s: %s / frame, %s / transition"), TransitionCount, BindingName, CallbackName, *FormatMicroseconds(ElapsedSeconds / FrameCount), *FormatMicroseconds(ElapsedSeconds / (FrameCount * TransitionCount))));
 		TestEqual(FString::Printf(TEXT("All %d callback benchmark transitions remain active"), TransitionCount), Subsystem->Transitions.Num(), TransitionCount);
-		TestEqual(FString::Printf(TEXT("Updated callback count for %s, %s"), BindingName, CallbackName), Receiver->UpdatedCount, bWithUpdatedCallbacks ? TransitionCount * FrameCount : 0);
+		TestEqual(FString::Printf(TEXT("Started callback count for %s, %s"), BindingName, CallbackName), StartedCountAfterWarmup, CallbackMode == ECallbackMode::Lifecycle ? TransitionCount : 0);
+		TestEqual(FString::Printf(TEXT("Updated callback count for %s, %s"), BindingName, CallbackName), Receiver->UpdatedCount, CallbackMode == ECallbackMode::Updated ? TransitionCount * FrameCount : 0);
 	};
 
 	for (const int32 TransitionCount : TransitionCounts)
 	{
 		for (const bool bWithBinding : { false, true })
 		{
-			Measure(TransitionCount, bWithBinding, false);
-			Measure(TransitionCount, bWithBinding, true);
+			Measure(TransitionCount, bWithBinding, ECallbackMode::None);
+			Measure(TransitionCount, bWithBinding, ECallbackMode::Lifecycle);
+			Measure(TransitionCount, bWithBinding, ECallbackMode::Updated);
 		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionAsyncTextCounterPerformanceTest, "UMGTransitions.WidgetTransition.Performance.AsyncTextCounter", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
+bool FWidgetTransitionAsyncTextCounterPerformanceTest::RunTest(const FString&)
+{
+	constexpr int32 ActionCount = 100;
+	constexpr int32 FrameCount = 300;
+	TArray<UTextBlock*> PlainTextWidgets;
+	TArray<UTextBlock*> TextWidgets;
+	TArray<UWidgetTransitionAsyncAction*> Actions;
+	TArray<UWidgetTransitionTestEventReceiver*> Receivers;
+	PlainTextWidgets.Reserve(ActionCount);
+	TextWidgets.Reserve(ActionCount);
+	Actions.Reserve(ActionCount);
+	Receivers.Reserve(ActionCount);
+	for (int32 Index = 0; Index < ActionCount; ++Index)
+	{
+		PlainTextWidgets.Add(NewObject<UTextBlock>(GetTransientPackage()));
+		UTextBlock* TextWidget = NewObject<UTextBlock>(GetTransientPackage());
+		UWidgetTransitionAsyncAction* Action = NewObject<UWidgetTransitionAsyncAction>(GetTransientPackage());
+		UWidgetTransitionTestEventReceiver* Receiver = NewObject<UWidgetTransitionTestEventReceiver>(GetTransientPackage());
+		FWidgetTransition Transition;
+		Transition.Widget = TextWidget;
+		Transition.FromValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.0f);
+		Transition.ToValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(100.0f);
+		Transition.bUseFrom = true;
+		Action->Updated.AddDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleAsyncUpdated);
+		Receiver->CounterText = TextWidget;
+		TestTrue(FString::Printf(TEXT("Async text counter %d initializes"), Index), Action->InitializeUpdateForTesting(MoveTemp(Transition)));
+		TextWidgets.Add(TextWidget);
+		Actions.Add(Action);
+		Receivers.Add(Receiver);
+	}
+
+	for (UTextBlock* TextWidget : PlainTextWidgets)
+	{
+		TextWidget->SetText(FText::AsNumber(50));
+	}
+	const double PlainStartTime = FPlatformTime::Seconds();
+	for (int32 FrameIndex = 0; FrameIndex < FrameCount; ++FrameIndex)
+	{
+		const float Progress = FrameIndex == FrameCount - 1 ? 1.0f : static_cast<float>(FrameIndex % 101) / 100.0f;
+		const int32 Value = FMath::RoundToInt(Progress * 100.0f);
+		for (UTextBlock* TextWidget : PlainTextWidgets)
+		{
+			TextWidget->SetText(FText::AsNumber(Value));
+		}
+	}
+	const double PlainElapsedSeconds = FPlatformTime::Seconds() - PlainStartTime;
+
+	for (int32 Index = 0; Index < ActionCount; ++Index)
+	{
+		Actions[Index]->DispatchUpdatedForTesting(TextWidgets[Index], 0.5f, 0.5f);
+		Receivers[Index]->AsyncValueUpdateCount = 0;
+	}
+	const double StartTime = FPlatformTime::Seconds();
+	for (int32 FrameIndex = 0; FrameIndex < FrameCount; ++FrameIndex)
+	{
+		const float Progress = FrameIndex == FrameCount - 1 ? 1.0f : static_cast<float>(FrameIndex % 101) / 100.0f;
+		for (int32 Index = 0; Index < ActionCount; ++Index)
+		{
+			Actions[Index]->DispatchUpdatedForTesting(TextWidgets[Index], Progress, Progress);
+		}
+	}
+	const double ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
+	AddInfo(FString::Printf(TEXT("%d plain text counters: %s / frame, %s / counter"), ActionCount, *FormatMicroseconds(PlainElapsedSeconds / FrameCount), *FormatMicroseconds(PlainElapsedSeconds / (FrameCount * ActionCount))));
+	AddInfo(FString::Printf(TEXT("%d async text counters without Widget Property binding: %s / frame, %s / counter"), ActionCount, *FormatMicroseconds(ElapsedSeconds / FrameCount), *FormatMicroseconds(ElapsedSeconds / (FrameCount * ActionCount))));
+	AddInfo(FString::Printf(TEXT("Async path overhead over plain text counter: %s / frame, %s / counter"), *FormatMicroseconds((ElapsedSeconds - PlainElapsedSeconds) / FrameCount), *FormatMicroseconds((ElapsedSeconds - PlainElapsedSeconds) / (FrameCount * ActionCount))));
+	for (int32 Index = 0; Index < ActionCount; ++Index)
+	{
+		TestEqual(FString::Printf(TEXT("Plain text counter value %d"), Index), PlainTextWidgets[Index]->GetText().ToString(), FString::FromInt(100));
+	}
+	for (int32 Index = 0; Index < ActionCount; ++Index)
+	{
+		TestEqual(FString::Printf(TEXT("Async text counter update count %d"), Index), Receivers[Index]->AsyncValueUpdateCount, FrameCount);
+		TestEqual(FString::Printf(TEXT("Async text counter value %d"), Index), TextWidgets[Index]->GetText().ToString(), FString::FromInt(100));
 	}
 	return true;
 }

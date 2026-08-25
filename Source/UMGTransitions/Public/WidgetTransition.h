@@ -138,8 +138,12 @@ struct UMGTRANSITIONS_API FWidgetTransition
 	uint16 bStarted : 1 = false;
 	/** Derives spring frequency from Time so the simulation settles within its requested duration. */
 	uint16 bFitSpringToTime : 1 = false;
-	/** Whether this transition has rare callbacks stored in the subsystem. */
-	uint16 bHasCallbacks : 1 = false;
+	/** Whether this transition has a Started callback stored in the subsystem. */
+	uint16 bHasStartedCallback : 1 = false;
+	/** Whether this transition has an Updated callback stored in the subsystem. */
+	uint16 bHasUpdatedCallback : 1 = false;
+	/** Whether this transition has a Finished callback stored in the subsystem. */
+	uint16 bHasFinishedCallback : 1 = false;
 	/** Whether this transition writes its sampled value to a widget property. */
 	uint16 bBound : 1 = false;
 	/** Stable key for rare callbacks in UWidgetTransitionSubsystem::Callbacks. */
@@ -240,6 +244,15 @@ private:
 	FWidgetTransitionPropertyBinding EventBinding;
 	FWidgetTransitionCallbacks Callbacks;
 	TWeakObjectPtr<const UObject> WorldContextObject;
+	bool bBroadcastUpdateValue = false;
+
+#if WITH_DEV_AUTOMATION_TESTS
+public:
+	/** Initializes the update output path without a UWorld for automation benchmarks. */
+	bool InitializeUpdateForTesting(FWidgetTransition Transition);
+	/** Dispatches one update through the same async output handler used at runtime. */
+	void DispatchUpdatedForTesting(UWidget* Widget, float NormalizedProgress, float EasedProgress);
+#endif
 };
 
 UCLASS()

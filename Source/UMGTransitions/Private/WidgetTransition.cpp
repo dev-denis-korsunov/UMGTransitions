@@ -276,7 +276,7 @@ namespace WidgetTransition
 			if (!InitialTransition.bStarted)
 			{
 				InitialTransition.bStarted = true;
-				if (InitialTransition.bHasCallbacks)
+				if (InitialTransition.bHasStartedCallback)
 				{
 					ExecuteStartedCallback(Subsystem, TransitionId, InitialTransition.Widget.Get());
 					if (!IsTransitionAtIndex(Subsystem, TransitionIndex, TransitionId))
@@ -310,7 +310,7 @@ namespace WidgetTransition
 			{
 				Transition.PropertyBinding.Apply(Transition.Widget.Get(), Value);
 			}
-			if (Transition.bHasCallbacks)
+			if (Transition.bHasUpdatedCallback)
 			{
 				ExecuteUpdatedCallback(Subsystem, TransitionId, Transition.Widget.Get(), Alpha, EasedAlpha);
 				if (!IsTransitionAtIndex(Subsystem, TransitionIndex, TransitionId))
@@ -323,7 +323,7 @@ namespace WidgetTransition
 			{
 				const bool bRemoveFromParent = CurrentTransition.bRemoveFromParent;
 				UWidget* Widget = CurrentTransition.Widget.Get();
-				if (CurrentTransition.bHasCallbacks)
+				if (CurrentTransition.bHasFinishedCallback)
 				{
 					ExecuteFinishedCallback(Subsystem, TransitionId, Widget);
 					if (!IsTransitionAtIndex(Subsystem, TransitionIndex, TransitionId))
@@ -657,7 +657,9 @@ namespace WidgetTransition
 		Transition.Delay = FMath::Max(0.0f, Transition.Delay);
 		Transition.RepeatCount = FMath::Max(-1, Transition.RepeatCount);
 		Transition.bBound = IsValid(TargetWidget) && !Transition.WidgetProperty.IsNone();
-		Transition.bHasCallbacks = Callbacks.HasBoundCallbacks();
+		Transition.bHasStartedCallback = Callbacks.OnStarted.IsBound();
+		Transition.bHasUpdatedCallback = Callbacks.OnUpdated.IsBound();
+		Transition.bHasFinishedCallback = Callbacks.OnFinished.IsBound();
 		Transition.EasingCurve = Transition.Easing.IsNull() ? nullptr : Transition.Easing.GetCurve(TEXT("Widget Transition"), false);
 		if (!Transition.Easing.IsNull() && !Transition.EasingCurve)
 		{
@@ -720,7 +722,7 @@ namespace WidgetTransition
 			}
 			++TransitionIndex;
 		}
-		if (Transition.bHasCallbacks)
+		if (Callbacks.HasBoundCallbacks())
 		{
 			Subsystem->Callbacks.Add(Transition.TransitionId, MoveTemp(Callbacks));
 		}
@@ -868,9 +870,17 @@ void UWidgetTransitionAsyncAction::Activate()
 		RefreshEventValue(Widget);
 		EventStartValue = EventValue;
 	}
-	Callbacks.OnStarted.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleStarted);
+	if (Started.IsBound())
+	{
+		Callbacks.OnStarted.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleStarted);
+	}
+	bBroadcastUpdateValue = Updated.IsBound();
+	if (bBroadcastUpdateValue)
+	{
+		Callbacks.OnUpdated.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleUpdated);
+	}
+	// Finished must remain bound even when its execution output is unused so this action can release itself.
 	Callbacks.OnFinished.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleFinished);
-	Callbacks.OnUpdated.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleUpdated);
 	WidgetTransition::StartTransition(Context, MoveTemp(PendingTransition), MoveTemp(Callbacks));
 }
 
@@ -891,16 +901,19 @@ void UWidgetTransitionAsyncAction::HandleStarted(UWidget* Widget)
 
 void UWidgetTransitionAsyncAction::HandleUpdated(UWidget* Widget, float NormalizedProgress, float EasedProgress)
 {
-	FVector4f Channels;
-	if (EventBinding.Read(Widget, Channels))
+	if (bBroadcastUpdateValue)
 	{
-		EventValue.Channels = Channels;
+		FVector4f Channels;
+		if (EventBinding.Read(Widget, Channels))
+		{
+			EventValue.Channels = Channels;
+		}
+		else
+		{
+			EventValue.Channels = FMath::Lerp(EventStartValue.Channels, EventTargetValue.Channels, EasedProgress);
+		}
+		Updated.Broadcast(EventValue, NormalizedProgress, EasedProgress);
 	}
-	else
-	{
-		EventValue.Channels = FMath::Lerp(EventStartValue.Channels, EventTargetValue.Channels, EasedProgress);
-	}
-	Updated.Broadcast(EventValue, NormalizedProgress, EasedProgress);
 }
 
 void UWidgetTransitionAsyncAction::HandleFinished(UWidget* Widget)
@@ -909,6 +922,25 @@ void UWidgetTransitionAsyncAction::HandleFinished(UWidget* Widget)
 	Finished.Broadcast(EventValue);
 	SetReadyToDestroy();
 }
+
+#if WITH_DEV_AUTOMATION_TESTS
+bool UWidgetTransitionAsyncAction::InitializeUpdateForTesting(FWidgetTransition Transition)
+{
+	PendingTransition = MoveTemp(Transition);
+	EventTargetValue = PendingTransition.ToValue;
+	EventStartValue = PendingTransition.bUseFrom ? PendingTransition.FromValue : FWidgetTransitionValue();
+	EventStartValue.Type = EventTargetValue.Type;
+	EventValue = EventStartValue;
+	EventBinding.Invalidate();
+	bBroadcastUpdateValue = Updated.IsBound();
+	return bBroadcastUpdateValue;
+}
+
+void UWidgetTransitionAsyncAction::DispatchUpdatedForTesting(UWidget* Widget, float NormalizedProgress, float EasedProgress)
+{
+	HandleUpdated(Widget, NormalizedProgress, EasedProgress);
+}
+#endif
 
 ETickableTickType UWidgetTransitionSubsystem::GetTickableTickType() const
 {
