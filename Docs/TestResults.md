@@ -31,6 +31,8 @@
 | 2026-08-24 | UE 5.7 / Mac arm64 Development | `Performance.DirtyWidgetIndices` | Passed | 500 `RenderOpacity` writes / 50 widget / 300 frames: direct 1.707; группы 1.656 μs/frame (−3.0%). |
 | 2026-08-24 | UE 5.7 / Mac arm64 Development | `Performance.ModeIndices` | Passed | Специализированные Linear/Easing/Spring passes, 3 прогона: mixed 1.571/1.520/1.520; indexed 1.291/1.256/1.256 μs/frame. Среднее −17.5%. |
 | 2026-08-24 | UE 5.7 / Mac arm64 Development | `WidgetSelector.Runtime.Hierarchy` | Passed | DFS, уровни, имена, parent chain и переход через вложенный `WidgetTree → UUserWidget`. |
+| 2026-08-25 | UE 5.7.4 / Mac arm64 Development | `Performance.Callbacks` | Passed | 500 linear: without binding 2.648 → 134.044 μs/frame с bound `Updated`; with binding 5.424 → 138.431. Dynamic callback добавляет ~0.263 μs/transition/frame. |
+| 2026-08-25 | UE 5.7.4 / Mac arm64 Development | `Performance.Callbacks` | Passed | Реалистичный диапазон 20/30/50/100 `Updated`: 5.443/8.283/13.221/27.532 μs/frame без binding; 5.359/8.689/14.015/27.917 с binding. Цена callback ~0.27 μs/transition/frame. |
 
 ## Актуальный baseline
 

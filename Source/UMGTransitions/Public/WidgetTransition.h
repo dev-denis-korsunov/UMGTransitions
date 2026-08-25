@@ -267,5 +267,7 @@ public:
 #if WITH_DEV_AUTOMATION_TESTS
 	/** Invokes the transition hot path without requiring an initialized UWorld. */
 	void TickTransitionsForTesting(float DeltaTime);
+	/** Clears transitions through the same removal path used by Clear All Widget Transitions. */
+	void ClearTransitionsForTesting(UWidget* Widget);
 #endif
 };

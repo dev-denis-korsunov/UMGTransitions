@@ -101,6 +101,48 @@ namespace
 	}
 }
 
+void UWidgetTransitionTestEventReceiver::HandleStarted(UWidget* InWidget)
+{
+	++StartedCount;
+	LastWidget = InWidget;
+	if (UWidgetTransitionSubsystem* Subsystem = SubsystemToClear.Get())
+	{
+		Subsystem->ClearTransitionsForTesting(WidgetToClear.Get());
+	}
+}
+
+void UWidgetTransitionTestEventReceiver::HandleUpdated(UWidget* InWidget, float /*NormalizedProgress*/, float /*EasedProgress*/)
+{
+	++UpdatedCount;
+	LastWidget = InWidget;
+	if (UWidgetTransitionSubsystem* Subsystem = SubsystemToClear.Get())
+	{
+		if (bAppendTransitionsOnUpdate)
+		{
+			for (int32 Index = 0; Index < 16; ++Index)
+			{
+				FWidgetTransition Transition;
+				Transition.Widget = InWidget;
+				Transition.Time = 60.0f;
+				Transition.TransitionId = static_cast<uint64>(Index + 2);
+				Subsystem->Transitions.Add(MoveTemp(Transition));
+			}
+			return;
+		}
+		Subsystem->ClearTransitionsForTesting(WidgetToClear.Get());
+	}
+}
+
+void UWidgetTransitionTestEventReceiver::HandleFinished(UWidget* InWidget)
+{
+	++FinishedCount;
+	LastWidget = InWidget;
+	if (UWidgetTransitionSubsystem* Subsystem = SubsystemToClear.Get())
+	{
+		Subsystem->ClearTransitionsForTesting(WidgetToClear.Get());
+	}
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionStorageLayoutTest, "UMGTransitions.WidgetTransition.Diagnostics.StorageLayout", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionStorageLayoutTest::RunTest(const FString&)
 {
@@ -270,6 +312,81 @@ bool FWidgetTransitionInvalidEasingFallbackTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionCallbackReentrancyTest, "UMGTransitions.WidgetTransition.Runtime.CallbackReentrancy", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetTransitionCallbackReentrancyTest::RunTest(const FString&)
+{
+	auto AddCallbackTransition = [](UWidgetTransitionSubsystem* Subsystem, UWidget* Widget, FWidgetTransitionCallbacks Callbacks, bool bStarted, float Time)
+	{
+		FWidgetTransition Transition;
+		Transition.Widget = Widget;
+		Transition.Time = Time;
+		Transition.bStarted = bStarted;
+		Transition.bHasCallbacks = true;
+		Transition.TransitionId = 1;
+		Subsystem->Callbacks.Add(Transition.TransitionId, MoveTemp(Callbacks));
+		Subsystem->Transitions.Add(MoveTemp(Transition));
+	};
+
+	{
+		UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+		UImage* Widget = NewObject<UImage>(GetTransientPackage());
+		UWidgetTransitionTestEventReceiver* Receiver = NewObject<UWidgetTransitionTestEventReceiver>(GetTransientPackage());
+		Receiver->SubsystemToClear = Subsystem;
+		Receiver->WidgetToClear = Widget;
+		FWidgetTransitionCallbacks Callbacks;
+		Callbacks.OnStarted.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleStarted);
+		AddCallbackTransition(Subsystem, Widget, MoveTemp(Callbacks), false, 1.0f);
+		Subsystem->TickTransitionsForTesting(1.0f / 60.0f);
+		TestEqual(TEXT("Started callback runs once before clearing its transition"), Receiver->StartedCount, 1);
+		TestEqual(TEXT("Started callback can clear its own transition"), Subsystem->Transitions.Num(), 0);
+	}
+
+	{
+		UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+		UImage* Widget = NewObject<UImage>(GetTransientPackage());
+		UWidgetTransitionTestEventReceiver* Receiver = NewObject<UWidgetTransitionTestEventReceiver>(GetTransientPackage());
+		Receiver->SubsystemToClear = Subsystem;
+		Receiver->WidgetToClear = Widget;
+		FWidgetTransitionCallbacks Callbacks;
+		Callbacks.OnUpdated.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleUpdated);
+		AddCallbackTransition(Subsystem, Widget, MoveTemp(Callbacks), true, 1.0f);
+		Subsystem->TickTransitionsForTesting(1.0f / 60.0f);
+		TestEqual(TEXT("Updated callback runs once before clearing its transition"), Receiver->UpdatedCount, 1);
+		TestEqual(TEXT("Updated callback can clear its own transition"), Subsystem->Transitions.Num(), 0);
+	}
+
+	{
+		UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+		UImage* Widget = NewObject<UImage>(GetTransientPackage());
+		UWidgetTransitionTestEventReceiver* Receiver = NewObject<UWidgetTransitionTestEventReceiver>(GetTransientPackage());
+		Receiver->SubsystemToClear = Subsystem;
+		Receiver->bAppendTransitionsOnUpdate = true;
+		FWidgetTransitionCallbacks Callbacks;
+		Callbacks.OnUpdated.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleUpdated);
+		AddCallbackTransition(Subsystem, Widget, MoveTemp(Callbacks), true, 0.0f);
+		Subsystem->TickTransitionsForTesting(1.0f / 60.0f);
+		TestEqual(TEXT("Updated callback runs once before growing the transition array"), Receiver->UpdatedCount, 1);
+		TestEqual(TEXT("Original completed transition is removed after callback reallocation"), Subsystem->Transitions.Num(), 16);
+		TestTrue(TEXT("Original transition ID is absent after callback reallocation"), !Subsystem->Transitions.ContainsByPredicate([](const FWidgetTransition& Transition) { return Transition.TransitionId == 1; }));
+	}
+
+	{
+		UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+		UImage* Widget = NewObject<UImage>(GetTransientPackage());
+		UWidgetTransitionTestEventReceiver* Receiver = NewObject<UWidgetTransitionTestEventReceiver>(GetTransientPackage());
+		Receiver->SubsystemToClear = Subsystem;
+		Receiver->WidgetToClear = Widget;
+		FWidgetTransitionCallbacks Callbacks;
+		Callbacks.OnFinished.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleFinished);
+		AddCallbackTransition(Subsystem, Widget, MoveTemp(Callbacks), true, 0.0f);
+		Subsystem->TickTransitionsForTesting(1.0f / 60.0f);
+		TestEqual(TEXT("Finished callback runs once before clearing its transition"), Receiver->FinishedCount, 1);
+		TestEqual(TEXT("Finished callback can clear its own transition"), Subsystem->Transitions.Num(), 0);
+	}
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionRemoveAtSwapTest, "UMGTransitions.WidgetTransition.Runtime.RemoveAtSwap", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionRemoveAtSwapTest::RunTest(const FString&)
 {
@@ -398,6 +515,67 @@ bool FWidgetTransitionConcurrentTickPerformanceTest::RunTest(const FString&)
 		const double SecondsPerTransition = ElapsedSeconds / (FrameCount * TransitionCount);
 		AddInfo(FString::Printf(TEXT("%d concurrent transitions: %s / frame, %s / transition (%d frames)"), TransitionCount, *FormatMicroseconds(SecondsPerFrame), *FormatMicroseconds(SecondsPerTransition), FrameCount));
 		TestEqual(FString::Printf(TEXT("All %d transitions remain active"), TransitionCount), Subsystem->Transitions.Num(), TransitionCount);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionCallbacksPerformanceTest, "UMGTransitions.WidgetTransition.Performance.Callbacks", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
+bool FWidgetTransitionCallbacksPerformanceTest::RunTest(const FString&)
+{
+	constexpr int32 TransitionCounts[] = { 20, 30, 50, 100 };
+	constexpr int32 FrameCount = 300;
+	constexpr float DeltaTime = 1.0f / 60.0f;
+	auto Measure = [this](int32 TransitionCount, bool bWithBinding, bool bWithUpdatedCallbacks)
+	{
+		UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+		UWidgetTransitionTestEventReceiver* Receiver = NewObject<UWidgetTransitionTestEventReceiver>(GetTransientPackage());
+		TArray<UImage*> Widgets;
+		Widgets.Reserve(TransitionCount);
+		for (int32 Index = 0; Index < TransitionCount; ++Index)
+		{
+			UImage* Widget = NewObject<UImage>(GetTransientPackage());
+			Widgets.Add(Widget);
+			FWidgetTransition Transition = MakeRuntimeOpacityTransition(Widget);
+			if (!bWithBinding)
+			{
+				Transition.bBound = false;
+				Transition.WidgetProperty = NAME_None;
+				Transition.PropertyBinding.Invalidate();
+				Transition.PropertyBinding.ChannelCount = 1;
+			}
+			if (bWithUpdatedCallbacks)
+			{
+				Transition.TransitionId = static_cast<uint64>(Index + 1);
+				Transition.bHasCallbacks = true;
+				FWidgetTransitionCallbacks Callbacks;
+				Callbacks.OnUpdated.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleUpdated);
+				Subsystem->Callbacks.Add(Transition.TransitionId, MoveTemp(Callbacks));
+			}
+			Subsystem->Transitions.Add(MoveTemp(Transition));
+		}
+
+		Subsystem->TickTransitionsForTesting(DeltaTime);
+		Receiver->UpdatedCount = 0;
+		const double StartTime = FPlatformTime::Seconds();
+		for (int32 FrameIndex = 0; FrameIndex < FrameCount; ++FrameIndex)
+		{
+			Subsystem->TickTransitionsForTesting(DeltaTime);
+		}
+		const double ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
+		const TCHAR* BindingName = bWithBinding ? TEXT("with binding") : TEXT("without binding");
+		const TCHAR* CallbackName = bWithUpdatedCallbacks ? TEXT("Updated callbacks") : TEXT("no callbacks");
+		AddInfo(FString::Printf(TEXT("%d linear transitions, %s, %s: %s / frame, %s / transition"), TransitionCount, BindingName, CallbackName, *FormatMicroseconds(ElapsedSeconds / FrameCount), *FormatMicroseconds(ElapsedSeconds / (FrameCount * TransitionCount))));
+		TestEqual(FString::Printf(TEXT("All %d callback benchmark transitions remain active"), TransitionCount), Subsystem->Transitions.Num(), TransitionCount);
+		TestEqual(FString::Printf(TEXT("Updated callback count for %s, %s"), BindingName, CallbackName), Receiver->UpdatedCount, bWithUpdatedCallbacks ? TransitionCount * FrameCount : 0);
+	};
+
+	for (const int32 TransitionCount : TransitionCounts)
+	{
+		for (const bool bWithBinding : { false, true })
+		{
+			Measure(TransitionCount, bWithBinding, false);
+			Measure(TransitionCount, bWithBinding, true);
+		}
 	}
 	return true;
 }

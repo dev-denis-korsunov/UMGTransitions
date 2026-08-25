@@ -6,6 +6,8 @@
 
 #include "WidgetTransitionTestTypes.generated.h"
 
+class UWidgetTransitionSubsystem;
+
 UCLASS()
 class UWidgetTransitionTestEventReceiver final : public UObject
 {
@@ -13,14 +15,19 @@ class UWidgetTransitionTestEventReceiver final : public UObject
 
 public:
 	UFUNCTION()
-	void HandleStarted(UWidget* InWidget)
-	{
-		++StartedCount;
-		LastWidget = InWidget;
-	}
+	void HandleStarted(UWidget* InWidget);
+	UFUNCTION()
+	void HandleUpdated(UWidget* InWidget, float NormalizedProgress, float EasedProgress);
+	UFUNCTION()
+	void HandleFinished(UWidget* InWidget);
 
 	int32 StartedCount = 0;
+	int32 UpdatedCount = 0;
+	int32 FinishedCount = 0;
 	TWeakObjectPtr<UWidget> LastWidget;
+	TWeakObjectPtr<UWidgetTransitionSubsystem> SubsystemToClear;
+	TWeakObjectPtr<UWidget> WidgetToClear;
+	bool bAppendTransitionsOnUpdate = false;
 };
 
 UCLASS()
