@@ -5,6 +5,7 @@ These `PerfFilter` tests preserve the evidence behind decisions that are already
 | Test | Source | Status |
 | --- | --- | --- |
 | `Experiments.SpringStorage` | `Tests/Experiments/WidgetTransitionStorageExperiments.cpp` | Historical: dense `TArray` was selected over sparse storage. |
+| `Experiments.SpringParallelFor` | `Tests/Experiments/WidgetTransitionStorageExperiments.cpp` | Historical: `ParallelFor` was 11.5–16.1× slower on the isolated dense spring pass; sequential loop retained. |
 | `Experiments.ArrayTransitionStorage` | `Tests/Experiments/WidgetTransitionStorageExperiments.cpp` | Historical: dense transition storage and `RemoveAtSwap` were selected. |
 | `Experiments.ModeIndices` | `Tests/Experiments/WidgetTransitionIndexExperiments.cpp` | Pending integration: specialized passes were faster in an isolated compute benchmark. |
 

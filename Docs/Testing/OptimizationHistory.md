@@ -34,6 +34,22 @@
 | Independent dense spring pass | 7.424, затем 7.368 с delay внутри spring | Принято: spring state считается плотным первым проходом. |
 | `TArray<FWidgetTransition>` + `RemoveAtSwap` | 6.402 | Принято: transition loop также стал плотным. |
 
+### ParallelFor для dense spring pass
+
+`Experiments.SpringParallelFor` измеряет только безопасный compute-pass `TArray<FWidgetTransitionSpring>`: каждый spring обновляет собственные значения и не обращается к `UObject`, `UWidget`, delegates или `Transitions`. После implicit barrier `ParallelFor` основной transition pass всё равно выполняется на Game Thread и применяет значения к widget.
+
+Тест сравнивает sequential, принудительный `ParallelFor` и вариант с `ParallelSpringThreshold = 256` на 64, 128, 256, 500 и 1000 активных spring. Он также сверяет, что результат каждого spring совпадает с последовательным вычислением.
+
+| Active spring | Sequential, μs/frame | Forced `ParallelFor`, μs/frame | Thresholded (256), μs/frame | Вывод |
+| ---: | ---: | ---: | ---: | --- |
+| 64 | 0.518 | 8.336 | 0.540 | Порог оставляет последовательный путь; overhead +4.1%. |
+| 128 | 1.069 | 15.688 | 0.986 | Последовательный путь в пределах шума. |
+| 256 | 2.129 | 25.802 | 24.543 | На пороге parallel путь в 11.5× медленнее. |
+| 500 | 3.828 | 51.405 | 50.417 | Parallel путь в 13.2× медленнее. |
+| 1000 | 8.212 | 98.268 | 95.632 | Parallel путь в 11.6× медленнее. |
+
+Замер выполнен на MacBook Pro (Apple Silicon), UE 5.7, Development Editor. Решение: `ParallelFor` в runtime не включать и порог не хранить. Даже при 1000 spring стоимость scheduling и barrier значительно выше самостоятельного вычисления `Exp`/`Sin`/`Cos`; основная работа с widget всё равно должна остаться на Game Thread.
+
 Отклонённые варианты:
 
 - Отдельный `TSparseArray<FWidgetTransitionSpring>`: 10.437 μs/frame. Sparse lookup и лишние проходы перекрыли выгоду locality.
