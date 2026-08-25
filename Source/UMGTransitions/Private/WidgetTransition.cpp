@@ -254,9 +254,9 @@ namespace WidgetTransition
 			bool bEnd = !Transition.bUseSpring && (Transition.Time <= 0.0f || Transition.CurrentTime >= Transition.Delay + Transition.Time);
 			const float Alpha = Transition.Time <= 0.0f ? 1.0f : FMath::Clamp((Transition.CurrentTime - Transition.Delay) / Transition.Time, 0.0f, 1.0f);
 			float EasedAlpha = Alpha;
-			if (!Transition.Easing.IsNull())
+			if (Transition.EasingCurve)
 			{
-				EasedAlpha = Transition.EasingCurve ? Transition.EasingCurve->Eval(Alpha) : 0.0f;
+				EasedAlpha = Transition.EasingCurve->Eval(Alpha);
 			}
 			FVector4f Value = FMath::Lerp(Transition.FromValue.Channels, Transition.ToValue.Channels, EasedAlpha);
 			const bool bReachedSpringDeadline = Transition.bUseSpring && Transition.bFitSpringToTime && Transition.CurrentTime >= Transition.Delay + Transition.Time;
@@ -619,6 +619,11 @@ namespace WidgetTransition
 		Transition.bBound = IsValid(TargetWidget) && !Transition.WidgetProperty.IsNone();
 		Transition.bHasCallbacks = Callbacks.HasBoundCallbacks();
 		Transition.EasingCurve = Transition.Easing.IsNull() ? nullptr : Transition.Easing.GetCurve(TEXT("Widget Transition"), false);
+		if (!Transition.Easing.IsNull() && !Transition.EasingCurve)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Widget Transition: easing row '%s' could not be resolved; using linear interpolation."), *Transition.Easing.RowName.ToString());
+			Transition.Easing = FCurveTableRowHandle();
+		}
 		if (Transition.bBound)
 		{
 			const bool bResolved = IsMaterialBinding(Transition.WidgetProperty)

@@ -246,6 +246,30 @@ bool FWidgetTransitionTickDeltaTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionInvalidEasingFallbackTest, "UMGTransitions.WidgetTransition.Runtime.InvalidEasingFallback", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetTransitionInvalidEasingFallbackTest::RunTest(const FString&)
+{
+	UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+	UImage* Widget = NewObject<UImage>(GetTransientPackage());
+	FWidgetTransition Transition;
+	Transition.Widget = Widget;
+	Transition.WidgetProperty = TEXT("RenderOpacity");
+	Transition.FromValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.0f);
+	Transition.ToValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(1.0f);
+	Transition.Time = 0.0f;
+	Transition.bUseFrom = true;
+	Transition.bBound = Transition.PropertyBinding.Resolve(Widget, TEXT("RenderOpacity"));
+	Transition.Easing.CurveTable = NewObject<UCurveTable>(GetTransientPackage());
+	Transition.Easing.RowName = TEXT("MissingRow");
+	Subsystem->Transitions.Add(MoveTemp(Transition));
+
+	Subsystem->TickTransitionsForTesting(1.0f / 60.0f);
+
+	TestTrue(TEXT("Missing easing row falls back to the linear target value"), FMath::IsNearlyEqual(Widget->GetRenderOpacity(), 1.0f, Tolerance));
+	TestEqual(TEXT("Fallback transition completes"), Subsystem->Transitions.Num(), 0);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionRemoveAtSwapTest, "UMGTransitions.WidgetTransition.Runtime.RemoveAtSwap", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionRemoveAtSwapTest::RunTest(const FString&)
 {
