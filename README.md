@@ -46,6 +46,7 @@ Traversal is depth-first and crosses nested `WidgetTree → UUserWidget` boundar
 Example assets are included under `Content/TransitionExamples`.
 
 Automation tests and benchmark notes are documented in [Docs/Testing.md](Docs/Testing.md). The regular regression suite is separate from historical performance experiments.
+Confirmed runtime defects and their required regression coverage are tracked in [Docs/KnownIssues.md](Docs/KnownIssues.md).
 
 ## License
 
