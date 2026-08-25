@@ -217,6 +217,35 @@ bool FWidgetTransitionSpringTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionTickDeltaTest, "UMGTransitions.WidgetTransition.Runtime.TickDelta", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetTransitionTickDeltaTest::RunTest(const FString&)
+{
+	constexpr float MaximumTickDelta = 1.0f / 20.0f;
+	const FVector4f TargetValue(100.0f, -50.0f, 25.0f, 1.0f);
+	FWidgetTransitionSpring ExpectedSpring(144.0f, 18.0f);
+	ExpectedSpring.Start(FVector4f::Zero(), TargetValue);
+	ExpectedSpring.Tick(MaximumTickDelta);
+
+	UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+	UImage* Widget = NewObject<UImage>(GetTransientPackage());
+	FWidgetTransition Transition;
+	Transition.Widget = Widget;
+	Transition.FromValue = UWidgetTransitionFunctionLibrary::MakeColorTransitionValue(FLinearColor::Transparent);
+	Transition.ToValue = UWidgetTransitionFunctionLibrary::MakeColorTransitionValue(FLinearColor(TargetValue.X, TargetValue.Y, TargetValue.Z, TargetValue.W));
+	Transition.Time = 60.0f;
+	Transition.bUseSpring = true;
+	Transition.SpringIndex = Subsystem->Springs.Emplace(144.0f, 18.0f);
+	Subsystem->Springs[Transition.SpringIndex].Start(Transition.FromValue.Channels, Transition.ToValue.Channels);
+	Subsystem->SpringTransitionIndices.Add(0);
+	Subsystem->Transitions.Add(MoveTemp(Transition));
+
+	Subsystem->TickTransitionsForTesting(1.0f);
+
+	TestTrue(TEXT("Spring receives the same capped delta as the transition"), Subsystem->Springs[0].GetValue().Equals(ExpectedSpring.GetValue(), Tolerance));
+	TestTrue(TEXT("Transition time is capped together with the spring"), FMath::IsNearlyEqual(Subsystem->Transitions[0].CurrentTime, MaximumTickDelta, Tolerance));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionRemoveAtSwapTest, "UMGTransitions.WidgetTransition.Runtime.RemoveAtSwap", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionRemoveAtSwapTest::RunTest(const FString&)
 {

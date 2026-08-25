@@ -221,9 +221,10 @@ namespace WidgetTransition
 
 	static void TickTransitions(UWidgetTransitionSubsystem& Subsystem, float DeltaTime)
 	{
+		const float EffectiveDeltaTime = FMath::Clamp(DeltaTime, 0.0f, 1.0f / 20.0f);
 		for (FWidgetTransitionSpring& Spring : Subsystem.Springs)
 		{
-			Spring.Tick(DeltaTime);
+			Spring.Tick(EffectiveDeltaTime);
 		}
 		for (int32 TransitionIndex = 0; TransitionIndex < Subsystem.Transitions.Num();)
 		{
@@ -233,7 +234,7 @@ namespace WidgetTransition
 				RemoveTransition(Subsystem, TransitionIndex);
 				continue;
 			}
-			Transition.CurrentTime += FMath::Min(DeltaTime, 1.0f / 20.0f);
+			Transition.CurrentTime += EffectiveDeltaTime;
 			if (Transition.CurrentTime < Transition.Delay)
 			{
 				++TransitionIndex;
