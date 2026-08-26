@@ -800,10 +800,11 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::From(FWidgetTransition Trans
 	return Transition;
 }
 
-FWidgetTransition UWidgetTransitionFunctionLibrary::Options(FWidgetTransition Transition, bool bDeferFromValue, bool bIgnoreDelayOnRepeat)
+FWidgetTransition UWidgetTransitionFunctionLibrary::Options(FWidgetTransition Transition, bool bDeferFromValue, bool bIgnoreDelayOnRepeat, float CallbackUpdateInterval)
 {
 	Transition.bDeferFromValue = bDeferFromValue;
 	Transition.bIgnoreDelayOnRepeat = bIgnoreDelayOnRepeat;
+	Transition.UpdateInterval = FMath::Max(0.0f, CallbackUpdateInterval);
 	return Transition;
 }
 
@@ -873,11 +874,10 @@ void UWidgetTransitionFunctionLibrary::ClearAllWidgetTransitions(const UObject* 
 	}
 }
 
-UWidgetTransitionAsyncAction* UWidgetTransitionAsyncAction::AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition, float UpdateInterval)
+UWidgetTransitionAsyncAction* UWidgetTransitionAsyncAction::AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition)
 {
 	UWidgetTransitionAsyncAction* Action = NewObject<UWidgetTransitionAsyncAction>();
 	Action->PendingTransition = MoveTemp(Transition);
-	Action->PendingTransition.UpdateInterval = FMath::Max(0.0f, UpdateInterval);
 	Action->EventTargetValue = Action->PendingTransition.ToValue;
 	Action->EventStartValue = Action->PendingTransition.bUseFrom ? Action->PendingTransition.FromValue : FWidgetTransitionValue();
 	Action->EventStartValue.Type = Action->EventTargetValue.Type;

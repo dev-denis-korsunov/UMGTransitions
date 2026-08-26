@@ -131,7 +131,7 @@ struct UMGTRANSITIONS_API FWidgetTransition
 	float SpringBounce = 0.45f;
 	int32 RepeatCount = 0;
 	/** Seconds between Updated callbacks and FieldNotify broadcasts; zero preserves per-tick updates. */
-	float UpdateInterval = 0.0f;
+	float UpdateInterval = 0.033f;
 	/** Elapsed seconds since the previous Updated callback. */
 	float UpdateElapsed = 0.0f;
 	uint16 bUseFrom : 1 = false;
@@ -172,9 +172,9 @@ public:
 	static FWidgetTransition CreateWidgetTransition(UWidget* Widget, UPARAM(meta = (UMGTransitionsRole = "WidgetProperty")) FName WidgetProperty, FWidgetTransitionValue ToValue, float Time = 0.2f, float Delay = 0.0f);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (CPP_Default_bUseFrom = "true", ReturnDisplayName = "Transition"))
 	static FWidgetTransition From(FWidgetTransition Transition, bool bUseFrom, FWidgetTransitionValue FromValue);
-	/** Configures optional transition behavior. */
+	/** Configures optional transition behavior and notification frequency. */
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
-	static FWidgetTransition Options(FWidgetTransition Transition, UPARAM(meta = (ToolTip = "Defers applying From Value until the transition starts after Delay.")) bool bDeferFromValue = false, bool bIgnoreDelayOnRepeat = false);
+	static FWidgetTransition Options(FWidgetTransition Transition, UPARAM(meta = (ToolTip = "Defers applying From Value until the transition starts after Delay.")) bool bDeferFromValue = false, bool bIgnoreDelayOnRepeat = false, UPARAM(meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", ToolTip = "Seconds between Updated callbacks and FieldNotify broadcasts. Zero updates every tick.")) float CallbackUpdateInterval = 0.033f);
 
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DataTablePin = "CurveTable", ReturnDisplayName = "Transition"))
 	static FWidgetTransition Easing(FWidgetTransition Transition, UCurveTable* CurveTable, FName RowName);
@@ -230,8 +230,8 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FOnWidgetTransitionAsyncEvent Finished;
 
-	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Add Widget Transition Async", AdvancedDisplay = "UpdateInterval"), Category = "Widget Transition")
-	static UWidgetTransitionAsyncAction* AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition, UPARAM(meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0")) float UpdateInterval = 0.033f);
+	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Add Widget Transition Async"), Category = "Widget Transition")
+	static UWidgetTransitionAsyncAction* AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition);
 
 	virtual void Activate() override;
 

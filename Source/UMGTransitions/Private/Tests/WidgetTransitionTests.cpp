@@ -215,7 +215,7 @@ bool FWidgetTransitionBuilderTest::RunTest(const FString&)
 	FWidgetTransitionValue FromValue = UWidgetTransitionFunctionLibrary::MakeVectorTransitionValue(FVector2D(0.2f, 0.4f));
 	FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderTransform.Scale"), ToValue, 0.25f, 0.4f);
 	Transition = UWidgetTransitionFunctionLibrary::From(MoveTemp(Transition), true, FromValue);
-	Transition = UWidgetTransitionFunctionLibrary::Options(MoveTemp(Transition), true, true);
+	Transition = UWidgetTransitionFunctionLibrary::Options(MoveTemp(Transition), true, true, 0.05f);
 	Transition = UWidgetTransitionFunctionLibrary::Repeat(MoveTemp(Transition), 2);
 	Transition = UWidgetTransitionFunctionLibrary::YoYo(MoveTemp(Transition));
 	Transition = UWidgetTransitionFunctionLibrary::Spring(MoveTemp(Transition), 0.8f, 0.25f, true);
@@ -223,6 +223,7 @@ bool FWidgetTransitionBuilderTest::RunTest(const FString&)
 	TestEqual(TEXT("From retains independent Vector2D type"), Transition.FromValue.Type, EWidgetTransitionValueType::Vector2D);
 	TestTrue(TEXT("From modifier is enabled"), Transition.bUseFrom);
 	TestTrue(TEXT("Options modifiers are retained"), Transition.bDeferFromValue && Transition.bIgnoreDelayOnRepeat);
+	TestTrue(TEXT("Options retains the callback update interval"), FMath::IsNearlyEqual(Transition.UpdateInterval, 0.05f));
 	TestTrue(TEXT("Binding is retained"), Transition.Widget == Widget && Transition.WidgetProperty == TEXT("RenderTransform.Scale"));
 	TestTrue(TEXT("Repeat and spring modifiers are retained"), Transition.RepeatCount == 2 && Transition.bYoYo && Transition.bUseSpring && Transition.bFitSpringToTime);
 	Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("Material.Progress"), ToValue, 0.25f, 0.4f);
