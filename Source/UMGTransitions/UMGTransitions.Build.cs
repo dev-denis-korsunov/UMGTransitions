@@ -11,6 +11,7 @@ public class UMGTransitions : ModuleRules
 			{
 				"Core",
 				"DeveloperSettings",
+				"FieldNotification",
 				"UMG"
 			});
 

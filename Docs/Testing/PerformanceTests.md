@@ -10,6 +10,8 @@
 | `Performance.ConcurrentTick` | После прогрева выполняет 300 кадров по `1/60` для 1, 10, 100 и 500 transition с `UImage.RenderOpacity` binding. | Даёт общую картину стоимости hot path вместе с применением свойства. |
 | `Performance.Callbacks` | Сравнивает 20, 30, 50 и 100 linear transition без callback, с lifecycle-only (`Started` + `Finished`) и с `Updated` dynamic delegate, с binding и без него; каждый случай измеряется 300 кадров после прогрева. | Проверяет hot/cold split callback-ов и изолирует цену registry, копирования delegate, dispatch и reentrancy-проверки. |
 | `Performance.UpdateInterval` | 100 linear transition с bound `Updated`, без binding property, при интервале 0, `1/30`, `1/20` и `0.1` секунды. | Проверяет, что time-based throttling callback dispatch масштабирует hot-path стоимость ожидаемо и не зависит от FPS. |
+| `Performance.ExternalTextBinding` | 100 `UUserWidget.CounterValue` float property обновляются transition через reflective binding; 100 `UTextBlock.TextDelegate` читают значение и форматируют `FText`. | Измеряет сценарий внешнего numeric property binding, который отображается текстом без async `Updated` callback. |
+| `Performance.FieldNotifyTextBinding` | 100 FieldNotify `CounterValue` property обновляются transition, после записи subsystem broadcast-ит field change; native watcher обновляет `UTextBlock` с `UpdateInterval = 0.033` s. | Проверяет push-модель UMG/MVVM без polling text getter и с ограниченной частотой text update. |
 | `Performance.AsyncTextCounter` | Измеряет 100 async transition без `Widget Property`: output `Updated` интерполирует float `0→100`, а receiver записывает целое значение в `UTextBlock`. | Показывает цену пользовательского обновления счётчика без property binding плагина. |
 | `Performance.ModeMatrix` | 300 кадров для Linear, CurveTable easing и Spring, с binding и без него, при 100 и 500 transition. CurveTable содержит `(0,0)`, `(0.5,0.2)`, `(1,1)`. | Главный сравнительный тест алгоритмов. Вариант без binding выделяет математику; с binding показывает цену типичного использования. |
 | `Performance.FastBindings` | 500 linear transition для каждого direct adapter: opacity, translation, scale, shear, angle, pivot. | Не даёт fast paths незаметно деградировать до reflective fallback. |
@@ -63,6 +65,27 @@ Rate `2` почти вдвое сокращал hot-path стоимость call
 | 0.100 | 5.298 | 0.053 |
 
 При 60 FPS default `0.033` выполняет примерно 30 callback/сек на transition и почти вдвое уменьшает цену `Updated` относительно per-frame режима. При перегруженном кадре система не догоняет пропущенные события: один callback получает актуальное значение. Завершающий `Updated` принудителен.
+
+## External text binding baseline
+
+Прогон 2026-08-26, UE 5.7.4 / Mac arm64 Development, 100 `UUserWidget.CounterValue` property transition с `FDynamicPropertyPath` и 100 `UTextBlock.TextDelegate` pull через `FText::AsNumber`:
+
+| Сценарий | μs/frame | μs/widget |
+| --- | ---: | ---: |
+| External `CounterValue` binding + text pull | 30.956 | 0.310 |
+
+Это модель обычного UMG binding: transition записывает число во внешний `UUserWidget` property, а text getter читает и форматирует его. Тест вызывает реальный dynamic `FGetText` delegate и потребляет результат; Slate layout, invalidation и paint в headless commandlet не исполняются, поэтому они не входят в число.
+
+## FieldNotify text binding baseline (per tick)
+
+Прогон 2026-08-26, UE 5.7.4 / Mac arm64 Development, 100 FieldNotify `UUserWidget.CounterValue` transition и 100 native watcher, обновляющих `UTextBlock`:
+
+| Сценарий | μs/frame | μs/widget |
+| --- | ---: | ---: |
+| Polling `TextDelegate` | 30.956 | 0.310 |
+| FieldNotify push | 20.956 | 0.210 |
+
+Это исторический per-tick baseline. Теперь transition автоматически вызывает FieldNotify после успешной записи reflective property, но при заданном `UpdateInterval` уведомление ограничивается этим интервалом, а финальное значение уведомляется обязательно. Push-модель без interval примерно на 32% быстрее polling getter на этом сценарии: она использует native delegate и обновляет текст только как реакцию на изменение поля. `FFieldId` не хранится в каждом transition: binding сохраняет уже существующее имя поля и запрашивает id из class descriptor только для FieldNotify property, сохраняя layout `FWidgetTransitionPropertyBinding` 88 B и `FWidgetTransition` 272 B. Новый baseline с `UpdateInterval = 0.033` s будет добавлен после отдельного прогона.
 
 ## Counter update baseline
 

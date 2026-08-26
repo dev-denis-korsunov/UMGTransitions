@@ -41,6 +41,7 @@ enum class EWidgetTransitionValueType : uint8
 enum class EWidgetTransitionBindingKind : uint8
 {
 	Property,
+	PropertyFieldNotify,
 	MaterialScalar,
 	MaterialVector,
 	RenderOpacity,
@@ -89,7 +90,7 @@ struct UMGTRANSITIONS_API FWidgetTransitionPropertyBinding
 	EWidgetTransitionBindingKind Kind = EWidgetTransitionBindingKind::Property;
 	/** Cached dynamic material for a virtual material channel. */
 	TWeakObjectPtr<UMaterialInstanceDynamic> MaterialInstance;
-	/** Material parameter addressed by the cached material adapter. */
+	/** Material parameter addressed by the cached material adapter or FieldNotify property name. */
 	FName MaterialParameter;
 
 	/** Resolves a widget property and caches the resulting property path. */
@@ -100,8 +101,10 @@ struct UMGTRANSITIONS_API FWidgetTransitionPropertyBinding
 	void Invalidate();
 	/** Number of float channels exposed by the resolved property. */
 	uint8 ChannelCount = 0;
+	/** Whether applying this binding can emit a FieldNotify change notification. */
+	bool IsFieldNotify() const;
 	/** Writes normalized transition channels to the resolved property. */
-	bool Apply(UWidget* Widget, const FVector4f& Value) const;
+	bool Apply(UWidget* Widget, const FVector4f& Value, bool bBroadcastFieldNotify = true) const;
 	/** Reads the current value of the resolved property. */
 	bool Read(UWidget* Widget, FVector4f& OutValue) const;
 };
@@ -127,7 +130,7 @@ struct UMGTRANSITIONS_API FWidgetTransition
 	float SpringSpeed = 0.65f;
 	float SpringBounce = 0.45f;
 	int32 RepeatCount = 0;
-	/** Seconds between Updated callbacks; zero preserves per-tick updates. */
+	/** Seconds between Updated callbacks and FieldNotify broadcasts; zero preserves per-tick updates. */
 	float UpdateInterval = 0.0f;
 	/** Elapsed seconds since the previous Updated callback. */
 	float UpdateElapsed = 0.0f;

@@ -41,3 +41,17 @@ class UWidgetSelectorTestUserWidget final : public UUserWidget
 {
 	GENERATED_BODY()
 };
+
+/** Test widget that exposes a numeric transition property to a UMG text binding. */
+UCLASS()
+class UWidgetTransitionTestCounterUserWidget final : public UUserWidget
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(FieldNotify)
+	float CounterValue = 0.0f;
+
+	UFUNCTION()
+	FText GetCounterText();
+};

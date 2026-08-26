@@ -153,6 +153,11 @@ void UWidgetTransitionTestEventReceiver::HandleAsyncUpdated(FWidgetTransitionVal
 	}
 }
 
+FText UWidgetTransitionTestCounterUserWidget::GetCounterText()
+{
+	return FText::AsNumber(FMath::RoundToInt(CounterValue));
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionStorageLayoutTest, "UMGTransitions.WidgetTransition.Diagnostics.StorageLayout", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionStorageLayoutTest::RunTest(const FString&)
 {
@@ -364,6 +369,32 @@ bool FWidgetTransitionUpdateIntervalTest::RunTest(const FString&)
 
 		Subsystem->TickTransitionsForTesting(1.0f / 60.0f);
 		TestEqual(TEXT("Completed transition dispatches its final update before the update interval"), Receiver->UpdatedCount, 1);
+	}
+
+	{
+		UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+		UWidgetTransitionTestCounterUserWidget* Widget = NewObject<UWidgetTransitionTestCounterUserWidget>(GetTransientPackage());
+		const UE::FieldNotification::FFieldId FieldId = Widget->GetFieldNotificationDescriptor().GetField(Widget->GetClass(), GET_MEMBER_NAME_CHECKED(UWidgetTransitionTestCounterUserWidget, CounterValue));
+		int32 NotificationCount = 0;
+		Widget->AddFieldValueChangedDelegate(FieldId, INotifyFieldValueChanged::FFieldValueChangedDelegate::CreateLambda([&NotificationCount](UObject*, UE::FieldNotification::FFieldId)
+		{
+			++NotificationCount;
+		}));
+
+		FWidgetTransition Transition;
+		Transition.Widget = Widget;
+		Transition.Time = 60.0f;
+		Transition.TransitionId = 1;
+		Transition.UpdateInterval = 0.033f;
+		Transition.bBound = Transition.PropertyBinding.Resolve(Widget, TEXT("CounterValue"));
+		TestTrue(TEXT("CounterValue resolves as a FieldNotify transition binding"), Transition.PropertyBinding.IsFieldNotify());
+		Subsystem->Transitions.Add(MoveTemp(Transition));
+
+		for (int32 TickIndex = 0; TickIndex < 5; ++TickIndex)
+		{
+			Subsystem->TickTransitionsForTesting(0.011f);
+		}
+		TestEqual(TEXT("UpdateInterval throttles FieldNotify broadcasts with Updated callbacks disabled"), NotificationCount, 1);
 	}
 
 	return true;
@@ -713,6 +744,110 @@ bool FWidgetTransitionUpdateIntervalPerformanceTest::RunTest(const FString&)
 		AddInfo(FString::Printf(TEXT("%d Updated callbacks with %.3f s interval: %s / frame, %s / transition"), TransitionCount, Case.Interval, *FormatMicroseconds(ElapsedSeconds / FrameCount), *FormatMicroseconds(ElapsedSeconds / (FrameCount * TransitionCount))));
 		TestEqual(FString::Printf(TEXT("Updated callbacks at %.3f s interval"), Case.Interval), Receiver->UpdatedCount, TransitionCount * Case.ExpectedUpdatesPerTransition);
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionExternalTextBindingPerformanceTest, "UMGTransitions.WidgetTransition.Performance.ExternalTextBinding", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
+bool FWidgetTransitionExternalTextBindingPerformanceTest::RunTest(const FString&)
+{
+	constexpr int32 TransitionCount = 100;
+	constexpr int32 FrameCount = 300;
+	constexpr float DeltaTime = 1.0f / 60.0f;
+	UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+	TArray<UWidgetTransitionTestCounterUserWidget*> Widgets;
+	TArray<UTextBlock*> TextBlocks;
+	Widgets.Reserve(TransitionCount);
+	TextBlocks.Reserve(TransitionCount);
+	for (int32 Index = 0; Index < TransitionCount; ++Index)
+	{
+		UWidgetTransitionTestCounterUserWidget* Widget = NewObject<UWidgetTransitionTestCounterUserWidget>(GetTransientPackage());
+		UTextBlock* TextBlock = NewObject<UTextBlock>(GetTransientPackage());
+		TextBlock->TextDelegate.BindDynamic(Widget, &UWidgetTransitionTestCounterUserWidget::GetCounterText);
+		FWidgetTransition Transition;
+		Transition.Widget = Widget;
+		Transition.WidgetProperty = TEXT("CounterValue");
+		Transition.FromValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.0f);
+		Transition.ToValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(100.0f);
+		Transition.Time = 60.0f;
+		Transition.bBound = Transition.PropertyBinding.Resolve(Widget, TEXT("CounterValue"));
+		TestTrue(FString::Printf(TEXT("CounterValue resolves for external widget %d"), Index), Transition.bBound);
+		Subsystem->Transitions.Add(MoveTemp(Transition));
+		Widgets.Add(Widget);
+		TextBlocks.Add(TextBlock);
+	}
+
+	Subsystem->TickTransitionsForTesting(DeltaTime);
+	volatile int32 TextLengthSink = 0;
+	const double StartTime = FPlatformTime::Seconds();
+	for (int32 FrameIndex = 0; FrameIndex < FrameCount; ++FrameIndex)
+	{
+		Subsystem->TickTransitionsForTesting(DeltaTime);
+		for (UTextBlock* TextBlock : TextBlocks)
+		{
+			TextLengthSink += TextBlock->TextDelegate.Execute().ToString().Len();
+		}
+	}
+	const double ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
+	AddInfo(FString::Printf(TEXT("%d external CounterValue bindings plus UTextBlock text pulls: %s / frame, %s / transition"), TransitionCount, *FormatMicroseconds(ElapsedSeconds / FrameCount), *FormatMicroseconds(ElapsedSeconds / (FrameCount * TransitionCount))));
+	TestTrue(TEXT("Text binding result is consumed"), TextLengthSink > 0);
+	TestEqual(TEXT("All external text-binding transitions remain active"), Subsystem->Transitions.Num(), TransitionCount);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionFieldNotifyTextBindingPerformanceTest, "UMGTransitions.WidgetTransition.Performance.FieldNotifyTextBinding", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
+bool FWidgetTransitionFieldNotifyTextBindingPerformanceTest::RunTest(const FString&)
+{
+	constexpr int32 TransitionCount = 100;
+	constexpr int32 FrameCount = 300;
+	constexpr float DeltaTime = 1.0f / 60.0f;
+	UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+	TArray<UTextBlock*> TextBlocks;
+	TSharedRef<int32> NotificationCount = MakeShared<int32>(0);
+	TextBlocks.Reserve(TransitionCount);
+	for (int32 Index = 0; Index < TransitionCount; ++Index)
+	{
+		UWidgetTransitionTestCounterUserWidget* Widget = NewObject<UWidgetTransitionTestCounterUserWidget>(GetTransientPackage());
+		UTextBlock* TextBlock = NewObject<UTextBlock>(GetTransientPackage());
+		const UE::FieldNotification::FFieldId FieldId = Widget->GetFieldNotificationDescriptor().GetField(Widget->GetClass(), GET_MEMBER_NAME_CHECKED(UWidgetTransitionTestCounterUserWidget, CounterValue));
+		TestTrue(FString::Printf(TEXT("CounterValue FieldNotify resolves for external widget %d"), Index), FieldId.IsValid());
+		Widget->AddFieldValueChangedDelegate(FieldId, INotifyFieldValueChanged::FFieldValueChangedDelegate::CreateLambda([TextBlock, NotificationCount](UObject* Object, UE::FieldNotification::FFieldId)
+		{
+			++*NotificationCount;
+			if (const UWidgetTransitionTestCounterUserWidget* CounterWidget = Cast<UWidgetTransitionTestCounterUserWidget>(Object))
+			{
+				TextBlock->SetText(FText::AsNumber(FMath::RoundToInt(CounterWidget->CounterValue)));
+			}
+		}));
+		FWidgetTransition Transition;
+		Transition.Widget = Widget;
+		Transition.WidgetProperty = TEXT("CounterValue");
+		Transition.FromValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.0f);
+		Transition.ToValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(100.0f);
+		Transition.Time = 60.0f;
+		Transition.UpdateInterval = 0.033f;
+		Transition.bBound = Transition.PropertyBinding.Resolve(Widget, TEXT("CounterValue"));
+		TestTrue(FString::Printf(TEXT("CounterValue resolves for FieldNotify widget %d"), Index), Transition.bBound);
+		Subsystem->Transitions.Add(MoveTemp(Transition));
+		TextBlocks.Add(TextBlock);
+	}
+
+	Subsystem->TickTransitionsForTesting(DeltaTime);
+	*NotificationCount = 0;
+	const double StartTime = FPlatformTime::Seconds();
+	for (int32 FrameIndex = 0; FrameIndex < FrameCount; ++FrameIndex)
+	{
+		Subsystem->TickTransitionsForTesting(DeltaTime);
+	}
+	const double ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
+	int32 TextLengthSink = 0;
+	for (UTextBlock* TextBlock : TextBlocks)
+	{
+		TextLengthSink += TextBlock->GetText().ToString().Len();
+	}
+	AddInfo(FString::Printf(TEXT("%d CounterValue FieldNotify pushes to UTextBlock: %s / frame, %s / transition"), TransitionCount, *FormatMicroseconds(ElapsedSeconds / FrameCount), *FormatMicroseconds(ElapsedSeconds / (FrameCount * TransitionCount))));
+	TestEqual(TEXT("FieldNotify broadcasts at the configured thirty-hertz interval"), *NotificationCount, TransitionCount * (FrameCount / 2));
+	TestTrue(TEXT("FieldNotify text binding result is consumed"), TextLengthSink > 0);
+	TestEqual(TEXT("All FieldNotify text-binding transitions remain active"), Subsystem->Transitions.Num(), TransitionCount);
 	return true;
 }
 

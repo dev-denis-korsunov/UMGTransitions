@@ -306,13 +306,22 @@ namespace WidgetTransition
 				Value = Transition.ToValue.Channels;
 				bEnd = true;
 			}
+			const bool bNeedsRateLimitedUpdate = Transition.bHasUpdatedCallback || (Transition.bBound && Transition.PropertyBinding.IsFieldNotify());
+			bool bDispatchRateLimitedUpdate = false;
+			if (bNeedsRateLimitedUpdate)
+			{
+				bDispatchRateLimitedUpdate = bEnd || Transition.UpdateInterval <= 0.0f || (Transition.UpdateElapsed += EffectiveDeltaTime) >= Transition.UpdateInterval;
+				if (bDispatchRateLimitedUpdate)
+				{
+					Transition.UpdateElapsed = bEnd || Transition.UpdateInterval <= 0.0f ? 0.0f : FMath::Fmod(Transition.UpdateElapsed, Transition.UpdateInterval);
+				}
+			}
 			if (Transition.bBound)
 			{
-				Transition.PropertyBinding.Apply(Transition.Widget.Get(), Value);
+				Transition.PropertyBinding.Apply(Transition.Widget.Get(), Value, bDispatchRateLimitedUpdate);
 			}
-			if (Transition.bHasUpdatedCallback && (bEnd || Transition.UpdateInterval <= 0.0f || (Transition.UpdateElapsed += EffectiveDeltaTime) >= Transition.UpdateInterval))
+			if (Transition.bHasUpdatedCallback && bDispatchRateLimitedUpdate)
 			{
-				Transition.UpdateElapsed = bEnd || Transition.UpdateInterval <= 0.0f ? 0.0f : FMath::Fmod(Transition.UpdateElapsed, Transition.UpdateInterval);
 				ExecuteUpdatedCallback(Subsystem, TransitionId, Transition.Widget.Get(), Alpha, EasedAlpha);
 				if (!IsTransitionAtIndex(Subsystem, TransitionIndex, TransitionId))
 				{
@@ -385,6 +394,15 @@ bool FWidgetTransitionPropertyBinding::Resolve(UWidget* InWidget, const FString&
 	{
 		bResolved = false;
 	}
+	if (bResolved && LeafProperty)
+	{
+		const UE::FieldNotification::FFieldId FieldId = InWidget->GetFieldNotificationDescriptor().GetField(InWidget->GetClass(), LeafProperty->GetFName());
+		if (FieldId.IsValid())
+		{
+			Kind = EWidgetTransitionBindingKind::PropertyFieldNotify;
+			MaterialParameter = FieldId.GetName();
+		}
+	}
 	return bResolved;
 }
 
@@ -442,7 +460,12 @@ void FWidgetTransitionPropertyBinding::Invalidate()
 	MaterialParameter = NAME_None;
 }
 
-bool FWidgetTransitionPropertyBinding::Apply(UWidget* Widget, const FVector4f& Value) const
+bool FWidgetTransitionPropertyBinding::IsFieldNotify() const
+{
+	return Kind == EWidgetTransitionBindingKind::PropertyFieldNotify;
+}
+
+bool FWidgetTransitionPropertyBinding::Apply(UWidget* Widget, const FVector4f& Value, bool bBroadcastFieldNotify) const
 {
 	if (!bResolved || !IsValid(Widget))
 	{
@@ -502,25 +525,38 @@ bool FWidgetTransitionPropertyBinding::Apply(UWidget* Widget, const FVector4f& V
 		}
 		return true;
 	}
+	bool bApplied = false;
 	switch (ValueType)
 	{
 	case EWidgetTransitionValueType::Float:
 	{
-		return bUsesDouble ? PropertyPathHelpers::SetPropertyValue(Widget, CachedPropertyPath, static_cast<double>(Value.X)) : PropertyPathHelpers::SetPropertyValue(Widget, CachedPropertyPath, Value.X);
+		bApplied = bUsesDouble ? PropertyPathHelpers::SetPropertyValue(Widget, CachedPropertyPath, static_cast<double>(Value.X)) : PropertyPathHelpers::SetPropertyValue(Widget, CachedPropertyPath, Value.X);
+		break;
 	}
 	case EWidgetTransitionValueType::Vector2D:
 	{
-		return PropertyPathHelpers::SetPropertyValue(Widget, CachedPropertyPath, FVector2D(Value.X, Value.Y));
+		bApplied = PropertyPathHelpers::SetPropertyValue(Widget, CachedPropertyPath, FVector2D(Value.X, Value.Y));
+		break;
 	}
 	case EWidgetTransitionValueType::LinearColor:
 	{
-		return PropertyPathHelpers::SetPropertyValue(Widget, CachedPropertyPath, FLinearColor(Value.X, Value.Y, Value.Z, Value.W));
+		bApplied = PropertyPathHelpers::SetPropertyValue(Widget, CachedPropertyPath, FLinearColor(Value.X, Value.Y, Value.Z, Value.W));
+		break;
 	}
 	default:
 	{
 		return false;
 	}
 	}
+	if (bApplied && bBroadcastFieldNotify && Kind == EWidgetTransitionBindingKind::PropertyFieldNotify)
+	{
+		const UE::FieldNotification::FFieldId FieldId = Widget->GetFieldNotificationDescriptor().GetField(Widget->GetClass(), MaterialParameter);
+		if (FieldId.IsValid())
+		{
+			Widget->BroadcastFieldValueChanged(FieldId);
+		}
+	}
+	return bApplied;
 }
 
 bool FWidgetTransitionPropertyBinding::Read(UWidget* Widget, FVector4f& OutValue) const

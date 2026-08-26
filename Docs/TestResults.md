@@ -40,6 +40,9 @@
 | 2026-08-25 | UE 5.7.4 / Mac arm64 Development | `Performance.UpdateRate` | Passed, historical | Удалённый frame rate 1/2/3/6 = 27.515/14.094/9.291/5.102 μs/frame. |
 | 2026-08-26 | UE 5.7.4 / Mac arm64 Development | `Runtime.UpdateInterval` | Passed | Интервал 0.033 s dispatch-ит `Updated` по накопленному времени; completed transition отправляет final update независимо от interval. |
 | 2026-08-26 | UE 5.7.4 / Mac arm64 Development | `Performance.UpdateInterval` | Passed | 100 `Updated`: interval 0/0.033/0.050/0.100 s = 28.333/15.140/10.233/5.298 μs/frame. |
+| 2026-08-26 | UE 5.7.4 / Mac arm64 Development | `Performance.ExternalTextBinding` | Passed | 100 external `CounterValue` reflective binding + `UTextBlock.TextDelegate` pull: 30.956 μs/frame, 0.310 μs/widget. Slate layout/paint не входят в headless замер. |
+| 2026-08-26 | UE 5.7.4 / Mac arm64 Development | `Performance.FieldNotifyTextBinding` | Passed, per-tick baseline | 100 FieldNotify `CounterValue` push binding: 20.956 μs/frame, 0.210 μs/widget, ~32% быстрее polling `TextDelegate`; все 30 000 notification доставлены. Последующий вариант с `UpdateInterval` требует отдельного прогона. |
+| 2026-08-26 | UE 5.7.4 / Mac arm64 Development | `Diagnostics.StorageLayout` | Passed | После FieldNotify без per-transition `FFieldId`: binding 88 B, transition 272 B. |
 
 ## Актуальный baseline
 
