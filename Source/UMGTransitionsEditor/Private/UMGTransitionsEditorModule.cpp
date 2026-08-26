@@ -113,6 +113,12 @@ namespace UMGTransitionsEditor
 		UEdGraphPin* WidgetPin = PropertyPin && PropertyPin->GetOwningNode() ? PropertyPin->GetOwningNode()->FindPin(TEXT("Widget")) : nullptr;
 		return WidgetPin && !WidgetPin->LinkedTo.IsEmpty() ? FEdGraphUtilities::GetNetFromPin(WidgetPin->LinkedTo[0]) : nullptr;
 	}
+	static bool UsesDefaultSelfWidget(const UEdGraphPin* PropertyPin)
+	{
+		const UK2Node_CallFunction* Node = PropertyPin ? Cast<UK2Node_CallFunction>(PropertyPin->GetOwningNode()) : nullptr;
+		const UFunction* Function = Node ? Node->GetTargetFunction() : nullptr;
+		return Function && Function->GetMetaData(TEXT("DefaultToSelf")) == TEXT("Widget");
+	}
 	static UWidgetBlueprint* GetWidgetBlueprint(const UEdGraphPin* PropertyPin)
 	{
 		if (UEdGraphPin* Source = GetWidgetSource(PropertyPin))
@@ -144,6 +150,13 @@ namespace UMGTransitionsEditor
 			}
 			return Cast<UClass>(Source->PinType.PinSubCategoryObject.Get());
 		}
+		if (UsesDefaultSelfWidget(PropertyPin))
+		{
+			if (UWidgetBlueprint* Blueprint = GetWidgetBlueprint(PropertyPin); Blueprint && Blueprint->GeneratedClass && Blueprint->GeneratedClass->IsChildOf(UWidget::StaticClass()))
+			{
+				return Blueprint->GeneratedClass;
+			}
+		}
 		return UWidget::StaticClass();
 	}
 	static UMaterialInterface* GetDesignerMaterial(const UEdGraphPin* Pin)
@@ -165,6 +178,23 @@ namespace UMGTransitionsEditor
 		SLATE_BEGIN_ARGS(SWidgetPropertyPathPin) {} SLATE_END_ARGS()
 		void Construct(const FArguments&, UEdGraphPin* Pin) { bIncludeMaterialParameters = IsCombinedBindingPin(Pin); SGraphPin::Construct(SGraphPin::FArguments(), Pin); }
 	protected:
+		virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override
+		{
+			SGraphPin::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+
+			const FString SourceSignature = GetWidgetSourceSignature();
+			if (!bWidgetSourceInitialized)
+			{
+				WidgetSourceSignature = SourceSignature;
+				bWidgetSourceInitialized = true;
+				return;
+			}
+			if (WidgetSourceSignature != SourceSignature)
+			{
+				WidgetSourceSignature = SourceSignature;
+				ResetWidgetProperty();
+			}
+		}
 		virtual TSharedRef<SWidget> GetDefaultValueWidget() override
 		{
 			RefreshOptions();
@@ -173,6 +203,23 @@ namespace UMGTransitionsEditor
 				.Content()[SNew(STextBlock).Text(this, &SWidgetPropertyPathPin::GetCurrentValue).Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))];
 		}
 	private:
+		FString GetWidgetSourceSignature() const
+		{
+			if (const UEdGraphPin* Source = GetWidgetSource(GraphPinObj))
+			{
+				return Source->GetOwningNode()->NodeGuid.ToString(EGuidFormats::DigitsWithHyphens) + TEXT(":") + Source->PinName.ToString();
+			}
+			return UsesDefaultSelfWidget(GraphPinObj) ? TEXT("DefaultToSelf") : TEXT("None");
+		}
+		void ResetWidgetProperty()
+		{
+			if (GraphPinObj->GetDefaultAsString().IsEmpty() || GraphPinObj->GetDefaultAsString() == TEXT("None"))
+			{
+				return;
+			}
+			GraphPinObj->Modify();
+			GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, TEXT("None"));
+		}
 		void RefreshOptions()
 		{
 			Options.Reset();
@@ -242,6 +289,8 @@ namespace UMGTransitionsEditor
 		FText GetCurrentValue() const { const FString Value = GraphPinObj->GetDefaultAsString(); return Value.IsEmpty() || Value == TEXT("None") ? NSLOCTEXT("UMGTransitions", "NoBinding", "None") : FText::FromString(Value); }
 		TArray<TSharedPtr<FPropertyOption>> Options;
 		bool bIncludeMaterialParameters = false;
+		bool bWidgetSourceInitialized = false;
+		FString WidgetSourceSignature;
 	};
 
 	class FTransitionPinFactory final : public FGraphPanelPinFactory

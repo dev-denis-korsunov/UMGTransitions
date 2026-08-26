@@ -168,7 +168,7 @@ class UMGTRANSITIONS_API UWidgetTransitionFunctionLibrary final : public UBluepr
 
 public:
 	/** Creates a transition bound to a widget property or a Material.Parameter entry. */
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Create Widget Transition", UMGTransitionsBinding = "Combined", ReturnDisplayName = "Transition"))
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Create Widget Transition", DefaultToSelf = "Widget", UMGTransitionsBinding = "Combined", ReturnDisplayName = "Transition"))
 	static FWidgetTransition CreateWidgetTransition(UWidget* Widget, UPARAM(meta = (UMGTransitionsRole = "WidgetProperty")) FName WidgetProperty, FWidgetTransitionValue ToValue, float Time = 0.2f, float Delay = 0.0f);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (CPP_Default_bUseFrom = "true", ReturnDisplayName = "Transition"))
 	static FWidgetTransition From(FWidgetTransition Transition, bool bUseFrom, FWidgetTransitionValue FromValue);
