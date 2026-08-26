@@ -9,7 +9,7 @@
 #include "PropertyPathHelpers.h"
 #include "UObject/UnrealType.h"
 
-namespace WidgetTransition
+namespace WidgetTransitionPrivate
 {
 	static FWidgetTransitionValue MakeValue(float Value)
 	{
@@ -351,7 +351,7 @@ namespace WidgetTransition
 			++TransitionIndex;
 		}
 	}
-} // namespace WidgetTransition
+} // namespace WidgetTransitionPrivate
 
 bool FWidgetTransitionPropertyBinding::Resolve(UWidget* InWidget, const FString& InPropertyPath)
 {
@@ -360,7 +360,7 @@ bool FWidgetTransitionPropertyBinding::Resolve(UWidget* InWidget, const FString&
 	{
 		return false;
 	}
-	if (WidgetTransition::ResolveFastWidgetProperty(*this, InPropertyPath))
+	if (WidgetTransitionPrivate::ResolveFastWidgetProperty(*this, InPropertyPath))
 	{
 		bResolved = true;
 		return true;
@@ -675,7 +675,7 @@ bool FWidgetTransitionPropertyBinding::Read(UWidget* Widget, FVector4f& OutValue
 	}
 }
 
-namespace WidgetTransition
+namespace WidgetTransitionPrivate
 {
 	static void StartTransition(const UObject* WorldContextObject, FWidgetTransition Transition, FWidgetTransitionCallbacks Callbacks = {})
 	{
@@ -713,14 +713,14 @@ namespace WidgetTransition
 			{
 				return;
 			}
-			if (!WidgetTransition::NormalizeValue(Transition.ToValue, Transition.PropertyBinding.ChannelCount, Transition.ToValue.Channels))
+			if (!WidgetTransitionPrivate::NormalizeValue(Transition.ToValue, Transition.PropertyBinding.ChannelCount, Transition.ToValue.Channels))
 			{
 				UE_LOG(LogTemp, Warning, TEXT("Widget Transition: target value type is incompatible with '%s'."), *Transition.WidgetProperty.ToString());
 				return;
 			}
 			if (Transition.bUseFrom)
 			{
-				if (!WidgetTransition::NormalizeValue(Transition.FromValue, Transition.PropertyBinding.ChannelCount, Transition.FromValue.Channels))
+				if (!WidgetTransitionPrivate::NormalizeValue(Transition.FromValue, Transition.PropertyBinding.ChannelCount, Transition.FromValue.Channels))
 				{
 					UE_LOG(LogTemp, Warning, TEXT("Widget Transition: From value type is incompatible with '%s'."), *Transition.WidgetProperty.ToString());
 					return;
@@ -741,7 +741,7 @@ namespace WidgetTransition
 																																   : 4;
 			Transition.FromValue.Channels = Transition.bUseFrom ? Transition.FromValue.Channels : FVector4f::Zero();
 		}
-		if (!WidgetTransition::IsSpringCompatible(Transition.PropertyBinding.ChannelCount))
+		if (!WidgetTransitionPrivate::IsSpringCompatible(Transition.PropertyBinding.ChannelCount))
 		{
 			Transition.bUseSpring = false;
 		}
@@ -755,7 +755,7 @@ namespace WidgetTransition
 			const FWidgetTransition& ExistingTransition = Subsystem->Transitions[TransitionIndex];
 			if (ExistingTransition.Widget == TargetWidget && ExistingTransition.WidgetProperty == Transition.WidgetProperty)
 			{
-				WidgetTransition::RemoveTransition(*Subsystem, TransitionIndex);
+				WidgetTransitionPrivate::RemoveTransition(*Subsystem, TransitionIndex);
 				continue;
 			}
 			++TransitionIndex;
@@ -765,20 +765,20 @@ namespace WidgetTransition
 			Subsystem->Callbacks.Add(Transition.TransitionId, MoveTemp(Callbacks));
 		}
 		const int32 TransitionIndex = Subsystem->Transitions.Emplace(MoveTemp(Transition));
-		WidgetTransition::StartSpring(*Subsystem, TransitionIndex, Subsystem->Transitions[TransitionIndex]);
+		WidgetTransitionPrivate::StartSpring(*Subsystem, TransitionIndex, Subsystem->Transitions[TransitionIndex]);
 	}
-} // namespace WidgetTransition
+} // namespace WidgetTransitionPrivate
 
 void UWidgetTransitionFunctionLibrary::AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition)
 {
-	WidgetTransition::StartTransition(WorldContextObject, MoveTemp(Transition));
+	WidgetTransitionPrivate::StartTransition(WorldContextObject, MoveTemp(Transition));
 }
 
 void UWidgetTransitionFunctionLibrary::AddWidgetTransitionArray(const UObject* WorldContextObject, TArray<FWidgetTransition> Transitions)
 {
 	for (FWidgetTransition& Transition : Transitions)
 	{
-		WidgetTransition::StartTransition(WorldContextObject, MoveTemp(Transition));
+		WidgetTransitionPrivate::StartTransition(WorldContextObject, MoveTemp(Transition));
 	}
 }
 
@@ -809,15 +809,15 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::Options(FWidgetTransition Tr
 
 FWidgetTransitionValue UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(float Value)
 {
-	return WidgetTransition::MakeValue(Value);
+	return WidgetTransitionPrivate::MakeValue(Value);
 }
 FWidgetTransitionValue UWidgetTransitionFunctionLibrary::MakeVectorTransitionValue(FVector2D Value)
 {
-	return WidgetTransition::MakeValue(Value);
+	return WidgetTransitionPrivate::MakeValue(Value);
 }
 FWidgetTransitionValue UWidgetTransitionFunctionLibrary::MakeColorTransitionValue(FLinearColor Value)
 {
-	return WidgetTransition::MakeValue(Value);
+	return WidgetTransitionPrivate::MakeValue(Value);
 }
 float UWidgetTransitionFunctionLibrary::AsFloat(FWidgetTransitionValue Value)
 {
@@ -869,7 +869,7 @@ void UWidgetTransitionFunctionLibrary::ClearAllWidgetTransitions(const UObject* 
 	UWidgetTransitionSubsystem* Subsystem = World ? World->GetSubsystem<UWidgetTransitionSubsystem>() : nullptr;
 	if (IsValid(Widget) && Subsystem)
 	{
-		WidgetTransition::ClearTransitionsForWidget(*Subsystem, Widget);
+		WidgetTransitionPrivate::ClearTransitionsForWidget(*Subsystem, Widget);
 	}
 }
 
@@ -898,8 +898,8 @@ void UWidgetTransitionAsyncAction::Activate()
 	}
 	UWidget* Widget = PendingTransition.Widget.Get();
 	const bool bHasBinding = IsValid(Widget) && !PendingTransition.WidgetProperty.IsNone();
-	const bool bResolved = bHasBinding && (WidgetTransition::IsMaterialBinding(PendingTransition.WidgetProperty)
-											   ? EventBinding.ResolveMaterial(Widget, WidgetTransition::GetMaterialParameter(PendingTransition.WidgetProperty))
+	const bool bResolved = bHasBinding && (WidgetTransitionPrivate::IsMaterialBinding(PendingTransition.WidgetProperty)
+										   ? EventBinding.ResolveMaterial(Widget, WidgetTransitionPrivate::GetMaterialParameter(PendingTransition.WidgetProperty))
 											   : EventBinding.Resolve(Widget, PendingTransition.WidgetProperty.ToString()));
 	if (bResolved)
 	{
@@ -920,7 +920,7 @@ void UWidgetTransitionAsyncAction::Activate()
 	}
 	// Finished must remain bound even when its execution output is unused so this action can release itself.
 	Callbacks.OnFinished.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleFinished);
-	WidgetTransition::StartTransition(Context, MoveTemp(PendingTransition), MoveTemp(Callbacks));
+	WidgetTransitionPrivate::StartTransition(Context, MoveTemp(PendingTransition), MoveTemp(Callbacks));
 }
 
 void UWidgetTransitionAsyncAction::RefreshEventValue(UWidget* Widget)
@@ -988,17 +988,17 @@ ETickableTickType UWidgetTransitionSubsystem::GetTickableTickType() const
 void UWidgetTransitionSubsystem::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	WidgetTransition::TickTransitions(*this, DeltaTime);
+	WidgetTransitionPrivate::TickTransitions(*this, DeltaTime);
 }
 
 #if WITH_DEV_AUTOMATION_TESTS
 void UWidgetTransitionSubsystem::TickTransitionsForTesting(float DeltaTime)
 {
-	WidgetTransition::TickTransitions(*this, DeltaTime);
+	WidgetTransitionPrivate::TickTransitions(*this, DeltaTime);
 }
 
 void UWidgetTransitionSubsystem::ClearTransitionsForTesting(UWidget* Widget)
 {
-	WidgetTransition::ClearTransitionsForWidget(*this, Widget);
+	WidgetTransitionPrivate::ClearTransitionsForWidget(*this, Widget);
 }
 #endif

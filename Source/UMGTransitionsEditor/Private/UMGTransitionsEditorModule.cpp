@@ -8,6 +8,7 @@
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
 #include "K2Node_CallFunction.h"
+#include "K2Node_Self.h"
 #include "SGraphPin.h"
 #include "K2Node_VariableGet.h"
 #include "Materials/MaterialInterface.h"
@@ -112,17 +113,35 @@ namespace UMGTransitionsEditor
 		UEdGraphPin* WidgetPin = PropertyPin && PropertyPin->GetOwningNode() ? PropertyPin->GetOwningNode()->FindPin(TEXT("Widget")) : nullptr;
 		return WidgetPin && !WidgetPin->LinkedTo.IsEmpty() ? FEdGraphUtilities::GetNetFromPin(WidgetPin->LinkedTo[0]) : nullptr;
 	}
+	static UWidgetBlueprint* GetWidgetBlueprint(const UEdGraphPin* PropertyPin)
+	{
+		if (UEdGraphPin* Source = GetWidgetSource(PropertyPin))
+		{
+			if (UWidgetBlueprint* Blueprint = Source->GetOwningNode()->GetTypedOuter<UWidgetBlueprint>())
+			{
+				return Blueprint;
+			}
+		}
+		return PropertyPin && PropertyPin->GetOwningNode() ? PropertyPin->GetOwningNode()->GetTypedOuter<UWidgetBlueprint>() : nullptr;
+	}
 	static UWidget* GetDesignerWidget(const UEdGraphPin* PropertyPin)
 	{
 		UEdGraphPin* Source = GetWidgetSource(PropertyPin);
 		const UK2Node_VariableGet* Get = Source ? Cast<UK2Node_VariableGet>(Source->GetOwningNode()) : nullptr;
-		UWidgetBlueprint* Blueprint = Source && Source->GetOwningNode() ? Source->GetOwningNode()->GetTypedOuter<UWidgetBlueprint>() : nullptr;
+		UWidgetBlueprint* Blueprint = GetWidgetBlueprint(PropertyPin);
 		return Get && Blueprint && Blueprint->WidgetTree ? Blueprint->WidgetTree->FindWidget(Get->GetVarName()) : nullptr;
 	}
 	static UClass* GetWidgetClassForPin(const UEdGraphPin* PropertyPin)
 	{
 		if (UEdGraphPin* Source = GetWidgetSource(PropertyPin))
 		{
+			if (Source->GetOwningNode()->IsA<UK2Node_Self>())
+			{
+				if (UWidgetBlueprint* Blueprint = GetWidgetBlueprint(PropertyPin); Blueprint && Blueprint->GeneratedClass && Blueprint->GeneratedClass->IsChildOf(UWidget::StaticClass()))
+				{
+					return Blueprint->GeneratedClass;
+				}
+			}
 			return Cast<UClass>(Source->PinType.PinSubCategoryObject.Get());
 		}
 		return UWidget::StaticClass();
