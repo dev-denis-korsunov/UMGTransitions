@@ -55,7 +55,7 @@ Rate `2` почти вдвое сокращал hot-path стоимость call
 
 ## Update interval baseline
 
-Прогон 2026-08-26, UE 5.7.4 / Mac arm64 Development, 100 linear transition без property binding / 300 кадров. `Update Interval` ограничивает только bound `Updated`; `0` сохраняет update каждый Tick, default async-ноды — `0.033` секунды.
+Прогон 2026-08-26, UE 5.7.4 / Mac arm64 Development, 100 linear transition без property binding / 300 кадров. `Update Interval` ограничивает bound `Updated` и FieldNotify broadcast; `0` сохраняет update каждый Tick, default async-ноды — `0.033` секунды.
 
 | Interval, s | μs/frame | μs/transition |
 | ---: | ---: | ---: |
@@ -86,6 +86,27 @@ Rate `2` почти вдвое сокращал hot-path стоимость call
 | FieldNotify push | 20.956 | 0.210 |
 
 Это исторический per-tick baseline. Теперь transition автоматически вызывает FieldNotify после успешной записи reflective property, но при заданном `UpdateInterval` уведомление ограничивается этим интервалом, а финальное значение уведомляется обязательно. Push-модель без interval примерно на 32% быстрее polling getter на этом сценарии: она использует native delegate и обновляет текст только как реакцию на изменение поля. `FFieldId` не хранится в каждом transition: binding сохраняет уже существующее имя поля и запрашивает id из class descriptor только для FieldNotify property, сохраняя layout `FWidgetTransitionPropertyBinding` 88 B и `FWidgetTransition` 272 B. Новый baseline с `UpdateInterval = 0.033` s будет добавлен после отдельного прогона.
+
+## Как обновлять текст
+
+`FWidgetTransition` интерполирует числовые и визуальные значения, а не `FText`. Поэтому текст всегда является consumer-ом числа: значение нужно отформатировать и передать в `UTextBlock::SetText`. Ниже — все практические пути для этого в проекте.
+
+| Подход | Поток данных | Частота | Измеренный ориентир, 100 элементов | Когда выбирать |
+| --- | --- | --- | ---: | --- |
+| Прямой imperative код | Игровой код → `SetText` | Только когда код вызывает setter | 11.002 μs/frame | Статический текст, редкие изменения, простой одноразовый UI. Самый короткий и дешёвый путь. |
+| Обычный UMG binding / `TextDelegate` | Transition → `UUserWidget.CounterValue` → getter `FText` → `TextBlock` | Pull при обновлении UI | 30.956 μs/frame | Быстрый Blueprint-прототип, когда частота обновления мала. Не подходит для множества счётчиков на каждом кадре. |
+| Async `Updated` | Transition → Blueprint dynamic multicast → `SetText` | Каждый tick или `Update Interval` | 36.604 μs/frame | Когда текст — именно реакция на ход transition и требуется Blueprint-событие/дополнительная логика. Самый гибкий, но самый дорогой вариант. |
+| FieldNotify на самом виджете | Transition → `UUserWidget.CounterValue` → FieldNotify → consumer → `SetText` | Push; каждый tick при interval `0`, либо заданный interval | 20.956 μs/frame, per-tick | Предпочтительный вариант для локального UI-состояния без отдельного источника данных. `UpdateInterval = 0.033–0.1` снижает число форматирований и invalidation. |
+| MVVM ViewModel + FieldNotify | Система/игра → `UMVVMViewModelBase` setter → MVVM binding → `TextBlock` | Push; setter или throttled producer | Новый тест подготовлен, baseline ещё не записан | Предпочтительный вариант, когда данными владеет не конкретный widget: несколько экранов, переиспользование, тестируемая логика, разделение UI и gameplay. |
+| Прямой transition binding в `Text` | — | — | — | Не применяется: поддерживаемые transition value — float, vector2D и color, а `FText` требует форматирования и локализации. Используйте один из путей выше. |
+
+### Рекомендация
+
+Для визуальных свойств (`RenderOpacity`, transform, material) bind transition напрямую: это самый дешёвый и плавный путь. Для текста, отображающего transition-значение, по умолчанию используйте `FieldNotify` и `UpdateInterval = 0.033` секунды. Если значение является данными игры, а не частным состоянием конкретного виджета, тем же способом обновляйте `UMVVMViewModelBase` и подключайте UMG MVVM binding.
+
+`Updated` оставляйте для действительно событийной логики — например, звука, порогов, побочных эффектов или нескольких нестандартных consumer-ов. Обычный polling `TextDelegate` допустим для редких обновлений, но не должен быть стандартом для анимируемых счётчиков.
+
+MVVM benchmark `ElasticUMGProject.UMGTransitions.Performance.MVVMFieldNotifyTextBinding` находится в модуле проекта, потому что `ModelViewViewModel` — опциональный engine plugin. Он измеряет setter `UMVVMViewModelBase` и FieldNotify delivery; для сравнения полного скомпилированного MVVM binding нужен отдельный тестовый `WidgetBlueprint` с реальным MVVM binding.
 
 ## Counter update baseline
 
