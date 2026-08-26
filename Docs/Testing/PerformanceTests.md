@@ -9,7 +9,7 @@
 | `Performance.Construction` | 100 000 раз сравнивает ручную сборку структуры, `Create Widget Transition` и полную pure-цепочку. | Показывает цену удобного Blueprint API до попадания transition в subsystem. |
 | `Performance.ConcurrentTick` | После прогрева выполняет 300 кадров по `1/60` для 1, 10, 100 и 500 transition с `UImage.RenderOpacity` binding. | Даёт общую картину стоимости hot path вместе с применением свойства. |
 | `Performance.Callbacks` | Сравнивает 20, 30, 50 и 100 linear transition без callback, с lifecycle-only (`Started` + `Finished`) и с `Updated` dynamic delegate, с binding и без него; каждый случай измеряется 300 кадров после прогрева. | Проверяет hot/cold split callback-ов и изолирует цену registry, копирования delegate, dispatch и reentrancy-проверки. |
-| `Performance.UpdateRate` | 100 linear transition с bound `Updated`, без binding property, при интервале 1, 2, 3 и 6 кадров. | Проверяет, что сокращение callback dispatch масштабирует hot-path стоимость ожидаемо. |
+| `Performance.UpdateInterval` | 100 linear transition с bound `Updated`, без binding property, при интервале 0, `1/30`, `1/20` и `0.1` секунды. | Проверяет, что time-based throttling callback dispatch масштабирует hot-path стоимость ожидаемо и не зависит от FPS. |
 | `Performance.AsyncTextCounter` | Измеряет 100 async transition без `Widget Property`: output `Updated` интерполирует float `0→100`, а receiver записывает целое значение в `UTextBlock`. | Показывает цену пользовательского обновления счётчика без property binding плагина. |
 | `Performance.ModeMatrix` | 300 кадров для Linear, CurveTable easing и Spring, с binding и без него, при 100 и 500 transition. CurveTable содержит `(0,0)`, `(0.5,0.2)`, `(1,1)`. | Главный сравнительный тест алгоритмов. Вариант без binding выделяет математику; с binding показывает цену типичного использования. |
 | `Performance.FastBindings` | 500 linear transition для каждого direct adapter: opacity, translation, scale, shear, angle, pivot. | Не даёт fast paths незаметно деградировать до reflective fallback. |
@@ -38,18 +38,31 @@ Stress-case, 500 linear transition / 300 кадров:
 
 Это стоимость реального Blueprint dynamic delegate: lookup в registry, копирование delegate, dispatch и вызов receiver. `Started` и `Finished` редки и не входят в hot-path benchmark. Не добавляйте `Updated` массово без необходимости; 500 подписок заметно дороже самой интерполяции.
 
-## Update rate baseline
+## Исторический frame-rate baseline
 
-Прогон 2026-08-25, UE 5.7.4 / Mac arm64 Development, 100 linear transition без property binding / 300 кадров. `Update Every N Frames` ограничивает только bound `Updated`; вычисление transition и запись property не меняются.
+Прогон 2026-08-25, UE 5.7.4 / Mac arm64 Development, 100 linear transition без property binding / 300 кадров. Удалённый `Update Every N Frames` ограничивал только bound `Updated`; вычисление transition и запись property не менялись.
 
 | Frames | μs/frame | μs/transition |
 | ---: | ---: | ---: |
 | 1 | 27.515 | 0.275 |
-| 2 (async default) | 14.094 | 0.141 |
+| 2 | 14.094 | 0.141 |
 | 3 | 9.291 | 0.093 |
 | 6 | 5.102 | 0.051 |
 
-Rate `2` почти вдвое сокращает hot-path стоимость callback. Завершающий `Updated` выполняется принудительно, чтобы consumer всегда получил target, даже если transition закончился до следующего интервала.
+Rate `2` почти вдвое сокращал hot-path стоимость callback. API заменён на `Update Interval` в секундах, поскольку frame rate зависит от FPS. Завершающий `Updated` выполняется принудительно, чтобы consumer всегда получил target, даже если transition закончился до следующего интервала.
+
+## Update interval baseline
+
+Прогон 2026-08-26, UE 5.7.4 / Mac arm64 Development, 100 linear transition без property binding / 300 кадров. `Update Interval` ограничивает только bound `Updated`; `0` сохраняет update каждый Tick, default async-ноды — `0.033` секунды.
+
+| Interval, s | μs/frame | μs/transition |
+| ---: | ---: | ---: |
+| 0 | 28.333 | 0.283 |
+| 0.033 (async default) | 15.140 | 0.151 |
+| 0.050 (`1/20`) | 10.233 | 0.102 |
+| 0.100 | 5.298 | 0.053 |
+
+При 60 FPS default `0.033` выполняет примерно 30 callback/сек на transition и почти вдвое уменьшает цену `Updated` относительно per-frame режима. При перегруженном кадре система не догоняет пропущенные события: один callback получает актуальное значение. Завершающий `Updated` принудителен.
 
 ## Counter update baseline
 

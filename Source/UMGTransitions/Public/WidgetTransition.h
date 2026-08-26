@@ -127,10 +127,10 @@ struct UMGTRANSITIONS_API FWidgetTransition
 	float SpringSpeed = 0.65f;
 	float SpringBounce = 0.45f;
 	int32 RepeatCount = 0;
-	/** Number of ticks between Updated callbacks; one preserves per-frame updates. */
-	uint8 UpdateEveryNFrames = 1;
-	/** Ticks accumulated since the previous Updated callback. */
-	uint8 UpdateFrameCounter = 0;
+	/** Seconds between Updated callbacks; zero preserves per-tick updates. */
+	float UpdateInterval = 0.0f;
+	/** Elapsed seconds since the previous Updated callback. */
+	float UpdateElapsed = 0.0f;
 	uint16 bUseFrom : 1 = false;
 	/** Defers applying From Value until the transition starts after its delay. */
 	uint16 bDeferFromValue : 1 = false;
@@ -227,8 +227,8 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FOnWidgetTransitionAsyncEvent Finished;
 
-	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Add Widget Transition Async", AdvancedDisplay = "UpdateEveryNFrames"), Category = "Widget Transition")
-	static UWidgetTransitionAsyncAction* AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition, UPARAM(meta = (ClampMin = "1", ClampMax = "255", UIMin = "1", UIMax = "10")) int32 UpdateEveryNFrames = 2);
+	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Add Widget Transition Async", AdvancedDisplay = "UpdateInterval"), Category = "Widget Transition")
+	static UWidgetTransitionAsyncAction* AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition, UPARAM(meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0")) float UpdateInterval = 0.033f);
 
 	virtual void Activate() override;
 

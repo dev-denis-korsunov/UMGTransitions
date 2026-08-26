@@ -310,9 +310,9 @@ namespace WidgetTransition
 			{
 				Transition.PropertyBinding.Apply(Transition.Widget.Get(), Value);
 			}
-			if (Transition.bHasUpdatedCallback && (bEnd || ++Transition.UpdateFrameCounter >= Transition.UpdateEveryNFrames))
+			if (Transition.bHasUpdatedCallback && (bEnd || Transition.UpdateInterval <= 0.0f || (Transition.UpdateElapsed += EffectiveDeltaTime) >= Transition.UpdateInterval))
 			{
-				Transition.UpdateFrameCounter = 0;
+				Transition.UpdateElapsed = bEnd || Transition.UpdateInterval <= 0.0f ? 0.0f : FMath::Fmod(Transition.UpdateElapsed, Transition.UpdateInterval);
 				ExecuteUpdatedCallback(Subsystem, TransitionId, Transition.Widget.Get(), Alpha, EasedAlpha);
 				if (!IsTransitionAtIndex(Subsystem, TransitionIndex, TransitionId))
 				{
@@ -657,7 +657,7 @@ namespace WidgetTransition
 		Transition.Time = FMath::Max(0.0f, Transition.Time);
 		Transition.Delay = FMath::Max(0.0f, Transition.Delay);
 		Transition.RepeatCount = FMath::Max(-1, Transition.RepeatCount);
-		Transition.UpdateEveryNFrames = FMath::Max<uint8>(Transition.UpdateEveryNFrames, 1);
+		Transition.UpdateInterval = FMath::Max(0.0f, Transition.UpdateInterval);
 		Transition.bBound = IsValid(TargetWidget) && !Transition.WidgetProperty.IsNone();
 		Transition.bHasStartedCallback = Callbacks.OnStarted.IsBound();
 		Transition.bHasUpdatedCallback = Callbacks.OnUpdated.IsBound();
@@ -837,11 +837,11 @@ void UWidgetTransitionFunctionLibrary::ClearAllWidgetTransitions(const UObject* 
 	}
 }
 
-UWidgetTransitionAsyncAction* UWidgetTransitionAsyncAction::AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition, int32 UpdateEveryNFrames)
+UWidgetTransitionAsyncAction* UWidgetTransitionAsyncAction::AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition, float UpdateInterval)
 {
 	UWidgetTransitionAsyncAction* Action = NewObject<UWidgetTransitionAsyncAction>();
 	Action->PendingTransition = MoveTemp(Transition);
-	Action->PendingTransition.UpdateEveryNFrames = static_cast<uint8>(FMath::Clamp(UpdateEveryNFrames, 1, 255));
+	Action->PendingTransition.UpdateInterval = FMath::Max(0.0f, UpdateInterval);
 	Action->EventTargetValue = Action->PendingTransition.ToValue;
 	Action->EventStartValue = Action->PendingTransition.bUseFrom ? Action->PendingTransition.FromValue : FWidgetTransitionValue();
 	Action->EventStartValue.Type = Action->EventTargetValue.Type;

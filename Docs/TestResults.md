@@ -36,8 +36,10 @@
 | 2026-08-25 | UE 5.7.4 / Mac arm64 Development | `Performance.Callbacks` | Passed | После разделения lifecycle/update флагов 100 `Started+Finished`: 0.537 μs/frame без binding и 1.190 с binding, в пределах baseline 0.503/1.143. 100 `Updated`: 27.771/28.043. |
 | 2026-08-25 | UE 5.7.4 / Mac arm64 Development | `Performance.AsyncTextCounter` | Passed | 100 plain text-счётчиков: 11.002 μs/frame; async без `Widget Property`: 36.604. Overhead async: 25.602 μs/frame, 0.256 μs/counter. |
 | 2026-08-25 | UE 5.7.4 / Mac arm64 Development | `Performance.SystemUpdateById` | Passed, rejected experiment | 100 subsystem-wide update event + `TMap` lookup по `TransitionId`: 35.844 μs/frame, 0.358 μs/transition. Выигрыш ~2% против async-счётчика — в пределах шума; код удалён. |
-| 2026-08-25 | UE 5.7.4 / Mac arm64 Development | `Runtime.UpdateRate` | Passed | Интервал 2 dispatch-ит `Updated` через кадр; завершённый transition отправляет final update независимо от rate. |
-| 2026-08-25 | UE 5.7.4 / Mac arm64 Development | `Performance.UpdateRate` | Passed | 100 `Updated`: rate 1/2/3/6 = 27.515/14.094/9.291/5.102 μs/frame. |
+| 2026-08-25 | UE 5.7.4 / Mac arm64 Development | `Runtime.UpdateRate` | Passed, historical | Frame-based API впоследствии заменён на `Update Interval` в секундах. |
+| 2026-08-25 | UE 5.7.4 / Mac arm64 Development | `Performance.UpdateRate` | Passed, historical | Удалённый frame rate 1/2/3/6 = 27.515/14.094/9.291/5.102 μs/frame. |
+| 2026-08-26 | UE 5.7.4 / Mac arm64 Development | `Runtime.UpdateInterval` | Passed | Интервал 0.033 s dispatch-ит `Updated` по накопленному времени; completed transition отправляет final update независимо от interval. |
+| 2026-08-26 | UE 5.7.4 / Mac arm64 Development | `Performance.UpdateInterval` | Passed | 100 `Updated`: interval 0/0.033/0.050/0.100 s = 28.333/15.140/10.233/5.298 μs/frame. |
 
 ## Актуальный baseline
 
