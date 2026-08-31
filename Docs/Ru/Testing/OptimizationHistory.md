@@ -36,13 +36,19 @@ Lifecycle callbacks (`Started`, `Finished`) происходят один раз
 
 Следующий этап заменил `TMap<TransitionId, Callbacks>` на dense registry с обратными индексами. `Updated` callback-и имеют собственный плотный массив индексов и единственный hot-pass. `Started` и `Finished` копируются в короткие очереди событий и вызываются после transition pass только при наступлении события. `RemoveAtSwap` обновляет обе стороны индексов; callback по-прежнему может удалить или добавить transition.
 
+Текущий этап полностью убрал callback bookkeeping из `FWidgetTransition`. Пара `LifecycleIndex`/`UpdateStateIndex` хранится в параллельном `CallbackLinks`. Во время transition и callback pass удаления только добавляют индекс в очередь; после dispatch очередь обрабатывается по убыванию, а sidecar и owner-индексы чинятся вместе с `RemoveAtSwap`. Поэтому `TransitionId` и reentrancy-проверка по стабильному ID больше не нужны.
+
+Первый sidecar-вариант каждый кадр отправлял progress и value из transition pass в update state. Pull-эксперимент уменьшил update state до `48 B`, но повторный sample в callback pass поднял стоимость 100 `Updated` до `83.676/85.329 μs/frame`. Гибрид вычислял sample один раз в transition pass и сохранял его только для transition с update state. Общий `bHasUpdateStates` fast-path не трогал `CallbackLinks`, когда update-sidecar пуст.
+
 | 100 linear transition | Без binding, μs/frame | С `RenderOpacity`, μs/frame |
 | --- | ---: | ---: |
-| No callback | 0.538 | 1.097 |
-| Lifecycle-only (`Started` + `Finished`) | 0.484 | 1.088 |
-| Bound `Updated` | 26.137 | 26.680 |
+| No callback | 6.224 | 7.667 |
+| Lifecycle-only (`Started` + `Finished`) | 6.339 | 7.783 |
+| Bound `Updated` | 79.678 | 80.243 |
 
-Решение принято: lifecycle сохранил cold-path стоимость в пределах шума, а цена `Updated` снизилась примерно на 5–6% относительно предыдущего registry (`27.771/28.043`). При завершении transition копирует финальные callback-данные в очереди и сразу удаляется; промежуточное runtime-состояние для ожидания callback-pass не нужно. Безопасность подтверждают `Runtime.CallbackReentrancy` и `Runtime.UpdateInterval`.
+Финальный API удалил widget и progress из `Updated`: событие возвращает только `FWidgetTransitionValue`, который лениво семплируется непосредственно перед dispatch. На границе repeat сохраняется редкий override snapshot, чтобы callback получил финальное значение завершённого цикла, а не начало следующего. В двух одинаковых Editor-прогонах 100 value-only `Updated` заняли `83.256–83.812/84.086–86.959 μs/frame` против `79.678/80.243` у единственного hybrid-прогона. `AsyncTextCounter` при этом стабильно улучшился с `83.403` до `79.750–80.535 μs/frame`, потому что async action больше не восстанавливает value из progress.
+
+Решение принято как UX/архитектурный компромисс: `FWidgetTransition` уменьшен с `272` до `256 B`, а вместе с обязательным `8 B` link бюджет составляет `264 B` на transition. Lifecycle остаётся cold path, transition без callbacks не получил измеримой регрессии внутри одинаковой Editor-сессии (`6.248–6.477 μs/frame` на 100). `FWidgetTransitionUpdateState` занимает `80 B` только при наличии `Updated` или FieldNotify. Безопасность подтверждают `Runtime.CallbackReentrancy`, `Runtime.RemoveAtSwap`, `Runtime.UpdateInterval` и repeat-value regression внутри interval-теста.
 
 ## Spring
 
@@ -84,7 +90,7 @@ Lifecycle callbacks (`Started`, `Finished`) происходят один раз
 | Transition `TArray`, packed vs после 500 swap removals | 2.591 vs 2.563 μs/frame | `RemoveAtSwap` сохраняет плотность и не ухудшает tick. |
 | 50 000 `RemoveAtSwap` | 0.034 μs/removal | Удаление достаточно дешёвое для ожидаемого числа transition. |
 
-`TArray` делает внутренние индексы нестабильными. Это компенсируется в двух helper-ах: при swap spring обновляется `SpringIndex` владельца, при swap transition обновляется `SpringTransitionIndices` владельца spring. Внешний API использует монотонный `TransitionId`, а не индекс массива.
+`TArray` делает внутренние индексы нестабильными. При swap spring обновляется `SpringIndex` владельца, при swap transition обновляются `SpringTransitionIndices`, параллельный `CallbackLinks` и owner-индексы callback records. Внешний Blueprint API не публикует внутренний индекс transition.
 
 ## Индексы режимов и widget
 

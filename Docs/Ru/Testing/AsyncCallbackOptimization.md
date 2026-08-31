@@ -1,6 +1,6 @@
 # Карта оптимизации async callback-ов
 
-Документ описывает только `UWidgetTransitionAsyncAction`. Runtime-хранилище transition и его hot path не меняются в рамках этой работы. Цель — уменьшить память и стоимость async-ноды, сохранив стандартные Blueprint execution outputs `Started`, `Updated` и `Finished`.
+Документ описывает async action и связанное runtime-хранилище callback-ов. Цель — уменьшить память и стоимость async-ноды, сохранив стандартные Blueprint execution outputs `Started`, `Updated` и `Finished`.
 
 ## Текущее устройство
 
@@ -24,6 +24,8 @@ Async action дополнительно хранит состояние знач
 | 3. Уменьшить async value state | Исследование | Проверить, можно ли хранить тип и каналы компактнее без копий `FWidgetTransitionValue` | Потенциально 32–64 B на action | Средний |
 | 4. Async-specific dispatcher | Отложен | Заменить три dynamic delegate в runtime на компактную ссылку на async action и mask событий | Снижение runtime callback storage для async | Высокий |
 | 5. Контроль lifetime | Обязателен для этапа 4 | Гарантировать, что async action не уничтожается до `Finished`, включая очистку widget и reentrancy | Исключить dangling UObject callback | Высокий |
+
+Runtime sidecar реализован отдельно от async action: transition хранит только данные анимации, а callback links, lifecycle delegates и update state принадлежат subsystem. Принятый гибрид и результаты push/pull экспериментов описаны в [истории оптимизаций](OptimizationHistory.md).
 
 ## Этап 1: локальный пакет
 

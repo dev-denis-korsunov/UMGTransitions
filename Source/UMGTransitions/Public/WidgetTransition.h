@@ -14,7 +14,32 @@ class UWidget;
 class UMaterialInstanceDynamic;
 struct FRealCurve;
 
-DECLARE_DYNAMIC_DELEGATE_ThreeParams(FOnWidgetTransitionUpdate, UWidget*, Widget, float, NormalizedProgress, float, EasedProgress);
+UENUM(BlueprintType)
+enum class EWidgetTransitionValueType : uint8
+{
+	Float,
+	Vector2D,
+	LinearColor,
+};
+
+/**
+ * Type-tagged Blueprint endpoint. Runtime code expands this value to the channel
+ * count of the selected binding before the transition starts.
+ */
+USTRUCT(BlueprintType)
+struct UMGTRANSITIONS_API FWidgetTransitionValue
+{
+	GENERATED_BODY()
+
+	/** Normalized transition channels. Split this pin to edit its FVector4f directly. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widget Transition")
+	FVector4f Channels = FVector4f::Zero();
+
+	/** Semantic type selected by Make Transition Value. Kept internal so split pins stay compact. */
+	EWidgetTransitionValueType Type = EWidgetTransitionValueType::Float;
+};
+
+DECLARE_DYNAMIC_DELEGATE_OneParam(FOnWidgetTransitionUpdate, FWidgetTransitionValue, Value);
 DECLARE_DYNAMIC_DELEGATE_OneParam(FOnWidgetTransitionEvent, UWidget*, Widget);
 
 /** Callback input package used while a transition is created. */
@@ -36,22 +61,25 @@ struct FWidgetTransitionLifecycleCallbacks
 	FOnWidgetTransitionEvent OnStarted;
 	FOnWidgetTransitionEvent OnFinished;
 	int32 TransitionIndex = INDEX_NONE;
-	uint64 TransitionId = 0;
 };
 
 /** Dense state for Updated callbacks and FieldNotify throttling. */
 struct FWidgetTransitionUpdateState
 {
 	FOnWidgetTransitionUpdate OnUpdated;
+	FWidgetTransitionValue OverrideValue;
 	int32 TransitionIndex = INDEX_NONE;
-	uint64 TransitionId = 0;
 	float UpdateElapsed = 0.0f;
-	float NormalizedProgress = 0.0f;
-	float EasedProgress = 0.0f;
-	FVector4f PendingValue = FVector4f::Zero();
 	int32 UpdateCallbackIndex = INDEX_NONE;
 	bool bFieldNotify = false;
-	bool bFieldNotifyValuePending = false;
+	bool bHasOverrideSample = false;
+};
+
+/** Callback-system sidecar stored parallel to the transition array. */
+struct FWidgetTransitionCallbackLinks
+{
+	int32 LifecycleIndex = INDEX_NONE;
+	int32 UpdateStateIndex = INDEX_NONE;
 };
 
 /** Rare lifecycle callback copied into a short dispatch queue. */
@@ -66,17 +94,7 @@ struct FWidgetTransitionLifecycleEvent
 struct FWidgetTransitionUpdateEvent
 {
 	FOnWidgetTransitionUpdate Callback;
-	TWeakObjectPtr<UWidget> Widget;
-	float NormalizedProgress = 0.0f;
-	float EasedProgress = 0.0f;
-};
-
-UENUM(BlueprintType)
-enum class EWidgetTransitionValueType : uint8
-{
-	Float,
-	Vector2D,
-	LinearColor,
+	FWidgetTransitionValue Value;
 };
 
 enum class EWidgetTransitionBindingKind : uint8
@@ -93,25 +111,8 @@ enum class EWidgetTransitionBindingKind : uint8
 	RenderTransformPivot,
 };
 
-/**
- * Type-tagged Blueprint endpoint. Runtime code expands this value to the channel
- * count of the selected binding before the transition starts.
- */
-USTRUCT(BlueprintType)
-struct UMGTRANSITIONS_API FWidgetTransitionValue
-{
-	GENERATED_BODY()
-
-	/** Normalized transition channels. Split this pin to edit its FVector4f directly. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widget Transition")
-	FVector4f Channels = FVector4f::Zero();
-
-	/** Semantic type selected by Make Transition Value. Kept internal so split pins stay compact. */
-	EWidgetTransitionValueType Type = EWidgetTransitionValueType::Float;
-};
-
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWidgetTransitionAsyncEvent, FWidgetTransitionValue, Value);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnWidgetTransitionAsyncUpdate, FWidgetTransitionValue, Value, float, NormalizedProgress, float, EasedProgress);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWidgetTransitionAsyncUpdate, FWidgetTransitionValue, Value);
 
 /** Cached access to a transition property on a widget. */
 USTRUCT()
@@ -188,12 +189,6 @@ struct UMGTRANSITIONS_API FWidgetTransition
 	uint16 bFitSpringToTime : 1 = false;
 	/** Whether this transition writes its sampled value to a widget property. */
 	uint16 bBound : 1 = false;
-	/** Stable key used to verify callback reentrancy. */
-	uint64 TransitionId = 0;
-	/** Index into UWidgetTransitionSubsystem::LifecycleCallbacks, or INDEX_NONE. */
-	int32 LifecycleCallbackIndex = INDEX_NONE;
-	/** Index into UWidgetTransitionSubsystem::UpdateStates, or INDEX_NONE. */
-	int32 UpdateStateIndex = INDEX_NONE;
 	/** Index into UWidgetTransitionSubsystem::Springs when bUseSpring is enabled. */
 	int32 SpringIndex = INDEX_NONE;
 	/** Resolved once when the transition is added, avoiding a CurveTable lookup every tick. */
@@ -278,14 +273,13 @@ private:
 	UFUNCTION()
 	void HandleStarted(UWidget* Widget);
 	UFUNCTION()
-	void HandleUpdated(UWidget* Widget, float NormalizedProgress, float EasedProgress);
+	void HandleUpdated(FWidgetTransitionValue Value);
 	UFUNCTION()
 	void HandleFinished(UWidget* Widget);
 	void RefreshEventValue(UWidget* Widget);
 
 	FWidgetTransition PendingTransition;
 	FWidgetTransitionValue EventValue;
-	FWidgetTransitionValue EventStartValue;
 	FWidgetTransitionValue EventTargetValue;
 	FWidgetTransitionPropertyBinding EventBinding;
 	TWeakObjectPtr<const UObject> WorldContextObject;
@@ -296,7 +290,7 @@ public:
 	/** Initializes the update output path without a UWorld for automation benchmarks. */
 	bool InitializeUpdateForTesting(FWidgetTransition Transition);
 	/** Dispatches one update through the same async output handler used at runtime. */
-	void DispatchUpdatedForTesting(UWidget* Widget, float NormalizedProgress, float EasedProgress);
+	void DispatchUpdatedForTesting(FWidgetTransitionValue Value);
 #endif
 };
 
@@ -323,12 +317,16 @@ public:
 	TArray<FWidgetTransitionUpdateState> UpdateStates;
 	/** Dense update-state indices; removal uses RemoveAtSwap. */
 	TArray<int32> UpdateStateIndices;
+	/** Callback indices stored parallel to Transitions. */
+	TArray<FWidgetTransitionCallbackLinks> CallbackLinks;
+	/** Transition indices requested for removal during callback dispatch. */
+	TArray<int32> PendingRemovalIndices;
 	/** Lifecycle events accumulated by the transition pass and dispatched after it. */
 	TArray<FWidgetTransitionLifecycleEvent> StartedCallbackEvents;
 	TArray<FWidgetTransitionUpdateEvent> FinalUpdatedCallbackEvents;
 	TArray<FWidgetTransitionLifecycleEvent> FinishedCallbackEvents;
-	/** Monotonic key source; array indices are unstable after RemoveAtSwap. */
-	uint64 NextTransitionId = 1;
+	/** Defers structural mutation while transition and callback passes are active. */
+	bool bDeferringTransitionRemovals = false;
 
 #if WITH_DEV_AUTOMATION_TESTS
 	/** Invokes the transition hot path without requiring an initialized UWorld. */

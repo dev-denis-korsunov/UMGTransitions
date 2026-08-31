@@ -1,5 +1,7 @@
 # UMGTransitions — журнал automation-тестов
 
+[English summary](../En/TestResults.md)
+
 Здесь записываются только завершённые прогоны. Описание покрытия находится в [Testing.md](Testing.md), методика perf-тестов — в [PerformanceTests.md](Testing/PerformanceTests.md), причины архитектурных решений — в [OptimizationHistory.md](Testing/OptimizationHistory.md).
 
 Новая строка добавляется после успешного запуска с фактическими значениями из лога. `Perf`-тесты не считаются unit-тестами с жёстким порогом: их результаты сравниваются лишь с прогонами той же конфигурации.
@@ -46,6 +48,11 @@
 | 2026-08-31 | UE 5.7.4 / Mac arm64 Development | `Performance.Callbacks` | Passed | Dense callback registry: 100 `Updated` 26.137/26.680 μs/frame без/с binding вместо 27.771/28.043 (−5.9%/−4.9%); lifecycle 0.528/1.093 остаётся в пределах baseline. |
 | 2026-08-31 | UE 5.7.4 / Mac arm64 Development | `Runtime.CallbackReentrancy` | Passed | Callback безопасно удаляет свой transition и расширяет transition array при плотном callback registry и `RemoveAtSwap`. |
 | 2026-08-31 | UE 5.7.4 / Mac arm64 Development | `Runtime.UpdateInterval` | Passed | Callback-local interval сохраняет throttling и обязательный final update. |
+| 2026-08-31 | UE 5.7 / Mac arm64 Development | Run 5: callback sidecar | Passed, intermediate | `FWidgetTransition` 256 B + links 8 B; lifecycle 72 B, update state 80 B. Runtime correctness passed. Push в sidecar каждый frame увеличил no-callback baseline и был заменён pull-моделью. |
+| 2026-08-31 | UE 5.7 / Mac arm64 Development | Callback pull | Passed, rejected experiment | Update state 48 B; 100 no-callback 6.104/7.354 μs/frame, `Updated` 83.676/85.329. Повторный sample в callback pass оказался дороже. |
+| 2026-08-31 | UE 5.7 / Mac arm64 Development | Callback hybrid + empty-sidecar fast path | Passed, accepted | Transition 256 B + link 8 B; update state 80 B. 100 no-callback 6.224/7.667, lifecycle 6.339/7.783, `Updated` 79.678/80.243 μs/frame. Reentrancy, swap removal и interval прошли. |
+| 2026-08-31 | UE 5.7 / Mac arm64 Development | Value-only lazy callback | Passed, accepted | `Updated` возвращает только value. 100 no-callback 6.248/7.539, lifecycle 6.107/7.457, `Updated` 83.256/84.086 μs/frame. Async text 80.535 против 83.403 у предыдущего API. Все callback runtime-тесты прошли. |
+| 2026-08-31 | UE 5.7 / Mac arm64 Development | Value-only lazy callback, Run 12 | Passed | 100 no-callback 6.477/7.482, lifecycle 6.122/7.268, `Updated` 83.812/86.959 μs/frame. Async text 79.750; runtime-тесты повторно прошли. |
 
 ## Актуальный baseline
 

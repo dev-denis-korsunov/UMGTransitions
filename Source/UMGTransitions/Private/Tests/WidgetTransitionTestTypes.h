@@ -19,16 +19,19 @@ public:
 	UFUNCTION()
 	void HandleStarted(UWidget* InWidget);
 	UFUNCTION()
-	void HandleUpdated(UWidget* InWidget, float NormalizedProgress, float EasedProgress);
+	void HandleUpdated(FWidgetTransitionValue InValue);
+	UFUNCTION()
+	void HandleUpdatedAndCapture(FWidgetTransitionValue InValue);
 	UFUNCTION()
 	void HandleFinished(UWidget* InWidget);
 	UFUNCTION()
-	void HandleAsyncUpdated(FWidgetTransitionValue InValue, float NormalizedProgress, float EasedProgress);
+	void HandleAsyncUpdated(FWidgetTransitionValue InValue);
 
 	int32 StartedCount = 0;
 	int32 UpdatedCount = 0;
 	int32 FinishedCount = 0;
 	int32 AsyncValueUpdateCount = 0;
+	FWidgetTransitionValue LastTransitionValue;
 	TWeakObjectPtr<UWidget> LastWidget;
 	TWeakObjectPtr<UTextBlock> CounterText;
 	TWeakObjectPtr<UWidgetTransitionSubsystem> SubsystemToClear;
