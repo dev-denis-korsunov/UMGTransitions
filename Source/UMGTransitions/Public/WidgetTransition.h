@@ -288,7 +288,6 @@ private:
 	FWidgetTransitionValue EventStartValue;
 	FWidgetTransitionValue EventTargetValue;
 	FWidgetTransitionPropertyBinding EventBinding;
-	FWidgetTransitionCallbacks Callbacks;
 	TWeakObjectPtr<const UObject> WorldContextObject;
 	bool bBroadcastUpdateValue = false;
 

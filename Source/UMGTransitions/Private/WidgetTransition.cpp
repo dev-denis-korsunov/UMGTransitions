@@ -999,6 +999,7 @@ UWidgetTransitionAsyncAction* UWidgetTransitionAsyncAction::AddWidgetTransition(
 
 void UWidgetTransitionAsyncAction::Activate()
 {
+	FWidgetTransitionCallbacks Callbacks;
 	const UObject* Context = WorldContextObject.Get();
 	if (!IsValid(Context))
 	{
