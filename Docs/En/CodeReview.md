@@ -6,7 +6,7 @@ This page tracks the cleanup work found during the callback-storage review. Each
 
 | Priority | Status | Area | Finding | Intended change |
 | --- | --- | --- | --- | --- |
-| High | Planned | Test isolation | Automation-only `UCLASS` types are generated inside the runtime module, including non-editor targets. Their implementations are guarded by `WITH_DEV_AUTOMATION_TESTS`, which also creates a potential link mismatch. | Move all automation code and reflected test types into an editor-only `UMGTransitionsTests` module. Keep only narrow test hooks in runtime code. |
+| High | Solved | Test isolation | Automation-only `UCLASS` types were generated inside the runtime module, including non-editor targets. Their implementations were guarded by `WITH_DEV_AUTOMATION_TESTS`, which also created a potential link mismatch. | Automation code and reflected test types now live in the editor-only `UMGTransitionsTests` module. Runtime retains only narrow helpers guarded by `WITH_DEV_AUTOMATION_TESTS`. |
 | High | Planned | Update callbacks | `UpdateStates` is already dense and structural removal is deferred during dispatch, but `UpdateStateIndices` and `UpdateCallbackIndex` maintain a second identity layer. | Iterate the dense update-state array directly and repair only transition-to-state links after `RemoveAtSwap`. |
 | Medium | Planned | Callback API | `HasBoundCallbacks`, duplicate async multicast types, and `bBroadcastUpdateValue` no longer contribute distinct behavior. | Remove the unused helper, use one value-event type, and derive broadcast behavior from whether the delegate is bound. |
 | Medium | Planned | Tick intermediates | `FSample` carries normalized and eased progress that no consumer observes after sampling. | Keep only the sampled value, completion flag, and cycle-completion flag. |
@@ -28,4 +28,3 @@ This page tracks the cleanup work found during the callback-storage review. Each
 - Layout: `Diagnostics.StorageLayout`.
 - Callback cost: `Performance.Callbacks` and `Performance.UpdateInterval`.
 - Module changes: full `ElasticUMGProjectEditor` Development build.
-

@@ -1,8 +1,8 @@
 #pragma once
 
+#include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "Components/Widget.h"
-#include "CoreMinimal.h"
 #include "WidgetTransition.h"
 
 #include "WidgetTransitionTestTypes.generated.h"

@@ -329,6 +329,8 @@ public:
 	bool bDeferringTransitionRemovals = false;
 
 #if WITH_DEV_AUTOMATION_TESTS
+	/** Adds a transition and its callback package without requiring an initialized UWorld. */
+	void AddTransitionForTesting(FWidgetTransition Transition, FWidgetTransitionCallbacks Callbacks);
 	/** Invokes the transition hot path without requiring an initialized UWorld. */
 	void TickTransitionsForTesting(float DeltaTime);
 	/** Clears transitions through the same removal path used by Clear All Widget Transitions. */

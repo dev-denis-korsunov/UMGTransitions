@@ -1,7 +1,6 @@
 #include "WidgetTransition.h"
-#include "WidgetTransitionCallbacks.h"
 #include "WidgetSelectorLibrary.h"
-#include "Tests/WidgetTransitionTestTypes.h"
+#include "WidgetTransitionTestTypes.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -52,8 +51,7 @@ namespace
 
 	void AddTransitionWithCallbacks(UWidgetTransitionSubsystem* Subsystem, FWidgetTransition Transition, FWidgetTransitionCallbacks Callbacks)
 	{
-		const int32 TransitionIndex = Subsystem->Transitions.Add(MoveTemp(Transition));
-		WidgetTransitionCallbacks::Register(*Subsystem, TransitionIndex, MoveTemp(Callbacks));
+		Subsystem->AddTransitionForTesting(MoveTemp(Transition), MoveTemp(Callbacks));
 	}
 
 	enum class EWidgetTransitionBenchmarkMode : uint8

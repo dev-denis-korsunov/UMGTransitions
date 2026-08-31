@@ -8,7 +8,7 @@
 
 | Приоритет | Статус | Область | Наблюдение | Изменение |
 | --- | --- | --- | --- | --- |
-| High | Planned | Изоляция тестов | Automation-only `UCLASS` генерируются внутри runtime-модуля, в том числе для не-editor targets. Реализации закрыты `WITH_DEV_AUTOMATION_TESTS`, что дополнительно создаёт риск несовпадения UHT-кода и линковки. | Перенести automation-код и отражаемые тестовые типы в editor-only модуль `UMGTransitionsTests`. В runtime оставить только узкие test hooks. |
+| High | Solved | Изоляция тестов | Automation-only `UCLASS` генерировались внутри runtime-модуля, в том числе для не-editor targets. Реализации были закрыты `WITH_DEV_AUTOMATION_TESTS`, что создавало риск несовпадения UHT-кода и линковки. | Automation-код и отражаемые тестовые типы перенесены в editor-only модуль `UMGTransitionsTests`. В runtime остались только узкие helpers под `WITH_DEV_AUTOMATION_TESTS`. |
 | High | Planned | Update-коллбеки | `UpdateStates` уже является плотным массивом, а структурное удаление откладывается на время dispatch, но `UpdateStateIndices` и `UpdateCallbackIndex` поддерживают второй слой идентичности. | Итерировать плотный массив состояний напрямую и после `RemoveAtSwap` чинить только связи transition-to-state. |
 | Medium | Planned | Callback API | `HasBoundCallbacks`, дублирующиеся типы async multicast и `bBroadcastUpdateValue` больше не задают отдельного поведения. | Удалить неиспользуемый helper, оставить один тип события со значением и определять необходимость broadcast по bound delegate. |
 | Medium | Planned | Промежуточные данные tick | `FSample` хранит normalized/eased progress, которые после вычисления sample никто не читает. | Оставить только вычисленное значение, признак завершения и признак завершения цикла. |
@@ -30,4 +30,3 @@
 - Layout: `Diagnostics.StorageLayout`.
 - Стоимость коллбеков: `Performance.Callbacks`, `Performance.UpdateInterval`.
 - Изменения модулей: полная Development-сборка `ElasticUMGProjectEditor`.
-

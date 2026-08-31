@@ -24,6 +24,11 @@
 			"Name": "UMGTransitionsEditor",
 			"Type": "Editor",
 			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "UMGTransitionsTests",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
 		}
 	]
 }

@@ -850,6 +850,12 @@ void UWidgetTransitionSubsystem::Tick(float DeltaTime)
 }
 
 #if WITH_DEV_AUTOMATION_TESTS
+void UWidgetTransitionSubsystem::AddTransitionForTesting(FWidgetTransition Transition, FWidgetTransitionCallbacks Callbacks)
+{
+	const int32 TransitionIndex = Transitions.Add(MoveTemp(Transition));
+	WidgetTransitionCallbacks::Register(*this, TransitionIndex, MoveTemp(Callbacks));
+}
+
 void UWidgetTransitionSubsystem::TickTransitionsForTesting(float DeltaTime)
 {
 	WidgetTransitionPrivate::TickTransitions(*this, DeltaTime);
