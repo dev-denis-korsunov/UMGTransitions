@@ -7,6 +7,7 @@ English documentation for the UMGTransitions Unreal Engine plugin.
 - [Plugin README](../../README.md) — installation and API overview.
 - [Testing](Testing.md) — test groups and how to run them.
 - [Known issues](KnownIssues.md) — confirmed runtime issues and regression coverage.
+- [Runtime code review](CodeReview.md) — cleanup queue, retained structures, and verification policy.
 - [Test results](TestResults.md) — chronological automation history.
 - [Runtime tests](Testing/RuntimeTests.md) — correctness coverage.
 - [Performance tests](Testing/PerformanceTests.md) — benchmark methodology.

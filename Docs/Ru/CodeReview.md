@@ -1,0 +1,33 @@
+# Ревью runtime-кода и план очистки
+
+[English version](../En/CodeReview.md)
+
+Здесь зафиксированы результаты ревью хранилища коллбеков и последующая очистка. Каждое независимо проверяемое изменение оформляется отдельным коммитом. Для изменений чувствительного runtime-пути обязательны regression-тесты и сравнение с записанными замерами.
+
+## Очередь очистки
+
+| Приоритет | Статус | Область | Наблюдение | Изменение |
+| --- | --- | --- | --- | --- |
+| High | Planned | Изоляция тестов | Automation-only `UCLASS` генерируются внутри runtime-модуля, в том числе для не-editor targets. Реализации закрыты `WITH_DEV_AUTOMATION_TESTS`, что дополнительно создаёт риск несовпадения UHT-кода и линковки. | Перенести automation-код и отражаемые тестовые типы в editor-only модуль `UMGTransitionsTests`. В runtime оставить только узкие test hooks. |
+| High | Planned | Update-коллбеки | `UpdateStates` уже является плотным массивом, а структурное удаление откладывается на время dispatch, но `UpdateStateIndices` и `UpdateCallbackIndex` поддерживают второй слой идентичности. | Итерировать плотный массив состояний напрямую и после `RemoveAtSwap` чинить только связи transition-to-state. |
+| Medium | Planned | Callback API | `HasBoundCallbacks`, дублирующиеся типы async multicast и `bBroadcastUpdateValue` больше не задают отдельного поведения. | Удалить неиспользуемый helper, оставить один тип события со значением и определять необходимость broadcast по bound delegate. |
+| Medium | Planned | Промежуточные данные tick | `FSample` хранит normalized/eased progress, которые после вычисления sample никто не читает. | Оставить только вычисленное значение, признак завершения и признак завершения цикла. |
+| Medium | Planned | Поверхность рефлексии | `EWidgetTransitionValueType` помечен `BlueprintType`, хотя не используется как enum-пин Blueprint. `FWidgetTransitionPropertyBinding` отражается как структура без отражаемых полей. | Убрать необязательную рефлексию там, где она не нужна UHT и Blueprint; отдельно проверить editor-селектор свойств. |
+| Low | Planned | Module boilerplate | Runtime module class не имеет логики startup/shutdown. | Заменить его на `FDefaultModuleImpl`. |
+| Low | Planned | Build dependencies | Часть зависимостей runtime/editor модулей выглядит неиспользуемой. | Убирать по одной и подтверждать очистку полной Development-сборкой editor target. |
+| Отдельный эксперимент | Deferred | Lifecycle payload | Внутренние lifecycle callbacks всё ещё передают widget, поэтому async action хранит binding и target value. | Отдельно прототипировать value-only lifecycle payload и оставить его только при улучшении читаемости, поведения, памяти и производительности. |
+
+## Структуры, которые оставляем намеренно
+
+- `CallbackLinks` — компактная связь transition с sidecar-хранилищами для удаления и dispatch.
+- Раздельные lifecycle/update массивы не заставляют per-frame проход читать lifecycle-only делегаты.
+- `PendingRemovalIndices` и очереди финальных update events нужны для безопасной callback reentrancy.
+- `SpringTransitionIndices` сохраняет плотный проход по spring-состояниям и не встраивает владение в сам spring.
+
+## Политика проверки
+
+- Runtime-поведение: `Runtime.CallbackReentrancy`, `Runtime.RemoveAtSwap`, `Runtime.UpdateInterval`.
+- Layout: `Diagnostics.StorageLayout`.
+- Стоимость коллбеков: `Performance.Callbacks`, `Performance.UpdateInterval`.
+- Изменения модулей: полная Development-сборка `ElasticUMGProjectEditor`.
+
