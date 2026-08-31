@@ -34,9 +34,15 @@ Lifecycle callbacks (`Started`, `Finished`) происходят один раз
 | Lifecycle-only (`Started` + `Finished`) | 0.537 | 1.190 |
 | Bound `Updated` | 27.771 | 28.043 |
 
-Решение принято: хранить отдельные bitfield-флаги `bHasStartedCallback`, `bHasUpdatedCallback` и `bHasFinishedCallback`; async action привязывает внутренний delegate только для подключённого execution output. Lifecycle-only переходы не платят per-frame стоимость. `Updated` остаётся явной opt-in ценой Blueprint dynamic delegate — около 0.27–0.28 μs/transition/frame.
+Следующий этап заменил `TMap<TransitionId, Callbacks>` на dense registry с обратными индексами. `Updated` callback-и имеют собственный плотный массив индексов и единственный hot-pass. `Started` и `Finished` копируются в короткие очереди событий и вызываются после transition pass только при наступлении события. `RemoveAtSwap` обновляет обе стороны индексов; callback по-прежнему может удалить или добавить transition.
 
-Временный unsafe-эксперимент без локальной копии `Updated` delegate дал для 100 callback 26.020 вместо 27.771 μs/frame (около −6.3%), но он позволяет callback удалить запись `TMap` во время её исполнения и потому отклонён. Это не heap allocation: `TScriptDelegate` в UE при копировании переносит только weak object pointer и `FName`. Основная цена остаётся в dynamic `ProcessEvent`; безопасная копия сохраняется.
+| 100 linear transition | Без binding, μs/frame | С `RenderOpacity`, μs/frame |
+| --- | ---: | ---: |
+| No callback | 0.538 | 1.097 |
+| Lifecycle-only (`Started` + `Finished`) | 0.484 | 1.088 |
+| Bound `Updated` | 26.137 | 26.680 |
+
+Решение принято: lifecycle сохранил cold-path стоимость в пределах шума, а цена `Updated` снизилась примерно на 5–6% относительно предыдущего registry (`27.771/28.043`). При завершении transition копирует финальные callback-данные в очереди и сразу удаляется; промежуточное runtime-состояние для ожидания callback-pass не нужно. Безопасность подтверждают `Runtime.CallbackReentrancy` и `Runtime.UpdateInterval`.
 
 ## Spring
 

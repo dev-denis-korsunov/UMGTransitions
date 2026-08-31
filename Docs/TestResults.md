@@ -43,6 +43,9 @@
 | 2026-08-26 | UE 5.7.4 / Mac arm64 Development | `Performance.ExternalTextBinding` | Passed | 100 external `CounterValue` reflective binding + `UTextBlock.TextDelegate` pull: 30.956 μs/frame, 0.310 μs/widget. Slate layout/paint не входят в headless замер. |
 | 2026-08-26 | UE 5.7.4 / Mac arm64 Development | `Performance.FieldNotifyTextBinding` | Passed, per-tick baseline | 100 FieldNotify `CounterValue` push binding: 20.956 μs/frame, 0.210 μs/widget, ~32% быстрее polling `TextDelegate`; все 30 000 notification доставлены. Последующий вариант с `UpdateInterval` требует отдельного прогона. |
 | 2026-08-26 | UE 5.7.4 / Mac arm64 Development | `Diagnostics.StorageLayout` | Passed | После FieldNotify без per-transition `FFieldId`: binding 88 B, transition 272 B. |
+| 2026-08-31 | UE 5.7.4 / Mac arm64 Development | `Performance.Callbacks` | Passed | Dense callback registry: 100 `Updated` 26.137/26.680 μs/frame без/с binding вместо 27.771/28.043 (−5.9%/−4.9%); lifecycle 0.528/1.093 остаётся в пределах baseline. |
+| 2026-08-31 | UE 5.7.4 / Mac arm64 Development | `Runtime.CallbackReentrancy` | Passed | Callback безопасно удаляет свой transition и расширяет transition array при плотном callback registry и `RemoveAtSwap`. |
+| 2026-08-31 | UE 5.7.4 / Mac arm64 Development | `Runtime.UpdateInterval` | Passed | Callback-local interval сохраняет throttling и обязательный final update. |
 
 ## Актуальный baseline
 

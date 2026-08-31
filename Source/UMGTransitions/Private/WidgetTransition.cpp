@@ -147,12 +147,46 @@ namespace WidgetTransitionPrivate
 		Transition.SpringIndex = INDEX_NONE;
 	}
 
+	static void RemoveCallbacks(UWidgetTransitionSubsystem& Subsystem, FWidgetTransition& Transition)
+	{
+		if (Transition.CallbackIndex == INDEX_NONE)
+		{
+			return;
+		}
+		const int32 CallbackIndex = Transition.CallbackIndex;
+		const int32 UpdateCallbackIndex = Subsystem.Callbacks[CallbackIndex].UpdateCallbackIndex;
+		if (UpdateCallbackIndex != INDEX_NONE)
+		{
+			const int32 LastUpdateCallbackIndex = Subsystem.UpdateCallbackIndices.Num() - 1;
+			Subsystem.UpdateCallbackIndices.RemoveAtSwap(UpdateCallbackIndex);
+			if (UpdateCallbackIndex < LastUpdateCallbackIndex)
+			{
+				Subsystem.Callbacks[Subsystem.UpdateCallbackIndices[UpdateCallbackIndex]].UpdateCallbackIndex = UpdateCallbackIndex;
+			}
+		}
+		const int32 LastCallbackIndex = Subsystem.Callbacks.Num() - 1;
+		Subsystem.Callbacks.RemoveAtSwap(CallbackIndex);
+		if (CallbackIndex < LastCallbackIndex)
+		{
+			FWidgetTransitionCallbacks& MovedCallbacks = Subsystem.Callbacks[CallbackIndex];
+			if (Subsystem.Transitions.IsValidIndex(MovedCallbacks.TransitionIndex))
+			{
+				Subsystem.Transitions[MovedCallbacks.TransitionIndex].CallbackIndex = CallbackIndex;
+			}
+			if (MovedCallbacks.UpdateCallbackIndex != INDEX_NONE)
+			{
+				Subsystem.UpdateCallbackIndices[MovedCallbacks.UpdateCallbackIndex] = CallbackIndex;
+			}
+		}
+		Transition.CallbackIndex = INDEX_NONE;
+	}
+
 	static void RemoveTransition(UWidgetTransitionSubsystem& Subsystem, int32 TransitionIndex)
 	{
 		FWidgetTransition& Transition = Subsystem.Transitions[TransitionIndex];
 		const int32 LastTransitionIndex = Subsystem.Transitions.Num() - 1;
 		RemoveSpring(Subsystem, Transition);
-		Subsystem.Callbacks.Remove(Transition.TransitionId);
+		RemoveCallbacks(Subsystem, Transition);
 		if (TransitionIndex < LastTransitionIndex)
 		{
 			const FWidgetTransition& LastTransition = Subsystem.Transitions.Last();
@@ -182,31 +216,9 @@ namespace WidgetTransitionPrivate
 		return Subsystem.Transitions.IsValidIndex(TransitionIndex) && Subsystem.Transitions[TransitionIndex].TransitionId == TransitionId;
 	}
 
-	static void ExecuteStartedCallback(UWidgetTransitionSubsystem& Subsystem, uint64 TransitionId, UWidget* Widget)
+	static bool IsCallbackAtIndex(const UWidgetTransitionSubsystem& Subsystem, int32 CallbackIndex, uint64 TransitionId)
 	{
-		if (const FWidgetTransitionCallbacks* StoredCallbacks = Subsystem.Callbacks.Find(TransitionId))
-		{
-			const FOnWidgetTransitionEvent Callback = StoredCallbacks->OnStarted;
-			Callback.ExecuteIfBound(Widget);
-		}
-	}
-
-	static void ExecuteUpdatedCallback(UWidgetTransitionSubsystem& Subsystem, uint64 TransitionId, UWidget* Widget, float Alpha, float EasedAlpha)
-	{
-		if (const FWidgetTransitionCallbacks* StoredCallbacks = Subsystem.Callbacks.Find(TransitionId))
-		{
-			const FOnWidgetTransitionUpdate Callback = StoredCallbacks->OnUpdated;
-			Callback.ExecuteIfBound(Widget, Alpha, EasedAlpha);
-		}
-	}
-
-	static void ExecuteFinishedCallback(UWidgetTransitionSubsystem& Subsystem, uint64 TransitionId, UWidget* Widget)
-	{
-		if (const FWidgetTransitionCallbacks* StoredCallbacks = Subsystem.Callbacks.Find(TransitionId))
-		{
-			const FOnWidgetTransitionEvent Callback = StoredCallbacks->OnFinished;
-			Callback.ExecuteIfBound(Widget);
-		}
+		return Subsystem.Callbacks.IsValidIndex(CallbackIndex) && Subsystem.Callbacks[CallbackIndex].TransitionId == TransitionId && IsTransitionAtIndex(Subsystem, Subsystem.Callbacks[CallbackIndex].TransitionIndex, TransitionId);
 	}
 
 	static void StartSpring(UWidgetTransitionSubsystem& Subsystem, int32 TransitionIndex, FWidgetTransition& Transition)
@@ -251,6 +263,65 @@ namespace WidgetTransitionPrivate
 		return true;
 	}
 
+	static void DispatchLifecycleEvents(UWidgetTransitionSubsystem& Subsystem, TArray<FWidgetTransitionLifecycleEvent>& Events)
+	{
+		for (const FWidgetTransitionLifecycleEvent& Event : Events)
+		{
+			UWidget* Widget = Event.Widget.Get();
+			const FOnWidgetTransitionEvent Callback = Event.Callback;
+			Callback.ExecuteIfBound(Widget);
+			if (Event.bRemoveFromParent && IsValid(Widget))
+			{
+				Widget->RemoveFromParent();
+			}
+		}
+		Events.Reset();
+	}
+
+	static void DispatchFinalUpdatedCallbacks(TArray<FWidgetTransitionUpdateEvent>& Events)
+	{
+		for (const FWidgetTransitionUpdateEvent& Event : Events)
+		{
+			const FOnWidgetTransitionUpdate Callback = Event.Callback;
+			Callback.ExecuteIfBound(Event.Widget.Get(), Event.NormalizedProgress, Event.EasedProgress);
+		}
+		Events.Reset();
+	}
+
+	static void TickUpdatedCallbacks(UWidgetTransitionSubsystem& Subsystem, float DeltaTime)
+	{
+		for (int32 UpdateCallbackIndex = 0; UpdateCallbackIndex < Subsystem.UpdateCallbackIndices.Num();)
+		{
+			const int32 CallbackIndex = Subsystem.UpdateCallbackIndices[UpdateCallbackIndex];
+			if (!Subsystem.Callbacks.IsValidIndex(CallbackIndex))
+			{
+				++UpdateCallbackIndex;
+				continue;
+			}
+			FWidgetTransitionCallbacks& CallbackState = Subsystem.Callbacks[CallbackIndex];
+			if (!IsTransitionAtIndex(Subsystem, CallbackState.TransitionIndex, CallbackState.TransitionId))
+			{
+				++UpdateCallbackIndex;
+				continue;
+			}
+			FWidgetTransition& Transition = Subsystem.Transitions[CallbackState.TransitionIndex];
+			const bool bDispatchUpdate = Transition.UpdateInterval <= 0.0f || (CallbackState.UpdateElapsed += DeltaTime) >= Transition.UpdateInterval;
+			if (bDispatchUpdate)
+			{
+				CallbackState.UpdateElapsed = Transition.UpdateInterval <= 0.0f ? 0.0f : FMath::Fmod(CallbackState.UpdateElapsed, Transition.UpdateInterval);
+				const FOnWidgetTransitionUpdate Updated = CallbackState.OnUpdated;
+				UWidget* Widget = Transition.Widget.Get();
+				const float NormalizedProgress = CallbackState.NormalizedProgress;
+				const float EasedProgress = CallbackState.EasedProgress;
+				Updated.ExecuteIfBound(Widget, NormalizedProgress, EasedProgress);
+			}
+			if (Subsystem.Callbacks.IsValidIndex(CallbackIndex) && Subsystem.Callbacks[CallbackIndex].UpdateCallbackIndex == UpdateCallbackIndex)
+			{
+				++UpdateCallbackIndex;
+			}
+		}
+	}
+
 	static void TickTransitions(UWidgetTransitionSubsystem& Subsystem, float DeltaTime)
 	{
 		const float EffectiveDeltaTime = FMath::Clamp(DeltaTime, 0.0f, 1.0f / 20.0f);
@@ -276,12 +347,12 @@ namespace WidgetTransitionPrivate
 			if (!InitialTransition.bStarted)
 			{
 				InitialTransition.bStarted = true;
-				if (InitialTransition.bHasStartedCallback)
+				if (InitialTransition.CallbackIndex != INDEX_NONE && Subsystem.Callbacks.IsValidIndex(InitialTransition.CallbackIndex))
 				{
-					ExecuteStartedCallback(Subsystem, TransitionId, InitialTransition.Widget.Get());
-					if (!IsTransitionAtIndex(Subsystem, TransitionIndex, TransitionId))
+					const FWidgetTransitionCallbacks& CallbackState = Subsystem.Callbacks[InitialTransition.CallbackIndex];
+					if (CallbackState.OnStarted.IsBound())
 					{
-						continue;
+						Subsystem.StartedCallbackEvents.Add({ CallbackState.OnStarted, InitialTransition.Widget, false });
 					}
 				}
 			}
@@ -306,7 +377,7 @@ namespace WidgetTransitionPrivate
 				Value = Transition.ToValue.Channels;
 				bEnd = true;
 			}
-			const bool bNeedsRateLimitedUpdate = Transition.bHasUpdatedCallback || (Transition.bBound && Transition.PropertyBinding.IsFieldNotify());
+			const bool bNeedsRateLimitedUpdate = Transition.bBound && Transition.PropertyBinding.IsFieldNotify();
 			bool bDispatchRateLimitedUpdate = false;
 			if (bNeedsRateLimitedUpdate)
 			{
@@ -320,27 +391,28 @@ namespace WidgetTransitionPrivate
 			{
 				Transition.PropertyBinding.Apply(Transition.Widget.Get(), Value, bDispatchRateLimitedUpdate);
 			}
-			if (Transition.bHasUpdatedCallback && bDispatchRateLimitedUpdate)
+			if (Transition.CallbackIndex != INDEX_NONE && Subsystem.Callbacks.IsValidIndex(Transition.CallbackIndex))
 			{
-				ExecuteUpdatedCallback(Subsystem, TransitionId, Transition.Widget.Get(), Alpha, EasedAlpha);
-				if (!IsTransitionAtIndex(Subsystem, TransitionIndex, TransitionId))
-				{
-					continue;
-				}
+				FWidgetTransitionCallbacks& CallbackState = Subsystem.Callbacks[Transition.CallbackIndex];
+				CallbackState.NormalizedProgress = Alpha;
+				CallbackState.EasedProgress = EasedAlpha;
 			}
 			FWidgetTransition& CurrentTransition = Subsystem.Transitions[TransitionIndex];
 			if (bEnd && !RestartTransition(Subsystem, TransitionIndex, CurrentTransition))
 			{
+				if (CurrentTransition.CallbackIndex != INDEX_NONE)
+				{
+					const FWidgetTransitionCallbacks& CallbackState = Subsystem.Callbacks[CurrentTransition.CallbackIndex];
+					if (CallbackState.OnUpdated.IsBound())
+					{
+						Subsystem.FinalUpdatedCallbackEvents.Add({ CallbackState.OnUpdated, CurrentTransition.Widget, Alpha, EasedAlpha });
+					}
+					Subsystem.FinishedCallbackEvents.Add({ CallbackState.OnFinished, CurrentTransition.Widget, CurrentTransition.bRemoveFromParent });
+					RemoveTransition(Subsystem, TransitionIndex);
+					continue;
+				}
 				const bool bRemoveFromParent = CurrentTransition.bRemoveFromParent;
 				UWidget* Widget = CurrentTransition.Widget.Get();
-				if (CurrentTransition.bHasFinishedCallback)
-				{
-					ExecuteFinishedCallback(Subsystem, TransitionId, Widget);
-					if (!IsTransitionAtIndex(Subsystem, TransitionIndex, TransitionId))
-					{
-						continue;
-					}
-				}
 				RemoveTransition(Subsystem, TransitionIndex);
 				if (bRemoveFromParent && IsValid(Widget))
 				{
@@ -350,6 +422,10 @@ namespace WidgetTransitionPrivate
 			}
 			++TransitionIndex;
 		}
+		DispatchLifecycleEvents(Subsystem, Subsystem.StartedCallbackEvents);
+		TickUpdatedCallbacks(Subsystem, EffectiveDeltaTime);
+		DispatchFinalUpdatedCallbacks(Subsystem.FinalUpdatedCallbackEvents);
+		DispatchLifecycleEvents(Subsystem, Subsystem.FinishedCallbackEvents);
 	}
 } // namespace WidgetTransitionPrivate
 
@@ -695,9 +771,6 @@ namespace WidgetTransitionPrivate
 		Transition.RepeatCount = FMath::Max(-1, Transition.RepeatCount);
 		Transition.UpdateInterval = FMath::Max(0.0f, Transition.UpdateInterval);
 		Transition.bBound = IsValid(TargetWidget) && !Transition.WidgetProperty.IsNone();
-		Transition.bHasStartedCallback = Callbacks.OnStarted.IsBound();
-		Transition.bHasUpdatedCallback = Callbacks.OnUpdated.IsBound();
-		Transition.bHasFinishedCallback = Callbacks.OnFinished.IsBound();
 		Transition.EasingCurve = Transition.Easing.IsNull() ? nullptr : Transition.Easing.GetCurve(TEXT("Widget Transition"), false);
 		if (!Transition.Easing.IsNull() && !Transition.EasingCurve)
 		{
@@ -760,11 +833,18 @@ namespace WidgetTransitionPrivate
 			}
 			++TransitionIndex;
 		}
+		const int32 TransitionIndex = Subsystem->Transitions.Emplace(MoveTemp(Transition));
 		if (Callbacks.HasBoundCallbacks())
 		{
-			Subsystem->Callbacks.Add(Transition.TransitionId, MoveTemp(Callbacks));
+			Callbacks.TransitionIndex = TransitionIndex;
+			Callbacks.TransitionId = Subsystem->Transitions[TransitionIndex].TransitionId;
+			Subsystem->Transitions[TransitionIndex].CallbackIndex = Subsystem->Callbacks.Emplace(MoveTemp(Callbacks));
+			FWidgetTransitionCallbacks& StoredCallbacks = Subsystem->Callbacks.Last();
+			if (StoredCallbacks.OnUpdated.IsBound())
+			{
+				StoredCallbacks.UpdateCallbackIndex = Subsystem->UpdateCallbackIndices.Add(Subsystem->Transitions[TransitionIndex].CallbackIndex);
+			}
 		}
-		const int32 TransitionIndex = Subsystem->Transitions.Emplace(MoveTemp(Transition));
 		WidgetTransitionPrivate::StartSpring(*Subsystem, TransitionIndex, Subsystem->Transitions[TransitionIndex]);
 	}
 } // namespace WidgetTransitionPrivate

@@ -48,6 +48,22 @@ namespace
 		return Transition;
 	}
 
+	void AddTransitionWithCallbacks(UWidgetTransitionSubsystem* Subsystem, FWidgetTransition Transition, FWidgetTransitionCallbacks Callbacks)
+	{
+		const int32 TransitionIndex = Subsystem->Transitions.Add(MoveTemp(Transition));
+		if (Callbacks.HasBoundCallbacks())
+		{
+			Callbacks.TransitionIndex = TransitionIndex;
+			Callbacks.TransitionId = Subsystem->Transitions[TransitionIndex].TransitionId;
+			Subsystem->Transitions[TransitionIndex].CallbackIndex = Subsystem->Callbacks.Add(MoveTemp(Callbacks));
+			FWidgetTransitionCallbacks& StoredCallbacks = Subsystem->Callbacks.Last();
+			if (StoredCallbacks.OnUpdated.IsBound())
+			{
+				StoredCallbacks.UpdateCallbackIndex = Subsystem->UpdateCallbackIndices.Add(Subsystem->Transitions[TransitionIndex].CallbackIndex);
+			}
+		}
+	}
+
 	enum class EWidgetTransitionBenchmarkMode : uint8
 	{
 		Linear,
@@ -165,6 +181,7 @@ bool FWidgetTransitionStorageLayoutTest::RunTest(const FString&)
 	AddInfo(FormatBytes(TEXT("FWidgetTransitionValue"), sizeof(FWidgetTransitionValue), alignof(FWidgetTransitionValue)));
 	AddInfo(FormatBytes(TEXT("FWidgetTransitionPropertyBinding"), sizeof(FWidgetTransitionPropertyBinding), alignof(FWidgetTransitionPropertyBinding)));
 	AddInfo(FormatBytes(TEXT("FWidgetTransitionSpring"), sizeof(FWidgetTransitionSpring), alignof(FWidgetTransitionSpring)));
+	AddInfo(FormatBytes(TEXT("FWidgetTransitionCallbacks"), sizeof(FWidgetTransitionCallbacks), alignof(FWidgetTransitionCallbacks)));
 	AddInfo(FormatStorageBudget(TEXT("Typical linear workload"), 100, false));
 	AddInfo(FormatStorageBudget(TEXT("Typical spring workload"), 100, true));
 	AddInfo(FormatStorageBudget(TEXT("Stress linear workload"), 500, false));
@@ -340,11 +357,9 @@ bool FWidgetTransitionUpdateIntervalTest::RunTest(const FString&)
 		Transition.Time = 60.0f;
 		Transition.TransitionId = 1;
 		Transition.UpdateInterval = 0.033f;
-		Transition.bHasUpdatedCallback = true;
 		FWidgetTransitionCallbacks Callbacks;
 		Callbacks.OnUpdated.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleUpdated);
-		Subsystem->Callbacks.Add(Transition.TransitionId, MoveTemp(Callbacks));
-		Subsystem->Transitions.Add(MoveTemp(Transition));
+		AddTransitionWithCallbacks(Subsystem, MoveTemp(Transition), MoveTemp(Callbacks));
 
 		for (int32 TickIndex = 0; TickIndex < 5; ++TickIndex)
 		{
@@ -362,11 +377,9 @@ bool FWidgetTransitionUpdateIntervalTest::RunTest(const FString&)
 		Transition.Time = 0.0f;
 		Transition.TransitionId = 1;
 		Transition.UpdateInterval = 0.3f;
-		Transition.bHasUpdatedCallback = true;
 		FWidgetTransitionCallbacks Callbacks;
 		Callbacks.OnUpdated.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleUpdated);
-		Subsystem->Callbacks.Add(Transition.TransitionId, MoveTemp(Callbacks));
-		Subsystem->Transitions.Add(MoveTemp(Transition));
+		AddTransitionWithCallbacks(Subsystem, MoveTemp(Transition), MoveTemp(Callbacks));
 
 		Subsystem->TickTransitionsForTesting(1.0f / 60.0f);
 		TestEqual(TEXT("Completed transition dispatches its final update before the update interval"), Receiver->UpdatedCount, 1);
@@ -410,12 +423,9 @@ bool FWidgetTransitionCallbackReentrancyTest::RunTest(const FString&)
 		Transition.Widget = Widget;
 		Transition.Time = Time;
 		Transition.bStarted = bStarted;
-		Transition.bHasStartedCallback = Callbacks.OnStarted.IsBound();
-		Transition.bHasUpdatedCallback = Callbacks.OnUpdated.IsBound();
-		Transition.bHasFinishedCallback = Callbacks.OnFinished.IsBound();
 		Transition.TransitionId = 1;
-		Subsystem->Callbacks.Add(Transition.TransitionId, MoveTemp(Callbacks));
-		Subsystem->Transitions.Add(MoveTemp(Transition));
+		Transition.UpdateInterval = Callbacks.OnUpdated.IsBound() ? 0.0f : Transition.UpdateInterval;
+		AddTransitionWithCallbacks(Subsystem, MoveTemp(Transition), MoveTemp(Callbacks));
 	};
 
 	{
@@ -640,25 +650,22 @@ bool FWidgetTransitionCallbacksPerformanceTest::RunTest(const FString&)
 				Transition.PropertyBinding.Invalidate();
 				Transition.PropertyBinding.ChannelCount = 1;
 			}
+			FWidgetTransitionCallbacks Callbacks;
 			if (CallbackMode != ECallbackMode::None)
 			{
 				Transition.TransitionId = static_cast<uint64>(Index + 1);
-				FWidgetTransitionCallbacks Callbacks;
 				if (CallbackMode == ECallbackMode::Lifecycle)
 				{
-					Transition.bHasStartedCallback = true;
-					Transition.bHasFinishedCallback = true;
 					Callbacks.OnStarted.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleStarted);
 					Callbacks.OnFinished.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleFinished);
 				}
 				else
 				{
-					Transition.bHasUpdatedCallback = true;
+					Transition.UpdateInterval = 0.0f;
 					Callbacks.OnUpdated.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleUpdated);
 				}
-				Subsystem->Callbacks.Add(Transition.TransitionId, MoveTemp(Callbacks));
 			}
-			Subsystem->Transitions.Add(MoveTemp(Transition));
+			AddTransitionWithCallbacks(Subsystem, MoveTemp(Transition), MoveTemp(Callbacks));
 		}
 
 		Subsystem->TickTransitionsForTesting(DeltaTime);
@@ -722,11 +729,9 @@ bool FWidgetTransitionUpdateIntervalPerformanceTest::RunTest(const FString&)
 			Transition.Time = 60.0f;
 			Transition.TransitionId = static_cast<uint64>(Index + 1);
 			Transition.UpdateInterval = Case.Interval;
-			Transition.bHasUpdatedCallback = true;
 			FWidgetTransitionCallbacks Callbacks;
 			Callbacks.OnUpdated.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleUpdated);
-			Subsystem->Callbacks.Add(Transition.TransitionId, MoveTemp(Callbacks));
-			Subsystem->Transitions.Add(MoveTemp(Transition));
+			AddTransitionWithCallbacks(Subsystem, MoveTemp(Transition), MoveTemp(Callbacks));
 			Widgets.Add(Widget);
 		}
 
