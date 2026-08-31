@@ -17,23 +17,41 @@ struct FRealCurve;
 DECLARE_DYNAMIC_DELEGATE_ThreeParams(FOnWidgetTransitionUpdate, UWidget*, Widget, float, NormalizedProgress, float, EasedProgress);
 DECLARE_DYNAMIC_DELEGATE_OneParam(FOnWidgetTransitionEvent, UWidget*, Widget);
 
-/** Dense callback record stored separately from transitions. */
+/** Callback input package used while a transition is created. */
 struct FWidgetTransitionCallbacks
 {
 	FOnWidgetTransitionEvent OnStarted;
 	FOnWidgetTransitionEvent OnFinished;
+	FOnWidgetTransitionUpdate OnUpdated;
+
+	bool HasBoundCallbacks() const
+	{
+		return OnStarted.IsBound() || OnFinished.IsBound() || OnUpdated.IsBound();
+	}
+};
+
+/** Rare lifecycle callbacks stored separately from the update hot path. */
+struct FWidgetTransitionLifecycleCallbacks
+{
+	FOnWidgetTransitionEvent OnStarted;
+	FOnWidgetTransitionEvent OnFinished;
+	int32 TransitionIndex = INDEX_NONE;
+	uint64 TransitionId = 0;
+};
+
+/** Dense state for Updated callbacks and FieldNotify throttling. */
+struct FWidgetTransitionUpdateState
+{
 	FOnWidgetTransitionUpdate OnUpdated;
 	int32 TransitionIndex = INDEX_NONE;
 	uint64 TransitionId = 0;
 	float UpdateElapsed = 0.0f;
 	float NormalizedProgress = 0.0f;
 	float EasedProgress = 0.0f;
+	FVector4f PendingValue = FVector4f::Zero();
 	int32 UpdateCallbackIndex = INDEX_NONE;
-
-	bool HasBoundCallbacks() const
-	{
-		return OnStarted.IsBound() || OnFinished.IsBound() || OnUpdated.IsBound();
-	}
+	bool bFieldNotify = false;
+	bool bFieldNotifyValuePending = false;
 };
 
 /** Rare lifecycle callback copied into a short dispatch queue. */
@@ -128,6 +146,8 @@ struct UMGTRANSITIONS_API FWidgetTransitionPropertyBinding
 	bool IsFieldNotify() const;
 	/** Writes normalized transition channels to the resolved property. */
 	bool Apply(UWidget* Widget, const FVector4f& Value, bool bBroadcastFieldNotify = true) const;
+	/** Broadcasts the FieldNotify event after a write performed without notification. */
+	void BroadcastFieldNotify(UWidget* Widget) const;
 	/** Reads the current value of the resolved property. */
 	bool Read(UWidget* Widget, FVector4f& OutValue) const;
 };
@@ -155,8 +175,6 @@ struct UMGTRANSITIONS_API FWidgetTransition
 	int32 RepeatCount = 0;
 	/** Seconds between Updated callbacks and FieldNotify broadcasts; zero preserves per-tick updates. */
 	float UpdateInterval = 0.033f;
-	/** Elapsed seconds since the previous FieldNotify broadcast. */
-	float UpdateElapsed = 0.0f;
 	uint16 bUseFrom : 1 = false;
 	/** Defers applying From Value until the transition starts after its delay. */
 	uint16 bDeferFromValue : 1 = false;
@@ -172,8 +190,10 @@ struct UMGTRANSITIONS_API FWidgetTransition
 	uint16 bBound : 1 = false;
 	/** Stable key used to verify callback reentrancy. */
 	uint64 TransitionId = 0;
-	/** Index into UWidgetTransitionSubsystem::Callbacks, or INDEX_NONE when no callbacks are bound. */
-	int32 CallbackIndex = INDEX_NONE;
+	/** Index into UWidgetTransitionSubsystem::LifecycleCallbacks, or INDEX_NONE. */
+	int32 LifecycleCallbackIndex = INDEX_NONE;
+	/** Index into UWidgetTransitionSubsystem::UpdateStates, or INDEX_NONE. */
+	int32 UpdateStateIndex = INDEX_NONE;
 	/** Index into UWidgetTransitionSubsystem::Springs when bUseSpring is enabled. */
 	int32 SpringIndex = INDEX_NONE;
 	/** Resolved once when the transition is added, avoiding a CurveTable lookup every tick. */
@@ -298,10 +318,12 @@ public:
 	TArray<FWidgetTransitionSpring> Springs;
 	/** Owning transition array index for every entry in Springs. */
 	TArray<int32> SpringTransitionIndices;
-	/** Dense callback pass for the small subset of transitions that bind lifecycle or update events. */
-	TArray<FWidgetTransitionCallbacks> Callbacks;
-	/** Dense indices of callbacks that bind Updated; lifecycle-only entries never enter the hot pass. */
-	TArray<int32> UpdateCallbackIndices;
+	/** Rare lifecycle callbacks, stored outside the update hot path. */
+	TArray<FWidgetTransitionLifecycleCallbacks> LifecycleCallbacks;
+	/** Dense data for Updated callbacks and FieldNotify throttling. */
+	TArray<FWidgetTransitionUpdateState> UpdateStates;
+	/** Dense update-state indices; removal uses RemoveAtSwap. */
+	TArray<int32> UpdateStateIndices;
 	/** Lifecycle events accumulated by the transition pass and dispatched after it. */
 	TArray<FWidgetTransitionLifecycleEvent> StartedCallbackEvents;
 	TArray<FWidgetTransitionUpdateEvent> FinalUpdatedCallbackEvents;

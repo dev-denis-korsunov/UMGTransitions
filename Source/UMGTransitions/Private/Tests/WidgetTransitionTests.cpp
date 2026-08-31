@@ -51,16 +51,26 @@ namespace
 	void AddTransitionWithCallbacks(UWidgetTransitionSubsystem* Subsystem, FWidgetTransition Transition, FWidgetTransitionCallbacks Callbacks)
 	{
 		const int32 TransitionIndex = Subsystem->Transitions.Add(MoveTemp(Transition));
-		if (Callbacks.HasBoundCallbacks())
+		const bool bNeedsUpdateState = Callbacks.OnUpdated.IsBound() || (Subsystem->Transitions[TransitionIndex].bBound && Subsystem->Transitions[TransitionIndex].PropertyBinding.IsFieldNotify());
+		if (Callbacks.OnStarted.IsBound() || Callbacks.OnFinished.IsBound())
 		{
-			Callbacks.TransitionIndex = TransitionIndex;
-			Callbacks.TransitionId = Subsystem->Transitions[TransitionIndex].TransitionId;
-			Subsystem->Transitions[TransitionIndex].CallbackIndex = Subsystem->Callbacks.Add(MoveTemp(Callbacks));
-			FWidgetTransitionCallbacks& StoredCallbacks = Subsystem->Callbacks.Last();
-			if (StoredCallbacks.OnUpdated.IsBound())
-			{
-				StoredCallbacks.UpdateCallbackIndex = Subsystem->UpdateCallbackIndices.Add(Subsystem->Transitions[TransitionIndex].CallbackIndex);
-			}
+			FWidgetTransitionLifecycleCallbacks LifecycleCallbacks;
+			LifecycleCallbacks.OnStarted = MoveTemp(Callbacks.OnStarted);
+			LifecycleCallbacks.OnFinished = MoveTemp(Callbacks.OnFinished);
+			LifecycleCallbacks.TransitionIndex = TransitionIndex;
+			LifecycleCallbacks.TransitionId = Subsystem->Transitions[TransitionIndex].TransitionId;
+			Subsystem->Transitions[TransitionIndex].LifecycleCallbackIndex = Subsystem->LifecycleCallbacks.Add(MoveTemp(LifecycleCallbacks));
+		}
+		if (bNeedsUpdateState)
+		{
+			FWidgetTransitionUpdateState UpdateState;
+			UpdateState.OnUpdated = MoveTemp(Callbacks.OnUpdated);
+			UpdateState.TransitionIndex = TransitionIndex;
+			UpdateState.TransitionId = Subsystem->Transitions[TransitionIndex].TransitionId;
+			UpdateState.bFieldNotify = Subsystem->Transitions[TransitionIndex].bBound && Subsystem->Transitions[TransitionIndex].PropertyBinding.IsFieldNotify();
+			const int32 UpdateStateIndex = Subsystem->UpdateStates.Add(MoveTemp(UpdateState));
+			Subsystem->Transitions[TransitionIndex].UpdateStateIndex = UpdateStateIndex;
+			Subsystem->UpdateStates[UpdateStateIndex].UpdateCallbackIndex = Subsystem->UpdateStateIndices.Add(UpdateStateIndex);
 		}
 	}
 
@@ -181,7 +191,9 @@ bool FWidgetTransitionStorageLayoutTest::RunTest(const FString&)
 	AddInfo(FormatBytes(TEXT("FWidgetTransitionValue"), sizeof(FWidgetTransitionValue), alignof(FWidgetTransitionValue)));
 	AddInfo(FormatBytes(TEXT("FWidgetTransitionPropertyBinding"), sizeof(FWidgetTransitionPropertyBinding), alignof(FWidgetTransitionPropertyBinding)));
 	AddInfo(FormatBytes(TEXT("FWidgetTransitionSpring"), sizeof(FWidgetTransitionSpring), alignof(FWidgetTransitionSpring)));
-	AddInfo(FormatBytes(TEXT("FWidgetTransitionCallbacks"), sizeof(FWidgetTransitionCallbacks), alignof(FWidgetTransitionCallbacks)));
+	AddInfo(FormatBytes(TEXT("FWidgetTransitionCallbacks (creation input)"), sizeof(FWidgetTransitionCallbacks), alignof(FWidgetTransitionCallbacks)));
+	AddInfo(FormatBytes(TEXT("FWidgetTransitionLifecycleCallbacks"), sizeof(FWidgetTransitionLifecycleCallbacks), alignof(FWidgetTransitionLifecycleCallbacks)));
+	AddInfo(FormatBytes(TEXT("FWidgetTransitionUpdateState"), sizeof(FWidgetTransitionUpdateState), alignof(FWidgetTransitionUpdateState)));
 	AddInfo(FormatStorageBudget(TEXT("Typical linear workload"), 100, false));
 	AddInfo(FormatStorageBudget(TEXT("Typical spring workload"), 100, true));
 	AddInfo(FormatStorageBudget(TEXT("Stress linear workload"), 500, false));
@@ -402,7 +414,7 @@ bool FWidgetTransitionUpdateIntervalTest::RunTest(const FString&)
 		Transition.UpdateInterval = 0.033f;
 		Transition.bBound = Transition.PropertyBinding.Resolve(Widget, TEXT("CounterValue"));
 		TestTrue(TEXT("CounterValue resolves as a FieldNotify transition binding"), Transition.PropertyBinding.IsFieldNotify());
-		Subsystem->Transitions.Add(MoveTemp(Transition));
+		AddTransitionWithCallbacks(Subsystem, MoveTemp(Transition), {});
 
 		for (int32 TickIndex = 0; TickIndex < 5; ++TickIndex)
 		{
@@ -736,9 +748,9 @@ bool FWidgetTransitionUpdateIntervalPerformanceTest::RunTest(const FString&)
 		}
 
 		Subsystem->TickTransitionsForTesting(DeltaTime);
-		for (FWidgetTransition& Transition : Subsystem->Transitions)
+		for (FWidgetTransitionUpdateState& UpdateState : Subsystem->UpdateStates)
 		{
-			Transition.UpdateElapsed = 0.0f;
+			UpdateState.UpdateElapsed = 0.0f;
 		}
 		Receiver->UpdatedCount = 0;
 		const double StartTime = FPlatformTime::Seconds();
@@ -777,7 +789,7 @@ bool FWidgetTransitionExternalTextBindingPerformanceTest::RunTest(const FString&
 		Transition.Time = 60.0f;
 		Transition.bBound = Transition.PropertyBinding.Resolve(Widget, TEXT("CounterValue"));
 		TestTrue(FString::Printf(TEXT("CounterValue resolves for external widget %d"), Index), Transition.bBound);
-		Subsystem->Transitions.Add(MoveTemp(Transition));
+		AddTransitionWithCallbacks(Subsystem, MoveTemp(Transition), {});
 		Widgets.Add(Widget);
 		TextBlocks.Add(TextBlock);
 	}
@@ -830,14 +842,18 @@ bool FWidgetTransitionFieldNotifyTextBindingPerformanceTest::RunTest(const FStri
 		Transition.FromValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.0f);
 		Transition.ToValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(100.0f);
 		Transition.Time = 60.0f;
-		Transition.UpdateInterval = 0.033f;
+		Transition.UpdateInterval = 1.0f / 30.0f;
 		Transition.bBound = Transition.PropertyBinding.Resolve(Widget, TEXT("CounterValue"));
 		TestTrue(FString::Printf(TEXT("CounterValue resolves for FieldNotify widget %d"), Index), Transition.bBound);
-		Subsystem->Transitions.Add(MoveTemp(Transition));
+		AddTransitionWithCallbacks(Subsystem, MoveTemp(Transition), {});
 		TextBlocks.Add(TextBlock);
 	}
 
 	Subsystem->TickTransitionsForTesting(DeltaTime);
+	for (FWidgetTransitionUpdateState& UpdateState : Subsystem->UpdateStates)
+	{
+		UpdateState.UpdateElapsed = 0.0f;
+	}
 	*NotificationCount = 0;
 	const double StartTime = FPlatformTime::Seconds();
 	for (int32 FrameIndex = 0; FrameIndex < FrameCount; ++FrameIndex)
