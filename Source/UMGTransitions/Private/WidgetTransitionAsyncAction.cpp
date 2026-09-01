@@ -40,8 +40,7 @@ void UWidgetTransitionAsyncAction::Activate()
 	{
 		Callbacks.OnStarted.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleStarted);
 	}
-	bBroadcastUpdateValue = Updated.IsBound();
-	if (bBroadcastUpdateValue)
+	if (Updated.IsBound())
 	{
 		Callbacks.OnUpdated.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleUpdated);
 	}
@@ -67,11 +66,8 @@ void UWidgetTransitionAsyncAction::HandleStarted(UWidget* Widget)
 
 void UWidgetTransitionAsyncAction::HandleUpdated(FWidgetTransitionValue Value)
 {
-	if (bBroadcastUpdateValue)
-	{
-		EventValue = Value;
-		Updated.Broadcast(EventValue);
-	}
+	EventValue = Value;
+	Updated.Broadcast(EventValue);
 }
 
 void UWidgetTransitionAsyncAction::HandleFinished(UWidget* Widget)
@@ -97,8 +93,7 @@ bool UWidgetTransitionAsyncAction::InitializeUpdateForTesting(FWidgetTransition 
 	EventValue = PendingTransition.bUseFrom ? PendingTransition.FromValue : FWidgetTransitionValue();
 	EventValue.Type = EventTargetValue.Type;
 	EventBinding.Invalidate();
-	bBroadcastUpdateValue = Updated.IsBound();
-	return bBroadcastUpdateValue;
+	return Updated.IsBound();
 }
 
 void UWidgetTransitionAsyncAction::DispatchUpdatedForTesting(FWidgetTransitionValue Value)

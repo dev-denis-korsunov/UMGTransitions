@@ -48,11 +48,6 @@ struct FWidgetTransitionCallbacks
 	FOnWidgetTransitionEvent OnStarted;
 	FOnWidgetTransitionEvent OnFinished;
 	FOnWidgetTransitionUpdate OnUpdated;
-
-	bool HasBoundCallbacks() const
-	{
-		return OnStarted.IsBound() || OnFinished.IsBound() || OnUpdated.IsBound();
-	}
 };
 
 /** Rare lifecycle callbacks stored separately from the update hot path. */
@@ -110,8 +105,7 @@ enum class EWidgetTransitionBindingKind : uint8
 	RenderTransformPivot,
 };
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWidgetTransitionAsyncEvent, FWidgetTransitionValue, Value);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWidgetTransitionAsyncUpdate, FWidgetTransitionValue, Value);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWidgetTransitionAsyncValue, FWidgetTransitionValue, Value);
 
 /** Cached access to a transition property on a widget. */
 USTRUCT()
@@ -257,11 +251,11 @@ class UMGTRANSITIONS_API UWidgetTransitionAsyncAction final : public UBlueprintA
 
 public:
 	UPROPERTY(BlueprintAssignable)
-	FOnWidgetTransitionAsyncEvent Started;
+	FOnWidgetTransitionAsyncValue Started;
 	UPROPERTY(BlueprintAssignable)
-	FOnWidgetTransitionAsyncUpdate Updated;
+	FOnWidgetTransitionAsyncValue Updated;
 	UPROPERTY(BlueprintAssignable)
-	FOnWidgetTransitionAsyncEvent Finished;
+	FOnWidgetTransitionAsyncValue Finished;
 
 	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Add Widget Transition Async"), Category = "Widget Transition")
 	static UWidgetTransitionAsyncAction* AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition);
@@ -282,7 +276,6 @@ private:
 	FWidgetTransitionValue EventTargetValue;
 	FWidgetTransitionPropertyBinding EventBinding;
 	TWeakObjectPtr<const UObject> WorldContextObject;
-	bool bBroadcastUpdateValue = false;
 
 #if WITH_DEV_AUTOMATION_TESTS
 public:
