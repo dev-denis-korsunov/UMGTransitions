@@ -472,7 +472,6 @@ bool FWidgetTransitionCallbackReentrancyTest::RunTest(const FString&)
 		TestEqual(TEXT("Updated callback can clear its own transition"), Subsystem->Transitions.Num(), 0);
 		TestEqual(TEXT("Updated removal clears callback links"), Subsystem->CallbackLinks.Num(), 0);
 		TestEqual(TEXT("Updated removal clears update storage"), Subsystem->UpdateStates.Num(), 0);
-		TestEqual(TEXT("Updated removal clears update indices"), Subsystem->UpdateStateIndices.Num(), 0);
 	}
 
 	{

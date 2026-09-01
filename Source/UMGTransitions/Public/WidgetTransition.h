@@ -70,7 +70,6 @@ struct FWidgetTransitionUpdateState
 	FWidgetTransitionValue OverrideValue;
 	int32 TransitionIndex = INDEX_NONE;
 	float UpdateElapsed = 0.0f;
-	int32 UpdateCallbackIndex = INDEX_NONE;
 	bool bFieldNotify = false;
 	bool bHasOverrideSample = false;
 };
@@ -315,8 +314,6 @@ public:
 	TArray<FWidgetTransitionLifecycleCallbacks> LifecycleCallbacks;
 	/** Dense data for Updated callbacks and FieldNotify throttling. */
 	TArray<FWidgetTransitionUpdateState> UpdateStates;
-	/** Dense update-state indices; removal uses RemoveAtSwap. */
-	TArray<int32> UpdateStateIndices;
 	/** Callback indices stored parallel to Transitions. */
 	TArray<FWidgetTransitionCallbackLinks> CallbackLinks;
 	/** Transition indices requested for removal during callback dispatch. */

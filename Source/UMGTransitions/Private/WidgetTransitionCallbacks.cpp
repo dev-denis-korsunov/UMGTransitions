@@ -33,9 +33,7 @@ namespace WidgetTransitionCallbacks
 			UpdateState.OnUpdated = MoveTemp(Callbacks.OnUpdated);
 			UpdateState.TransitionIndex = TransitionIndex;
 			UpdateState.bFieldNotify = Transition.bBound && Transition.PropertyBinding.IsFieldNotify();
-			const int32 UpdateStateIndex = Subsystem.UpdateStates.Emplace(MoveTemp(UpdateState));
-			Links.UpdateStateIndex = UpdateStateIndex;
-			Subsystem.UpdateStates[UpdateStateIndex].UpdateCallbackIndex = Subsystem.UpdateStateIndices.Add(UpdateStateIndex);
+			Links.UpdateStateIndex = Subsystem.UpdateStates.Emplace(MoveTemp(UpdateState));
 		}
 	}
 
@@ -46,18 +44,11 @@ namespace WidgetTransitionCallbacks
 		if (RemovedLinks.UpdateStateIndex != INDEX_NONE)
 		{
 			const int32 StateIndex = RemovedLinks.UpdateStateIndex;
-			const int32 UpdateIndex = Subsystem.UpdateStates[StateIndex].UpdateCallbackIndex;
-			Subsystem.UpdateStateIndices.RemoveAtSwap(UpdateIndex);
-			if (UpdateIndex < Subsystem.UpdateStateIndices.Num())
-			{
-				Subsystem.UpdateStates[Subsystem.UpdateStateIndices[UpdateIndex]].UpdateCallbackIndex = UpdateIndex;
-			}
 			Subsystem.UpdateStates.RemoveAtSwap(StateIndex);
 			if (StateIndex < Subsystem.UpdateStates.Num())
 			{
 				FWidgetTransitionUpdateState& MovedState = Subsystem.UpdateStates[StateIndex];
 				Subsystem.CallbackLinks[MovedState.TransitionIndex].UpdateStateIndex = StateIndex;
-				Subsystem.UpdateStateIndices[MovedState.UpdateCallbackIndex] = StateIndex;
 			}
 		}
 		if (RemovedLinks.LifecycleIndex != INDEX_NONE)
@@ -168,24 +159,16 @@ namespace WidgetTransitionCallbacks
 
 	static void TickUpdateStates(UWidgetTransitionSubsystem& Subsystem, float DeltaTime)
 	{
-		for (int32 UpdateStateIndex = 0; UpdateStateIndex < Subsystem.UpdateStateIndices.Num();)
+		for (int32 StateIndex = 0; StateIndex < Subsystem.UpdateStates.Num(); ++StateIndex)
 		{
-			const int32 StateIndex = Subsystem.UpdateStateIndices[UpdateStateIndex];
-			if (!Subsystem.UpdateStates.IsValidIndex(StateIndex))
-			{
-				++UpdateStateIndex;
-				continue;
-			}
 			FWidgetTransitionUpdateState& UpdateState = Subsystem.UpdateStates[StateIndex];
 			if (!Subsystem.Transitions.IsValidIndex(UpdateState.TransitionIndex) || IsPendingRemoval(Subsystem, UpdateState.TransitionIndex))
 			{
-				++UpdateStateIndex;
 				continue;
 			}
 			FWidgetTransition& Transition = Subsystem.Transitions[UpdateState.TransitionIndex];
 			if (!Transition.bStarted || Transition.CurrentTime < Transition.Delay)
 			{
-				++UpdateStateIndex;
 				continue;
 			}
 			const bool bDispatchUpdate = Transition.UpdateInterval <= 0.0f || (UpdateState.UpdateElapsed += DeltaTime) >= Transition.UpdateInterval;
@@ -216,10 +199,6 @@ namespace WidgetTransitionCallbacks
 					}
 				}
 				Updated.ExecuteIfBound(Value);
-			}
-			if (Subsystem.UpdateStates.IsValidIndex(StateIndex) && Subsystem.UpdateStates[StateIndex].UpdateCallbackIndex == UpdateStateIndex)
-			{
-				++UpdateStateIndex;
 			}
 		}
 	}
