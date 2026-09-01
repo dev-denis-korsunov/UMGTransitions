@@ -9,19 +9,20 @@
 | Данные | Где живут | Назначение |
 | --- | --- | --- |
 | `Started`, `Finished` | `FWidgetTransitionLifecycleCallbacks` | Редкие lifecycle-события |
-| `Updated`, progress, interval, FieldNotify state | `FWidgetTransitionUpdateState` | Плотный update-pass |
+| `Updated`, interval, latest sample, FieldNotify state | `FWidgetTransitionUpdateState` | Плотный update-pass |
+| Индексы lifecycle/update | `FWidgetTransitionCallbackLinks` | Параллельный transition sidecar |
 | `FWidgetTransitionCallbacks` | временный пакет создания | Передача delegate-ов из async-ноды в runtime |
 
-Async action дополнительно хранит состояние значения (`EventValue`, `EventStartValue`, `EventTargetValue`) и binding для формирования `FWidgetTransitionValue` на выходе.
+Async action хранит только pending transition, текущее `EventValue` и world context. Started и Finished получают `FWidgetTransitionValue` непосредственно от runtime, поэтому из action удалены `FWidgetTransitionPropertyBinding` размером `88 B` и копия target value размером `32 B`. Все три Blueprint-выхода теперь имеют единый value-only контракт: From Value для Started, текущий sample для Updated и финальный To Value для Finished.
 
 ## Этапы
 
 | Этап | Статус | Изменение | Ожидаемый эффект | Риск |
 | --- | --- | --- | --- | --- |
 | 0. Baseline | Завершён | Зафиксировать async/plain и callback benchmarks | Сравнимая точка отсчёта | Низкий |
-| 1. Убрать постоянный callback-пакет | Завершён в рабочем дереве | Удалить поле `Callbacks` из `UWidgetTransitionAsyncAction`; создавать его локально в `Activate()` | Экономия `96 B` на async UObject | Низкий |
-| 2. Проверить размер UObject | Следующий | Добавить `sizeof`/diagnostic замер async action и повторить `AsyncTextCounter` | Подтвердить реальную экономию с учётом alignment/UObject | Низкий |
-| 3. Уменьшить async value state | Исследование | Проверить, можно ли хранить тип и каналы компактнее без копий `FWidgetTransitionValue` | Потенциально 32–64 B на action | Средний |
+| 1. Убрать постоянный callback-пакет | Завершён | Удалить поле `Callbacks` из `UWidgetTransitionAsyncAction`; создавать его локально в `Activate()` | Экономия `96 B` на async UObject | Низкий |
+| 2. Проверить размер UObject | Реализован, нужен новый прогон | `Diagnostics.StorageLayout` выводит размер async action и временного lifecycle event | Подтвердить реальную экономию с учётом alignment/UObject | Низкий |
+| 3. Уменьшить async value state | Завершён | Передавать Started/Finished value из runtime и удалить binding/target copy из action | Удалено `120 B` native-полей на action | Средний |
 | 4. Async-specific dispatcher | Отложен | Заменить три dynamic delegate в runtime на компактную ссылку на async action и mask событий | Снижение runtime callback storage для async | Высокий |
 | 5. Контроль lifetime | Обязателен для этапа 4 | Гарантировать, что async action не уничтожается до `Finished`, включая очистку widget и reentrancy | Исключить dangling UObject callback | Высокий |
 
@@ -40,7 +41,7 @@ void UWidgetTransitionAsyncAction::Activate()
 }
 ```
 
-Это не меняет delegate bindings, индексы или порядок событий. Изменение вошло в рабочее дерево после коммита `20e3e5b` и требует отдельного коммита после проверки.
+Это не меняет delegate bindings, индексы или порядок событий. Изменение принято и проверяется общей callback regression-группой.
 
 ## Этап 4: варианты компактного dispatcher-а
 

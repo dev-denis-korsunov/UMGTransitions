@@ -17,13 +17,13 @@ class UWidgetTransitionTestEventReceiver final : public UObject
 
 public:
 	UFUNCTION()
-	void HandleStarted(UWidget* InWidget);
+	void HandleStarted(FWidgetTransitionValue InValue);
 	UFUNCTION()
 	void HandleUpdated(FWidgetTransitionValue InValue);
 	UFUNCTION()
 	void HandleUpdatedAndCapture(FWidgetTransitionValue InValue);
 	UFUNCTION()
-	void HandleFinished(UWidget* InWidget);
+	void HandleFinished(FWidgetTransitionValue InValue);
 	UFUNCTION()
 	void HandleAsyncUpdated(FWidgetTransitionValue InValue);
 
@@ -32,7 +32,6 @@ public:
 	int32 FinishedCount = 0;
 	int32 AsyncValueUpdateCount = 0;
 	FWidgetTransitionValue LastTransitionValue;
-	TWeakObjectPtr<UWidget> LastWidget;
 	TWeakObjectPtr<UTextBlock> CounterText;
 	TWeakObjectPtr<UWidgetTransitionSubsystem> SubsystemToClear;
 	TWeakObjectPtr<UWidget> WidgetToClear;

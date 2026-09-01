@@ -13,7 +13,9 @@ This document covers `UWidgetTransitionAsyncAction` and the callback runtime sto
 | Lifecycle/update indices | `FWidgetTransitionCallbackLinks` | Parallel transition sidecar |
 | `FWidgetTransitionCallbacks` | Temporary creation package | Moves delegates from the async action into runtime |
 
-The async action retains only the value state required to produce its Blueprint outputs. It no longer owns a permanent `FWidgetTransitionCallbacks` member, saving `96 B` per action object.
+The async action retains only its pending transition, current event value, and world context. It no longer owns a permanent `FWidgetTransitionCallbacks` member, saving `96 B` per action object. Started and Finished now receive `FWidgetTransitionValue` directly from runtime, removing another `120 B` of native fields: an `88 B` property-binding cache and a `32 B` target-value copy.
+
+All three Blueprint outputs use the same value-only contract. The runtime transition provides From Value to Started, the sampled value to Updated, and the final To Value to Finished. The widget pointer remains only in the short-lived lifecycle dispatch record because `Remove From Parent` may need it after Finished.
 
 ## Runtime callback split
 
@@ -42,7 +44,9 @@ Every callback-storage change must run:
 - `Runtime.RemoveAtSwap`;
 - `Runtime.UpdateInterval`.
 
-The accepted value-only path passes the reentrancy, swap-removal, interval, and repeat-boundary regressions. Performance values should only be compared within the same editor session, configuration, and warm-up state.
+The previously accepted update path passes the reentrancy, swap-removal, interval, and repeat-boundary regressions. After changing the lifecycle payload, rerun the same group plus the Started/Finished value assertions before recording a new baseline. Performance values should only be compared within the same editor session, configuration, and warm-up state.
+
+`Diagnostics.StorageLayout` also reports `UWidgetTransitionAsyncAction` and the transient `FWidgetTransitionLifecycleEvent`, so resident UObject savings and rare queue-record cost stay visible together.
 
 ## Deferred options
 

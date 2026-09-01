@@ -14,7 +14,7 @@ This page tracks the cleanup work found during the callback-storage review. Each
 | Low | Solved | Module boilerplate | The runtime module class had no startup or shutdown behavior. | The module now uses `FDefaultModuleImpl`; its unused public module header was removed. |
 | Low | Solved | Build dependencies | Several runtime/editor dependencies had no direct API or include usage. | Removed runtime `DeveloperSettings`, `Slate`, and `SlateCore`, plus editor `PropertyEditor` and `Settings`. `InputCore` was retained because instantiated Slate list widgets link against `EKeys`; the editor target is verified by a full build. |
 | Low | Solved | Spring documentation | `FWidgetTransitionSpring` was still documented as heap-allocated after moving springs to dense subsystem storage. | The type comment now describes the dense spring array used by the current runtime. |
-| Separate experiment | Deferred | Lifecycle payload | Internal lifecycle callbacks still pass a widget, forcing the async action to retain binding and target-value data. | Prototype a value-only lifecycle payload separately and keep it only if readability, behavior, memory, and performance all improve. |
+| Separate experiment | Implemented; automation pending | Lifecycle payload | Internal lifecycle callbacks passed a widget, forcing the async action to retain binding and target-value data. | Started, Updated, and Finished now share a value-only payload. Each async action drops an 88 B binding cache and a 32 B target-value copy; the widget remains only in the short lifecycle dispatch record when removal from parent may need it. |
 
 ## Intentionally retained structures
 

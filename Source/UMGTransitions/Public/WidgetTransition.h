@@ -39,21 +39,20 @@ struct UMGTRANSITIONS_API FWidgetTransitionValue
 };
 
 DECLARE_DYNAMIC_DELEGATE_OneParam(FOnWidgetTransitionUpdate, FWidgetTransitionValue, Value);
-DECLARE_DYNAMIC_DELEGATE_OneParam(FOnWidgetTransitionEvent, UWidget*, Widget);
 
 /** Callback input package used while a transition is created. */
 struct FWidgetTransitionCallbacks
 {
-	FOnWidgetTransitionEvent OnStarted;
-	FOnWidgetTransitionEvent OnFinished;
+	FOnWidgetTransitionUpdate OnStarted;
+	FOnWidgetTransitionUpdate OnFinished;
 	FOnWidgetTransitionUpdate OnUpdated;
 };
 
 /** Rare lifecycle callbacks stored separately from the update hot path. */
 struct FWidgetTransitionLifecycleCallbacks
 {
-	FOnWidgetTransitionEvent OnStarted;
-	FOnWidgetTransitionEvent OnFinished;
+	FOnWidgetTransitionUpdate OnStarted;
+	FOnWidgetTransitionUpdate OnFinished;
 	int32 TransitionIndex = INDEX_NONE;
 };
 
@@ -78,7 +77,8 @@ struct FWidgetTransitionCallbackLinks
 /** Rare lifecycle callback copied into a short dispatch queue. */
 struct FWidgetTransitionLifecycleEvent
 {
-	FOnWidgetTransitionEvent Callback;
+	FOnWidgetTransitionUpdate Callback;
+	FWidgetTransitionValue Value;
 	TWeakObjectPtr<UWidget> Widget;
 	bool bRemoveFromParent = false;
 };
@@ -260,17 +260,14 @@ public:
 
 private:
 	UFUNCTION()
-	void HandleStarted(UWidget* Widget);
+	void HandleStarted(FWidgetTransitionValue Value);
 	UFUNCTION()
 	void HandleUpdated(FWidgetTransitionValue Value);
 	UFUNCTION()
-	void HandleFinished(UWidget* Widget);
-	void RefreshEventValue(UWidget* Widget);
+	void HandleFinished(FWidgetTransitionValue Value);
 
 	FWidgetTransition PendingTransition;
 	FWidgetTransitionValue EventValue;
-	FWidgetTransitionValue EventTargetValue;
-	FWidgetTransitionPropertyBinding EventBinding;
 	TWeakObjectPtr<const UObject> WorldContextObject;
 
 #if WITH_DEV_AUTOMATION_TESTS

@@ -108,10 +108,10 @@ namespace
 	}
 }
 
-void UWidgetTransitionTestEventReceiver::HandleStarted(UWidget* InWidget)
+void UWidgetTransitionTestEventReceiver::HandleStarted(FWidgetTransitionValue InValue)
 {
 	++StartedCount;
-	LastWidget = InWidget;
+	LastTransitionValue = InValue;
 	if (UWidgetTransitionSubsystem* Subsystem = SubsystemToClear.Get())
 	{
 		Subsystem->ClearTransitionsForTesting(WidgetToClear.Get());
@@ -121,7 +121,6 @@ void UWidgetTransitionTestEventReceiver::HandleStarted(UWidget* InWidget)
 void UWidgetTransitionTestEventReceiver::HandleUpdated(FWidgetTransitionValue /*InValue*/)
 {
 	++UpdatedCount;
-	LastWidget = WidgetToClear;
 	if (UWidgetTransitionSubsystem* Subsystem = SubsystemToClear.Get())
 	{
 		if (bAppendTransitionsOnUpdate)
@@ -145,10 +144,10 @@ void UWidgetTransitionTestEventReceiver::HandleUpdatedAndCapture(FWidgetTransiti
 	LastTransitionValue = InValue;
 }
 
-void UWidgetTransitionTestEventReceiver::HandleFinished(UWidget* InWidget)
+void UWidgetTransitionTestEventReceiver::HandleFinished(FWidgetTransitionValue InValue)
 {
 	++FinishedCount;
-	LastWidget = InWidget;
+	LastTransitionValue = InValue;
 	if (UWidgetTransitionSubsystem* Subsystem = SubsystemToClear.Get())
 	{
 		Subsystem->ClearTransitionsForTesting(WidgetToClear.Get());
@@ -180,6 +179,8 @@ bool FWidgetTransitionStorageLayoutTest::RunTest(const FString&)
 	AddInfo(FormatBytes(TEXT("FWidgetTransitionLifecycleCallbacks"), sizeof(FWidgetTransitionLifecycleCallbacks), alignof(FWidgetTransitionLifecycleCallbacks)));
 	AddInfo(FormatBytes(TEXT("FWidgetTransitionUpdateState"), sizeof(FWidgetTransitionUpdateState), alignof(FWidgetTransitionUpdateState)));
 	AddInfo(FormatBytes(TEXT("FWidgetTransitionCallbackLinks"), sizeof(FWidgetTransitionCallbackLinks), alignof(FWidgetTransitionCallbackLinks)));
+	AddInfo(FormatBytes(TEXT("FWidgetTransitionLifecycleEvent"), sizeof(FWidgetTransitionLifecycleEvent), alignof(FWidgetTransitionLifecycleEvent)));
+	AddInfo(FormatBytes(TEXT("UWidgetTransitionAsyncAction"), sizeof(UWidgetTransitionAsyncAction), alignof(UWidgetTransitionAsyncAction)));
 	AddInfo(FormatStorageBudget(TEXT("Typical linear workload"), 100, false));
 	AddInfo(FormatStorageBudget(TEXT("Typical spring workload"), 100, true));
 	AddInfo(FormatStorageBudget(TEXT("Stress linear workload"), 500, false));
@@ -436,7 +437,10 @@ bool FWidgetTransitionCallbackReentrancyTest::RunTest(const FString&)
 	{
 		FWidgetTransition Transition;
 		Transition.Widget = Widget;
+		Transition.FromValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.25f);
+		Transition.ToValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.75f);
 		Transition.Time = Time;
+		Transition.bUseFrom = true;
 		Transition.bStarted = bStarted;
 		Transition.UpdateInterval = Callbacks.OnUpdated.IsBound() ? 0.0f : Transition.UpdateInterval;
 		AddTransitionWithCallbacks(Subsystem, MoveTemp(Transition), MoveTemp(Callbacks));
@@ -453,6 +457,7 @@ bool FWidgetTransitionCallbackReentrancyTest::RunTest(const FString&)
 		AddCallbackTransition(Subsystem, Widget, MoveTemp(Callbacks), false, 1.0f);
 		Subsystem->TickTransitionsForTesting(1.0f / 60.0f);
 		TestEqual(TEXT("Started callback runs once before clearing its transition"), Receiver->StartedCount, 1);
+		TestTrue(TEXT("Started callback receives From Value"), FMath::IsNearlyEqual(Receiver->LastTransitionValue.Channels.X, 0.25f));
 		TestEqual(TEXT("Started callback can clear its own transition"), Subsystem->Transitions.Num(), 0);
 		TestEqual(TEXT("Started removal clears callback links"), Subsystem->CallbackLinks.Num(), 0);
 		TestEqual(TEXT("Started removal clears lifecycle storage"), Subsystem->LifecycleCallbacks.Num(), 0);
@@ -503,6 +508,7 @@ bool FWidgetTransitionCallbackReentrancyTest::RunTest(const FString&)
 		AddCallbackTransition(Subsystem, Widget, MoveTemp(Callbacks), true, 0.0f);
 		Subsystem->TickTransitionsForTesting(1.0f / 60.0f);
 		TestEqual(TEXT("Finished callback runs once before clearing its transition"), Receiver->FinishedCount, 1);
+		TestTrue(TEXT("Finished callback receives To Value"), FMath::IsNearlyEqual(Receiver->LastTransitionValue.Channels.X, 0.75f));
 		TestEqual(TEXT("Finished callback can clear its own transition"), Subsystem->Transitions.Num(), 0);
 		TestEqual(TEXT("Finished removal clears callback links"), Subsystem->CallbackLinks.Num(), 0);
 		TestEqual(TEXT("Finished removal clears lifecycle storage"), Subsystem->LifecycleCallbacks.Num(), 0);

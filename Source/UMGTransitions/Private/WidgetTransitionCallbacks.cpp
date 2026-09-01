@@ -92,7 +92,9 @@ namespace WidgetTransitionCallbacks
 		const FWidgetTransitionLifecycleCallbacks& Callbacks = Subsystem.LifecycleCallbacks[LifecycleIndex];
 		if (Callbacks.OnStarted.IsBound())
 		{
-			Subsystem.StartedCallbackEvents.Add({ Callbacks.OnStarted, Transition.Widget, false });
+			FWidgetTransitionValue Value = Transition.FromValue;
+			Value.Type = Transition.ToValue.Type;
+			Subsystem.StartedCallbackEvents.Add({ Callbacks.OnStarted, MoveTemp(Value), Transition.Widget, false });
 		}
 	}
 
@@ -118,17 +120,17 @@ namespace WidgetTransitionCallbacks
 			const FWidgetTransitionUpdateState& UpdateState = Subsystem.UpdateStates[Links.UpdateStateIndex];
 			if (UpdateState.OnUpdated.IsBound())
 			{
-				Subsystem.FinalUpdatedCallbackEvents.Add({ UpdateState.OnUpdated, MoveTemp(Value) });
+				Subsystem.FinalUpdatedCallbackEvents.Add({ UpdateState.OnUpdated, Value });
 			}
 		}
 		if (Links.LifecycleIndex != INDEX_NONE && Subsystem.LifecycleCallbacks.IsValidIndex(Links.LifecycleIndex))
 		{
 			const FWidgetTransitionLifecycleCallbacks& LifecycleCallbacks = Subsystem.LifecycleCallbacks[Links.LifecycleIndex];
-			Subsystem.FinishedCallbackEvents.Add({ LifecycleCallbacks.OnFinished, Transition.Widget, Transition.bRemoveFromParent });
+			Subsystem.FinishedCallbackEvents.Add({ LifecycleCallbacks.OnFinished, MoveTemp(Value), Transition.Widget, Transition.bRemoveFromParent });
 		}
 		else if (Transition.bRemoveFromParent)
 		{
-			Subsystem.FinishedCallbackEvents.Add({ {}, Transition.Widget, true });
+			Subsystem.FinishedCallbackEvents.Add({ {}, MoveTemp(Value), Transition.Widget, true });
 		}
 	}
 
@@ -137,8 +139,8 @@ namespace WidgetTransitionCallbacks
 		for (const FWidgetTransitionLifecycleEvent& Event : Events)
 		{
 			UWidget* Widget = Event.Widget.Get();
-			const FOnWidgetTransitionEvent Callback = Event.Callback;
-			Callback.ExecuteIfBound(Widget);
+			const FOnWidgetTransitionUpdate Callback = Event.Callback;
+			Callback.ExecuteIfBound(Event.Value);
 			if (Event.bRemoveFromParent && IsValid(Widget))
 			{
 				Widget->RemoveFromParent();
