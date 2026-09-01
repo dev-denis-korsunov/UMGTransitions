@@ -18,6 +18,37 @@ The final API returns only `FWidgetTransitionValue` from Updated. It samples laz
 
 Current storage sizes are `256 B` for `FWidgetTransition`, `8 B` per parallel callback link, `72 B` for lifecycle state, and `80 B` for update state. No-callback cost remained within noise (`6.248–6.477 μs/frame` for 100 transitions). Reentrancy, swap removal, update-interval, and repeat-boundary value coverage pass.
 
+### Callback cleanup outcome
+
+Memory compared with the original layout that kept callback bookkeeping in the transition record:
+
+| Workload | Before | After | Difference |
+| --- | ---: | ---: | ---: |
+| `FWidgetTransition` | 272 B | 256 B | −16 B (−5.9%) |
+| 100 linear | 27,200 B | 26,400 B | −800 B (−2.9%) |
+| 100 spring | 35,600 B | 34,800 B | −800 B (−2.2%) |
+| 500 linear | 136,000 B | 132,000 B | −4,000 B (−2.9%) |
+| 500 spring | 178,000 B | 174,000 B | −4,000 B (−2.2%) |
+
+The resident budget is now a `256 B` transition plus its mandatory `8 B` callback link. `FWidgetTransitionLifecycleCallbacks` (`72 B`) exists only for lifecycle events, `FWidgetTransitionUpdateState` (`80 B`) only for `Updated` or FieldNotify, and `FWidgetTransitionSpring` (`80 B`) only for spring transitions. `UWidgetTransitionAsyncAction` is `432 B`; removing its permanent callback package, binding, and target-value data gives a reconstructed reduction from approximately `560` to `432 B` (about `128 B`, or 23%, per action). The old action size is derived from removed fields and 16-byte alignment rather than a historical direct `sizeof` measurement.
+
+The closest clean command-line baseline and the isolated post-cleanup run used the same kind of launch. This is not a strict same-environment two-binary benchmark, but it is more representative than values collected in an open editor:
+
+| 100 linear transitions | Before, μs/frame | After, μs/frame | Change |
+| --- | ---: | ---: | ---: |
+| No binding or callbacks | 0.513 | 0.476 | −7% |
+| Lifecycle, no binding | 2.883 | 0.489 | −83% |
+| `Updated`, no binding | 28.403 | 26.633 | −6% |
+| Binding, no callbacks | 1.098 | 1.091 | within noise |
+| Binding + lifecycle | 3.544 | 1.138 | −68% |
+| Binding + `Updated` | 29.309 | 28.200 | −4% |
+
+Lifecycle now has almost no steady-state cost because delegates run only from the rare start/finish queues. The remaining `Updated` cost is dominated by Blueprint dynamic multicast dispatch (`0.26–0.28 μs` per transition), not interpolation or sidecar lookup. `Callback Update Interval` is therefore the practical control for this cost; packing `FWidgetTransition` further would not remove Blueprint callback overhead.
+
+Open-editor results (around `0.8 μs` per `Updated`) must not be compared directly with headless command-line runs: Slate, Asset Registry, background editor tasks, and warm-up state can change the absolute result by several times. Optimization comparisons require an identical launch method.
+
+Decision: keep the hot/cold split. `FWidgetTransition` owns only hot animation state, springs use a separate dense pass, lifecycle and update callback state belong to the subsystem, and the async action remains a Blueprint adapter. The complete post-cleanup suite passed 23 of 23 tests.
+
 ## Spring and containers
 
 Springs use a dense `TArray` and a separate owner-index array. Cached parameters, squared completion checks, and a shared clamped delta are accepted. `TSparseArray` and forced `ParallelFor` were measured slower for the expected workload.

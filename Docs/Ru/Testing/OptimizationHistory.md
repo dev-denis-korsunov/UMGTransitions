@@ -50,6 +50,37 @@ Lifecycle callbacks (`Started`, `Finished`) происходят один раз
 
 Решение принято как UX/архитектурный компромисс: `FWidgetTransition` уменьшен с `272` до `256 B`, а вместе с обязательным `8 B` link бюджет составляет `264 B` на transition. Lifecycle остаётся cold path, transition без callbacks не получил измеримой регрессии внутри одинаковой Editor-сессии (`6.248–6.477 μs/frame` на 100). `FWidgetTransitionUpdateState` занимает `80 B` только при наличии `Updated` или FieldNotify. Безопасность подтверждают `Runtime.CallbackReentrancy`, `Runtime.RemoveAtSwap`, `Runtime.UpdateInterval` и repeat-value regression внутри interval-теста.
 
+### Итог callback cleanup
+
+Сравнение памяти с исходной схемой, где callback bookkeeping находился внутри transition record:
+
+| Нагрузка | Было | Стало | Разница |
+| --- | ---: | ---: | ---: |
+| `FWidgetTransition` | 272 B | 256 B | −16 B (−5.9%) |
+| 100 linear | 27 200 B | 26 400 B | −800 B (−2.9%) |
+| 100 spring | 35 600 B | 34 800 B | −800 B (−2.2%) |
+| 500 linear | 136 000 B | 132 000 B | −4 000 B (−2.9%) |
+| 500 spring | 178 000 B | 174 000 B | −4 000 B (−2.2%) |
+
+Текущий resident budget состоит из `256 B` transition и обязательного `8 B` callback link. `FWidgetTransitionLifecycleCallbacks` (`72 B`) создаётся только для lifecycle-событий, `FWidgetTransitionUpdateState` (`80 B`) — только для `Updated` или FieldNotify, `FWidgetTransitionSpring` (`80 B`) — только для spring. `UWidgetTransitionAsyncAction` занимает `432 B`; удалённые из него постоянные `FWidgetTransitionCallbacks`, binding и target-value данные дают расчётное сокращение старого объекта примерно с `560` до `432 B` (около `128 B`, или 23%, на action). Старый размер action восстановлен по размерам удалённых полей и 16-байтовому выравниванию, а не прямым историческим `sizeof`.
+
+Ближайший чистый command-line baseline и изолированный прогон после cleanup выполнены одним типом запуска. Это не строгий benchmark двух бинарников из одного окружения, но он лучше отражает изменение, чем числа из открытого Editor:
+
+| 100 linear transition | До, μs/frame | После, μs/frame | Изменение |
+| --- | ---: | ---: | ---: |
+| Без binding и callbacks | 0.513 | 0.476 | −7% |
+| Lifecycle, без binding | 2.883 | 0.489 | −83% |
+| `Updated`, без binding | 28.403 | 26.633 | −6% |
+| Binding, без callbacks | 1.098 | 1.091 | в пределах шума |
+| Binding + lifecycle | 3.544 | 1.138 | −68% |
+| Binding + `Updated` | 29.309 | 28.200 | −4% |
+
+Lifecycle теперь практически не имеет steady-state цены: delegate вызывается только в редкой очереди старта или завершения. Основная стоимость `Updated` остаётся в Blueprint dynamic multicast dispatch (`0.26–0.28 μs` на transition), а не в интерполяции или sidecar lookup. Поэтому главный практический регулятор этой цены — `Callback Update Interval`; дальнейшее уплотнение `FWidgetTransition` не устранит стоимость Blueprint callback.
+
+Абсолютные числа из открытого Editor (`около 0.8 μs` на `Updated`) нельзя напрямую сравнивать с headless command-line прогонами: Slate, Asset Registry, фоновые editor-задачи и состояние прогрева меняют результат в несколько раз. Сравнивать оптимизации следует только одинаковым способом запуска.
+
+Итоговое решение: сохранить hot/cold split. `FWidgetTransition` содержит только горячее состояние анимации, springs считаются плотным отдельным проходом, lifecycle и update callback state принадлежат subsystem, а async action остаётся Blueprint-адаптером. Полный suite после cleanup прошёл 23 из 23 тестов.
+
 ## Spring
 
 | Этап | 500 spring без binding, μs/frame | Решение |
