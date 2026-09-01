@@ -66,7 +66,7 @@ private:
 	void RemoveTransition(int32 TransitionIndex);
 	void RequestTransitionRemoval(int32 TransitionIndex);
 	void FlushPendingRemovals();
-	void StartSpring(int32 TransitionIndex, FWidgetTransition& Transition);
+	void StartSpring(int32 TransitionIndex, FWidgetTransition& Transition, FVector4f InitialVelocity = FVector4f::Zero());
 	bool RestartTransition(int32 TransitionIndex, FWidgetTransition& Transition);
 	void TickTransitions(float DeltaTime);
 };

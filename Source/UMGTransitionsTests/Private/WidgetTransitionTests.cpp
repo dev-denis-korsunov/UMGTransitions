@@ -531,6 +531,7 @@ bool FWidgetTransitionRemoveAtSwapTest::RunTest(const FString&)
 	FWidgetTransition RemainingTransition;
 	RemainingTransition.Widget = RemainingWidget;
 	RemainingTransition.Time = 60.0f;
+	RemainingTransition.ToValue.Channels = FVector4f(1.0f, 0.0f, 0.0f, 0.0f);
 	RemainingTransition.bUseSpring = true;
 	RemainingTransition.SpringIndex = Subsystem->Springs.Emplace(1.0f, 1.0f);
 	Subsystem->SpringTransitionIndices.Add(1);
@@ -723,6 +724,55 @@ bool FWidgetTransitionCallbacksPerformanceTest::RunTest(const FString&)
 			Measure(TransitionCount, bWithBinding, ECallbackMode::Lifecycle);
 			Measure(TransitionCount, bWithBinding, ECallbackMode::Updated);
 		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionSpringTargetUpdatePerformanceTest, "UMGTransitions.WidgetTransition.Performance.SpringTargetUpdate", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
+bool FWidgetTransitionSpringTargetUpdatePerformanceTest::RunTest(const FString&)
+{
+	constexpr int32 FrameCount = 300;
+	constexpr float DeltaTime = 1.0f / 60.0f;
+	constexpr int32 TransitionCounts[] = { 100, 500 };
+
+	for (const int32 TransitionCount : TransitionCounts)
+	{
+		UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+		for (int32 Index = 0; Index < TransitionCount; ++Index)
+		{
+			UImage* Widget = NewObject<UImage>(GetTransientPackage());
+			FWidgetTransition Transition;
+			Transition.Widget = Widget;
+			Transition.WidgetProperty = TEXT("RenderTransform.Translation");
+			Transition.FromValue = UWidgetTransitionFunctionLibrary::MakeVectorTransitionValue(FVector2D::ZeroVector);
+			Transition.ToValue = UWidgetTransitionFunctionLibrary::MakeVectorTransitionValue(FVector2D(100.0f, 0.0f));
+			Transition.bUseFrom = true;
+			Transition.bBound = Transition.PropertyBinding.Resolve(Widget, Transition.WidgetProperty.ToString());
+			Transition.bUseSpring = true;
+			Transition.RepeatCount = -1;
+			Transition.PropertyBinding.ChannelCount = 2;
+			const int32 TransitionIndex = Subsystem->Transitions.Emplace(MoveTemp(Transition));
+			const int32 SpringIndex = Subsystem->Springs.Emplace(36.0f, 7.2f);
+			Subsystem->SpringTransitionIndices.Add(TransitionIndex);
+			Subsystem->Transitions[TransitionIndex].SpringIndex = SpringIndex;
+			Subsystem->Springs[SpringIndex].Start(FVector4f::Zero(), FVector4f(100.0f, 0.0f, 0.0f, 0.0f));
+		}
+
+		Subsystem->TickTransitionsForTesting(DeltaTime);
+		const double StartTime = FPlatformTime::Seconds();
+		for (int32 FrameIndex = 0; FrameIndex < FrameCount; ++FrameIndex)
+		{
+			const float TargetX = 100.0f + 50.0f * FMath::Sin(static_cast<float>(FrameIndex) * 0.1f);
+			for (FWidgetTransition& Transition : Subsystem->Transitions)
+			{
+				Transition.ToValue.Channels.X = TargetX;
+				Transition.ToValue.Channels.Y = -TargetX * 0.25f;
+			}
+			Subsystem->TickTransitionsForTesting(DeltaTime);
+		}
+		const double ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
+		AddInfo(FString::Printf(TEXT("%d RenderTransform.Translation spring transitions with per-tick target updates: %s / frame, %s / transition (%d frames)"), TransitionCount, *FormatMicroseconds(ElapsedSeconds / FrameCount), *FormatMicroseconds(ElapsedSeconds / (FrameCount * TransitionCount)), FrameCount));
+		TestEqual(FString::Printf(TEXT("All %d spring target-update transitions remain active"), TransitionCount), Subsystem->Transitions.Num(), TransitionCount);
 	}
 	return true;
 }

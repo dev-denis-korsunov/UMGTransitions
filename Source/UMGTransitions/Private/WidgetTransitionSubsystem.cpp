@@ -133,11 +133,18 @@ void UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 	{
 		Transition.bUseSpring = false;
 	}
+	FVector4f HandoffVelocity = FVector4f::Zero();
+	bool bHasHandoffVelocity = false;
 	for (int32 TransitionIndex = 0; Transition.bBound && TransitionIndex < Transitions.Num();)
 	{
 		const FWidgetTransition& ExistingTransition = Transitions[TransitionIndex];
 		if (ExistingTransition.Widget == TargetWidget && ExistingTransition.WidgetProperty == Transition.WidgetProperty)
 		{
+			if (ExistingTransition.SpringIndex != INDEX_NONE && Springs.IsValidIndex(ExistingTransition.SpringIndex))
+			{
+				HandoffVelocity = Springs[ExistingTransition.SpringIndex].GetVelocity();
+				bHasHandoffVelocity = true;
+			}
 			UE_LOG(LogTemp, Verbose, TEXT("Widget Transition: replacing existing transition for '%s' on widget '%s'."), *Transition.WidgetProperty.ToString(), *GetNameSafe(TargetWidget));
 			RequestTransitionRemoval(TransitionIndex);
 			if (!bDeferringTransitionRemovals)
@@ -149,7 +156,7 @@ void UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 	}
 	const int32 TransitionIndex = Transitions.Emplace(MoveTemp(Transition));
 	CallbackStore.Register(*this, TransitionIndex, MoveTemp(Callbacks));
-	StartSpring(TransitionIndex, Transitions[TransitionIndex]);
+	StartSpring(TransitionIndex, Transitions[TransitionIndex], bHasHandoffVelocity ? HandoffVelocity : FVector4f::Zero());
 }
 
 void UWidgetTransitionSubsystem::ClearTransitions(UWidget* Widget)
@@ -252,7 +259,7 @@ void UWidgetTransitionSubsystem::FlushPendingRemovals()
 	PendingRemovalIndices.Reset();
 }
 
-void UWidgetTransitionSubsystem::StartSpring(int32 TransitionIndex, FWidgetTransition& Transition)
+void UWidgetTransitionSubsystem::StartSpring(int32 TransitionIndex, FWidgetTransition& Transition, FVector4f InitialVelocity)
 {
 	if (!Transition.bUseSpring || !IsSpringCompatible(Transition.PropertyBinding.ChannelCount))
 	{
@@ -272,7 +279,7 @@ void UWidgetTransitionSubsystem::StartSpring(int32 TransitionIndex, FWidgetTrans
 		SpringTransitionIndices.Add(TransitionIndex);
 	}
 	FWidgetTransitionSpring& Spring = Springs[Transition.SpringIndex];
-	Spring.Start(Transition.FromValue.Channels, Transition.ToValue.Channels, FMath::Max(0.0f, Transition.Delay - Transition.CurrentTime));
+	Spring.Start(Transition.FromValue.Channels, Transition.ToValue.Channels, FMath::Max(0.0f, Transition.Delay - Transition.CurrentTime), InitialVelocity);
 }
 
 bool UWidgetTransitionSubsystem::RestartTransition(int32 TransitionIndex, FWidgetTransition& Transition)
@@ -299,8 +306,14 @@ void UWidgetTransitionSubsystem::TickTransitions(float DeltaTime)
 	bDeferringTransitionRemovals = true;
 	CallbackStore.EnsureLinks(*this);
 	const float EffectiveDeltaTime = FMath::Clamp(DeltaTime, 0.0f, 1.0f / 20.0f);
-	for (FWidgetTransitionSpring& Spring : Springs)
+	for (int32 SpringIndex = 0; SpringIndex < Springs.Num(); ++SpringIndex)
 	{
+		FWidgetTransitionSpring& Spring = Springs[SpringIndex];
+		const int32 TransitionIndex = SpringTransitionIndices.IsValidIndex(SpringIndex) ? SpringTransitionIndices[SpringIndex] : INDEX_NONE;
+		if (Transitions.IsValidIndex(TransitionIndex) && !Spring.GetTarget().Equals(Transitions[TransitionIndex].ToValue.Channels, 0.0f))
+		{
+			Spring.SetTarget(Transitions[TransitionIndex].ToValue.Channels);
+		}
 		Spring.Tick(EffectiveDeltaTime);
 	}
 	for (int32 TransitionIndex = 0; TransitionIndex < Transitions.Num();)

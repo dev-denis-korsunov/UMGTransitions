@@ -8,9 +8,12 @@ struct UMGTRANSITIONS_API FWidgetTransitionSpring
 	FWidgetTransitionSpring(float SpringFactor, float DampingFactor);
 
 	void Tick(float DeltaTime);
-	void Start(FVector4f InStartValue, FVector4f InTargetValue, float InDelay = 0.0f);
+	void Start(FVector4f InStartValue, FVector4f InTargetValue, float InDelay = 0.0f, FVector4f InInitialVelocity = FVector4f::Zero());
+	void SetTarget(FVector4f InTargetValue);
 
 	FORCEINLINE const FVector4f& GetValue() const { return CurrentValue; }
+	FORCEINLINE const FVector4f& GetVelocity() const { return Velocity; }
+	FORCEINLINE const FVector4f& GetTarget() const { return TargetValue; }
 	FORCEINLINE bool IsCompleted() const { return bCompleted; }
 
 private:
