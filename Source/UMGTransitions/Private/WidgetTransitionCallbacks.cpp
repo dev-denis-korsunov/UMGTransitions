@@ -3,213 +3,210 @@
 #include "Components/Widget.h"
 #include "WidgetTransitionSubsystem.h"
 
-namespace WidgetTransitionCallbacks
+void FWidgetTransitionCallbackStore::EnsureLinks(UWidgetTransitionSubsystem& Subsystem)
 {
-	void EnsureLinks(UWidgetTransitionSubsystem& Subsystem)
+	if (Links.Num() < Subsystem.Transitions.Num())
 	{
-		if (Subsystem.CallbackLinks.Num() < Subsystem.Transitions.Num())
+		Links.SetNum(Subsystem.Transitions.Num());
+	}
+}
+
+void FWidgetTransitionCallbackStore::Register(UWidgetTransitionSubsystem& Subsystem, int32 TransitionIndex, FWidgetTransitionCallbacks Callbacks)
+{
+	EnsureLinks(Subsystem);
+	const FWidgetTransition& Transition = Subsystem.Transitions[TransitionIndex];
+	FWidgetTransitionCallbackLinks& TransitionLinks = Links[TransitionIndex];
+	const bool bNeedsUpdateState = Callbacks.OnUpdated.IsBound() || (Transition.bBound && Transition.PropertyBinding.IsFieldNotify());
+	if (Callbacks.OnStarted.IsBound() || Callbacks.OnFinished.IsBound())
+	{
+		FWidgetTransitionLifecycleCallbacks LifecycleRecord;
+		LifecycleRecord.OnStarted = MoveTemp(Callbacks.OnStarted);
+		LifecycleRecord.OnFinished = MoveTemp(Callbacks.OnFinished);
+		LifecycleRecord.TransitionIndex = TransitionIndex;
+		TransitionLinks.LifecycleIndex = LifecycleCallbacks.Emplace(MoveTemp(LifecycleRecord));
+	}
+	if (bNeedsUpdateState)
+	{
+		FWidgetTransitionUpdateState UpdateState;
+		UpdateState.OnUpdated = MoveTemp(Callbacks.OnUpdated);
+		UpdateState.TransitionIndex = TransitionIndex;
+		UpdateState.bFieldNotify = Transition.bBound && Transition.PropertyBinding.IsFieldNotify();
+		TransitionLinks.UpdateStateIndex = UpdateStates.Emplace(MoveTemp(UpdateState));
+	}
+}
+
+void FWidgetTransitionCallbackStore::Remove(UWidgetTransitionSubsystem& Subsystem, int32 TransitionIndex)
+{
+	EnsureLinks(Subsystem);
+	const FWidgetTransitionCallbackLinks RemovedLinks = Links[TransitionIndex];
+	if (RemovedLinks.UpdateStateIndex != INDEX_NONE)
+	{
+		const int32 StateIndex = RemovedLinks.UpdateStateIndex;
+		UpdateStates.RemoveAtSwap(StateIndex);
+		if (StateIndex < UpdateStates.Num())
 		{
-			Subsystem.CallbackLinks.SetNum(Subsystem.Transitions.Num());
+			FWidgetTransitionUpdateState& MovedState = UpdateStates[StateIndex];
+			Links[MovedState.TransitionIndex].UpdateStateIndex = StateIndex;
 		}
 	}
-
-	void Register(UWidgetTransitionSubsystem& Subsystem, int32 TransitionIndex, FWidgetTransitionCallbacks Callbacks)
+	if (RemovedLinks.LifecycleIndex != INDEX_NONE)
 	{
-		EnsureLinks(Subsystem);
-		const FWidgetTransition& Transition = Subsystem.Transitions[TransitionIndex];
-		FWidgetTransitionCallbackLinks& Links = Subsystem.CallbackLinks[TransitionIndex];
-		const bool bNeedsUpdateState = Callbacks.OnUpdated.IsBound() || (Transition.bBound && Transition.PropertyBinding.IsFieldNotify());
-		if (Callbacks.OnStarted.IsBound() || Callbacks.OnFinished.IsBound())
+		const int32 LifecycleIndex = RemovedLinks.LifecycleIndex;
+		LifecycleCallbacks.RemoveAtSwap(LifecycleIndex);
+		if (LifecycleIndex < LifecycleCallbacks.Num())
 		{
-			FWidgetTransitionLifecycleCallbacks LifecycleCallbacks;
-			LifecycleCallbacks.OnStarted = MoveTemp(Callbacks.OnStarted);
-			LifecycleCallbacks.OnFinished = MoveTemp(Callbacks.OnFinished);
-			LifecycleCallbacks.TransitionIndex = TransitionIndex;
-			Links.LifecycleIndex = Subsystem.LifecycleCallbacks.Emplace(MoveTemp(LifecycleCallbacks));
-		}
-		if (bNeedsUpdateState)
-		{
-			FWidgetTransitionUpdateState UpdateState;
-			UpdateState.OnUpdated = MoveTemp(Callbacks.OnUpdated);
-			UpdateState.TransitionIndex = TransitionIndex;
-			UpdateState.bFieldNotify = Transition.bBound && Transition.PropertyBinding.IsFieldNotify();
-			Links.UpdateStateIndex = Subsystem.UpdateStates.Emplace(MoveTemp(UpdateState));
+			Links[LifecycleCallbacks[LifecycleIndex].TransitionIndex].LifecycleIndex = LifecycleIndex;
 		}
 	}
-
-	void Remove(UWidgetTransitionSubsystem& Subsystem, int32 TransitionIndex)
+	Links.RemoveAtSwap(TransitionIndex);
+	if (TransitionIndex < Links.Num())
 	{
-		EnsureLinks(Subsystem);
-		const FWidgetTransitionCallbackLinks RemovedLinks = Subsystem.CallbackLinks[TransitionIndex];
-		if (RemovedLinks.UpdateStateIndex != INDEX_NONE)
+		const FWidgetTransitionCallbackLinks& MovedLinks = Links[TransitionIndex];
+		if (MovedLinks.LifecycleIndex != INDEX_NONE)
 		{
-			const int32 StateIndex = RemovedLinks.UpdateStateIndex;
-			Subsystem.UpdateStates.RemoveAtSwap(StateIndex);
-			if (StateIndex < Subsystem.UpdateStates.Num())
-			{
-				FWidgetTransitionUpdateState& MovedState = Subsystem.UpdateStates[StateIndex];
-				Subsystem.CallbackLinks[MovedState.TransitionIndex].UpdateStateIndex = StateIndex;
-			}
+			LifecycleCallbacks[MovedLinks.LifecycleIndex].TransitionIndex = TransitionIndex;
 		}
-		if (RemovedLinks.LifecycleIndex != INDEX_NONE)
+		if (MovedLinks.UpdateStateIndex != INDEX_NONE)
 		{
-			const int32 LifecycleIndex = RemovedLinks.LifecycleIndex;
-			Subsystem.LifecycleCallbacks.RemoveAtSwap(LifecycleIndex);
-			if (LifecycleIndex < Subsystem.LifecycleCallbacks.Num())
-			{
-				Subsystem.CallbackLinks[Subsystem.LifecycleCallbacks[LifecycleIndex].TransitionIndex].LifecycleIndex = LifecycleIndex;
-			}
-		}
-		Subsystem.CallbackLinks.RemoveAtSwap(TransitionIndex);
-		if (TransitionIndex < Subsystem.CallbackLinks.Num())
-		{
-			const FWidgetTransitionCallbackLinks& MovedLinks = Subsystem.CallbackLinks[TransitionIndex];
-			if (MovedLinks.LifecycleIndex != INDEX_NONE)
-			{
-				Subsystem.LifecycleCallbacks[MovedLinks.LifecycleIndex].TransitionIndex = TransitionIndex;
-			}
-			if (MovedLinks.UpdateStateIndex != INDEX_NONE)
-			{
-				Subsystem.UpdateStates[MovedLinks.UpdateStateIndex].TransitionIndex = TransitionIndex;
-			}
+			UpdateStates[MovedLinks.UpdateStateIndex].TransitionIndex = TransitionIndex;
 		}
 	}
+}
 
-	bool IsPendingRemoval(const UWidgetTransitionSubsystem& Subsystem, int32 TransitionIndex)
+bool FWidgetTransitionCallbackStore::IsPendingRemoval(const UWidgetTransitionSubsystem& Subsystem, int32 TransitionIndex) const
+{
+	return Subsystem.PendingRemovalIndices.Contains(TransitionIndex);
+}
+
+void FWidgetTransitionCallbackStore::QueueStarted(UWidgetTransitionSubsystem& Subsystem, int32 TransitionIndex)
+{
+	EnsureLinks(Subsystem);
+	const int32 LifecycleIndex = Links[TransitionIndex].LifecycleIndex;
+	if (LifecycleIndex == INDEX_NONE || !LifecycleCallbacks.IsValidIndex(LifecycleIndex))
 	{
-		return Subsystem.PendingRemovalIndices.Contains(TransitionIndex);
+		return;
 	}
-
-	void QueueStarted(UWidgetTransitionSubsystem& Subsystem, int32 TransitionIndex)
+	const FWidgetTransition& Transition = Subsystem.Transitions[TransitionIndex];
+	const FWidgetTransitionLifecycleCallbacks& Callbacks = LifecycleCallbacks[LifecycleIndex];
+	if (Callbacks.OnStarted.IsBound())
 	{
-		EnsureLinks(Subsystem);
-		const int32 LifecycleIndex = Subsystem.CallbackLinks[TransitionIndex].LifecycleIndex;
-		if (LifecycleIndex == INDEX_NONE || !Subsystem.LifecycleCallbacks.IsValidIndex(LifecycleIndex))
+		FWidgetTransitionValue Value = Transition.FromValue;
+		Value.Type = Transition.ToValue.Type;
+		StartedEvents.Add({ Callbacks.OnStarted, MoveTemp(Value), Transition.Widget, false });
+	}
+}
+
+void FWidgetTransitionCallbackStore::StoreOverrideValue(UWidgetTransitionSubsystem& Subsystem, int32 TransitionIndex, FWidgetTransitionValue Value)
+{
+	const int32 UpdateStateIndex = Links[TransitionIndex].UpdateStateIndex;
+	if (UpdateStateIndex == INDEX_NONE)
+	{
+		return;
+	}
+	FWidgetTransitionUpdateState& UpdateState = UpdateStates[UpdateStateIndex];
+	UpdateState.OverrideValue = MoveTemp(Value);
+	UpdateState.bHasOverrideSample = true;
+}
+
+void FWidgetTransitionCallbackStore::QueueCompleted(UWidgetTransitionSubsystem& Subsystem, int32 TransitionIndex, FWidgetTransitionValue Value)
+{
+	EnsureLinks(Subsystem);
+	const FWidgetTransition& Transition = Subsystem.Transitions[TransitionIndex];
+	const FWidgetTransitionCallbackLinks& TransitionLinks = Links[TransitionIndex];
+	if (TransitionLinks.UpdateStateIndex != INDEX_NONE && UpdateStates.IsValidIndex(TransitionLinks.UpdateStateIndex))
+	{
+		const FWidgetTransitionUpdateState& UpdateState = UpdateStates[TransitionLinks.UpdateStateIndex];
+		if (UpdateState.OnUpdated.IsBound())
 		{
-			return;
-		}
-		const FWidgetTransition& Transition = Subsystem.Transitions[TransitionIndex];
-		const FWidgetTransitionLifecycleCallbacks& Callbacks = Subsystem.LifecycleCallbacks[LifecycleIndex];
-		if (Callbacks.OnStarted.IsBound())
-		{
-			FWidgetTransitionValue Value = Transition.FromValue;
-			Value.Type = Transition.ToValue.Type;
-			Subsystem.StartedCallbackEvents.Add({ Callbacks.OnStarted, MoveTemp(Value), Transition.Widget, false });
+			FinalUpdatedEvents.Add({ UpdateState.OnUpdated, Value });
 		}
 	}
-
-	void StoreOverrideValue(UWidgetTransitionSubsystem& Subsystem, int32 TransitionIndex, FWidgetTransitionValue Value)
+	if (TransitionLinks.LifecycleIndex != INDEX_NONE && LifecycleCallbacks.IsValidIndex(TransitionLinks.LifecycleIndex))
 	{
-		const int32 UpdateStateIndex = Subsystem.CallbackLinks[TransitionIndex].UpdateStateIndex;
-		if (UpdateStateIndex == INDEX_NONE)
-		{
-			return;
-		}
-		FWidgetTransitionUpdateState& UpdateState = Subsystem.UpdateStates[UpdateStateIndex];
-		UpdateState.OverrideValue = MoveTemp(Value);
-		UpdateState.bHasOverrideSample = true;
+		const FWidgetTransitionLifecycleCallbacks& LifecycleRecord = LifecycleCallbacks[TransitionLinks.LifecycleIndex];
+		FinishedEvents.Add({ LifecycleRecord.OnFinished, MoveTemp(Value), Transition.Widget, Transition.bRemoveFromParent });
 	}
-
-	void QueueCompleted(UWidgetTransitionSubsystem& Subsystem, int32 TransitionIndex, FWidgetTransitionValue Value)
+	else if (Transition.bRemoveFromParent)
 	{
-		EnsureLinks(Subsystem);
-		const FWidgetTransition& Transition = Subsystem.Transitions[TransitionIndex];
-		const FWidgetTransitionCallbackLinks& Links = Subsystem.CallbackLinks[TransitionIndex];
-		if (Links.UpdateStateIndex != INDEX_NONE && Subsystem.UpdateStates.IsValidIndex(Links.UpdateStateIndex))
+		FinishedEvents.Add({ {}, MoveTemp(Value), Transition.Widget, true });
+	}
+}
+
+void FWidgetTransitionCallbackStore::DispatchLifecycleEvents(TArray<FWidgetTransitionLifecycleEvent>& Events)
+{
+	for (const FWidgetTransitionLifecycleEvent& Event : Events)
+	{
+		UWidget* Widget = Event.Widget.Get();
+		const FOnWidgetTransitionUpdate Callback = Event.Callback;
+		Callback.ExecuteIfBound(Event.Value);
+		if (Event.bRemoveFromParent && IsValid(Widget))
 		{
-			const FWidgetTransitionUpdateState& UpdateState = Subsystem.UpdateStates[Links.UpdateStateIndex];
-			if (UpdateState.OnUpdated.IsBound())
+			Widget->RemoveFromParent();
+		}
+	}
+	Events.Reset();
+}
+
+void FWidgetTransitionCallbackStore::DispatchFinalUpdatedCallbacks()
+{
+	for (const FWidgetTransitionUpdateEvent& Event : FinalUpdatedEvents)
+	{
+		const FOnWidgetTransitionUpdate Callback = Event.Callback;
+		Callback.ExecuteIfBound(Event.Value);
+	}
+	FinalUpdatedEvents.Reset();
+}
+
+void FWidgetTransitionCallbackStore::TickUpdateStates(UWidgetTransitionSubsystem& Subsystem, float DeltaTime)
+{
+	for (int32 StateIndex = 0; StateIndex < UpdateStates.Num(); ++StateIndex)
+	{
+		FWidgetTransitionUpdateState& UpdateState = UpdateStates[StateIndex];
+		if (!Subsystem.Transitions.IsValidIndex(UpdateState.TransitionIndex) || IsPendingRemoval(Subsystem, UpdateState.TransitionIndex))
+		{
+			continue;
+		}
+		FWidgetTransition& Transition = Subsystem.Transitions[UpdateState.TransitionIndex];
+		if (!Transition.bStarted || Transition.CurrentTime < Transition.Delay)
+		{
+			continue;
+		}
+		const bool bDispatchUpdate = Transition.UpdateInterval <= 0.0f || (UpdateState.UpdateElapsed += DeltaTime) >= Transition.UpdateInterval;
+		const bool bHasOverrideSample = UpdateState.bHasOverrideSample;
+		FWidgetTransitionValue OverrideValue;
+		if (bHasOverrideSample)
+		{
+			OverrideValue = UpdateState.OverrideValue;
+			UpdateState.bHasOverrideSample = false;
+		}
+		if (bDispatchUpdate)
+		{
+			UpdateState.UpdateElapsed = Transition.UpdateInterval <= 0.0f ? 0.0f : FMath::Fmod(UpdateState.UpdateElapsed, Transition.UpdateInterval);
+			const FOnWidgetTransitionUpdate Updated = UpdateState.OnUpdated;
+			FWidgetTransitionValue Value = MoveTemp(OverrideValue);
+			if (!bHasOverrideSample)
 			{
-				Subsystem.FinalUpdatedCallbackEvents.Add({ UpdateState.OnUpdated, Value });
+				const FWidgetTransitionSample Sample = Subsystem.SampleTransition(Transition);
+				Value.Channels = Sample.Value;
+				Value.Type = Transition.ToValue.Type;
 			}
-		}
-		if (Links.LifecycleIndex != INDEX_NONE && Subsystem.LifecycleCallbacks.IsValidIndex(Links.LifecycleIndex))
-		{
-			const FWidgetTransitionLifecycleCallbacks& LifecycleCallbacks = Subsystem.LifecycleCallbacks[Links.LifecycleIndex];
-			Subsystem.FinishedCallbackEvents.Add({ LifecycleCallbacks.OnFinished, MoveTemp(Value), Transition.Widget, Transition.bRemoveFromParent });
-		}
-		else if (Transition.bRemoveFromParent)
-		{
-			Subsystem.FinishedCallbackEvents.Add({ {}, MoveTemp(Value), Transition.Widget, true });
-		}
-	}
-
-	static void DispatchLifecycleEvents(TArray<FWidgetTransitionLifecycleEvent>& Events)
-	{
-		for (const FWidgetTransitionLifecycleEvent& Event : Events)
-		{
-			UWidget* Widget = Event.Widget.Get();
-			const FOnWidgetTransitionUpdate Callback = Event.Callback;
-			Callback.ExecuteIfBound(Event.Value);
-			if (Event.bRemoveFromParent && IsValid(Widget))
+			UWidget* Widget = Transition.Widget.Get();
+			if (UpdateState.bFieldNotify)
 			{
-				Widget->RemoveFromParent();
-			}
-		}
-		Events.Reset();
-	}
-
-	static void DispatchFinalUpdatedCallbacks(TArray<FWidgetTransitionUpdateEvent>& Events)
-	{
-		for (const FWidgetTransitionUpdateEvent& Event : Events)
-		{
-			const FOnWidgetTransitionUpdate Callback = Event.Callback;
-			Callback.ExecuteIfBound(Event.Value);
-		}
-		Events.Reset();
-	}
-
-	static void TickUpdateStates(UWidgetTransitionSubsystem& Subsystem, float DeltaTime)
-	{
-		for (int32 StateIndex = 0; StateIndex < Subsystem.UpdateStates.Num(); ++StateIndex)
-		{
-			FWidgetTransitionUpdateState& UpdateState = Subsystem.UpdateStates[StateIndex];
-			if (!Subsystem.Transitions.IsValidIndex(UpdateState.TransitionIndex) || IsPendingRemoval(Subsystem, UpdateState.TransitionIndex))
-			{
-				continue;
-			}
-			FWidgetTransition& Transition = Subsystem.Transitions[UpdateState.TransitionIndex];
-			if (!Transition.bStarted || Transition.CurrentTime < Transition.Delay)
-			{
-				continue;
-			}
-			const bool bDispatchUpdate = Transition.UpdateInterval <= 0.0f || (UpdateState.UpdateElapsed += DeltaTime) >= Transition.UpdateInterval;
-			const bool bHasOverrideSample = UpdateState.bHasOverrideSample;
-			FWidgetTransitionValue OverrideValue;
-			if (bHasOverrideSample)
-			{
-				OverrideValue = UpdateState.OverrideValue;
-				UpdateState.bHasOverrideSample = false;
-			}
-			if (bDispatchUpdate)
-			{
-				UpdateState.UpdateElapsed = Transition.UpdateInterval <= 0.0f ? 0.0f : FMath::Fmod(UpdateState.UpdateElapsed, Transition.UpdateInterval);
-				const FOnWidgetTransitionUpdate Updated = UpdateState.OnUpdated;
-				FWidgetTransitionValue Value = MoveTemp(OverrideValue);
-				if (!bHasOverrideSample)
+				if (Transition.PropertyBinding.Apply(Widget, Value.Channels, false))
 				{
-					const FWidgetTransitionSample Sample = Subsystem.SampleTransition(Transition);
-					Value.Channels = Sample.Value;
-					Value.Type = Transition.ToValue.Type;
+					Transition.PropertyBinding.BroadcastFieldNotify(Widget);
 				}
-				UWidget* Widget = Transition.Widget.Get();
-				if (UpdateState.bFieldNotify)
-				{
-					if (Transition.PropertyBinding.Apply(Widget, Value.Channels, false))
-					{
-						Transition.PropertyBinding.BroadcastFieldNotify(Widget);
-					}
-				}
-				Updated.ExecuteIfBound(Value);
 			}
+			Updated.ExecuteIfBound(Value);
 		}
 	}
+}
 
-	void TickAndDispatch(UWidgetTransitionSubsystem& Subsystem, float DeltaTime)
-	{
-		DispatchLifecycleEvents(Subsystem.StartedCallbackEvents);
-		TickUpdateStates(Subsystem, DeltaTime);
-		DispatchFinalUpdatedCallbacks(Subsystem.FinalUpdatedCallbackEvents);
-		DispatchLifecycleEvents(Subsystem.FinishedCallbackEvents);
-	}
+void FWidgetTransitionCallbackStore::TickAndDispatch(UWidgetTransitionSubsystem& Subsystem, float DeltaTime)
+{
+	DispatchLifecycleEvents(StartedEvents);
+	TickUpdateStates(Subsystem, DeltaTime);
+	DispatchFinalUpdatedCallbacks();
+	DispatchLifecycleEvents(FinishedEvents);
 }

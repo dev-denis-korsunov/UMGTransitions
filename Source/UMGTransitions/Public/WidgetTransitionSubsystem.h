@@ -45,18 +45,10 @@ public:
 	TArray<FWidgetTransitionSpring> Springs;
 	/** Owning transition array index for every entry in Springs. */
 	TArray<int32> SpringTransitionIndices;
-	/** Rare lifecycle callbacks, stored outside the update hot path. */
-	TArray<FWidgetTransitionLifecycleCallbacks> LifecycleCallbacks;
-	/** Dense data for Updated callbacks and FieldNotify throttling. */
-	TArray<FWidgetTransitionUpdateState> UpdateStates;
-	/** Callback indices stored parallel to Transitions. */
-	TArray<FWidgetTransitionCallbackLinks> CallbackLinks;
+	/** Callback sidecars and transient dispatch queues. */
+	FWidgetTransitionCallbackStore CallbackStore;
 	/** Transition indices requested for removal during callback dispatch. */
 	TArray<int32> PendingRemovalIndices;
-	/** Lifecycle events accumulated by the transition pass and dispatched after it. */
-	TArray<FWidgetTransitionLifecycleEvent> StartedCallbackEvents;
-	TArray<FWidgetTransitionUpdateEvent> FinalUpdatedCallbackEvents;
-	TArray<FWidgetTransitionLifecycleEvent> FinishedCallbackEvents;
 	/** Defers structural mutation while transition and callback passes are active. */
 	bool bDeferringTransitionRemovals = false;
 

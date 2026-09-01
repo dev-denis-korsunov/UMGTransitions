@@ -461,8 +461,8 @@ bool FWidgetTransitionCallbackReentrancyTest::RunTest(const FString&)
 		TestEqual(TEXT("Started callback runs once before clearing its transition"), Receiver->StartedCount, 1);
 		TestTrue(TEXT("Started callback receives From Value"), FMath::IsNearlyEqual(Receiver->LastTransitionValue.Channels.X, 0.25f));
 		TestEqual(TEXT("Started callback can clear its own transition"), Subsystem->Transitions.Num(), 0);
-		TestEqual(TEXT("Started removal clears callback links"), Subsystem->CallbackLinks.Num(), 0);
-		TestEqual(TEXT("Started removal clears lifecycle storage"), Subsystem->LifecycleCallbacks.Num(), 0);
+		TestEqual(TEXT("Started removal clears callback links"), Subsystem->CallbackStore.Links.Num(), 0);
+		TestEqual(TEXT("Started removal clears lifecycle storage"), Subsystem->CallbackStore.LifecycleCallbacks.Num(), 0);
 	}
 
 	{
@@ -477,8 +477,8 @@ bool FWidgetTransitionCallbackReentrancyTest::RunTest(const FString&)
 		Subsystem->TickTransitionsForTesting(1.0f / 60.0f);
 		TestEqual(TEXT("Updated callback runs once before clearing its transition"), Receiver->UpdatedCount, 1);
 		TestEqual(TEXT("Updated callback can clear its own transition"), Subsystem->Transitions.Num(), 0);
-		TestEqual(TEXT("Updated removal clears callback links"), Subsystem->CallbackLinks.Num(), 0);
-		TestEqual(TEXT("Updated removal clears update storage"), Subsystem->UpdateStates.Num(), 0);
+		TestEqual(TEXT("Updated removal clears callback links"), Subsystem->CallbackStore.Links.Num(), 0);
+		TestEqual(TEXT("Updated removal clears update storage"), Subsystem->CallbackStore.UpdateStates.Num(), 0);
 	}
 
 	{
@@ -495,8 +495,8 @@ bool FWidgetTransitionCallbackReentrancyTest::RunTest(const FString&)
 		TestEqual(TEXT("Updated callback runs once before growing the transition array"), Receiver->UpdatedCount, 1);
 		TestEqual(TEXT("Original completed transition is removed after callback reallocation"), Subsystem->Transitions.Num(), 16);
 		TestTrue(TEXT("Original completed transition is absent after callback reallocation"), !Subsystem->Transitions.ContainsByPredicate([](const FWidgetTransition& Transition) { return Transition.Time <= 0.0f; }));
-		TestEqual(TEXT("Callback links remain parallel after callback reallocation"), Subsystem->CallbackLinks.Num(), Subsystem->Transitions.Num());
-		TestEqual(TEXT("Completed callback state is removed after callback reallocation"), Subsystem->UpdateStates.Num(), 0);
+		TestEqual(TEXT("Callback links remain parallel after callback reallocation"), Subsystem->CallbackStore.Links.Num(), Subsystem->Transitions.Num());
+		TestEqual(TEXT("Completed callback state is removed after callback reallocation"), Subsystem->CallbackStore.UpdateStates.Num(), 0);
 	}
 
 	{
@@ -512,8 +512,8 @@ bool FWidgetTransitionCallbackReentrancyTest::RunTest(const FString&)
 		TestEqual(TEXT("Finished callback runs once before clearing its transition"), Receiver->FinishedCount, 1);
 		TestTrue(TEXT("Finished callback receives To Value"), FMath::IsNearlyEqual(Receiver->LastTransitionValue.Channels.X, 0.75f));
 		TestEqual(TEXT("Finished callback can clear its own transition"), Subsystem->Transitions.Num(), 0);
-		TestEqual(TEXT("Finished removal clears callback links"), Subsystem->CallbackLinks.Num(), 0);
-		TestEqual(TEXT("Finished removal clears lifecycle storage"), Subsystem->LifecycleCallbacks.Num(), 0);
+		TestEqual(TEXT("Finished removal clears callback links"), Subsystem->CallbackStore.Links.Num(), 0);
+		TestEqual(TEXT("Finished removal clears lifecycle storage"), Subsystem->CallbackStore.LifecycleCallbacks.Num(), 0);
 	}
 
 	return true;
@@ -765,7 +765,7 @@ bool FWidgetTransitionUpdateIntervalPerformanceTest::RunTest(const FString&)
 		}
 
 		Subsystem->TickTransitionsForTesting(DeltaTime);
-		for (FWidgetTransitionUpdateState& UpdateState : Subsystem->UpdateStates)
+		for (FWidgetTransitionUpdateState& UpdateState : Subsystem->CallbackStore.UpdateStates)
 		{
 			UpdateState.UpdateElapsed = 0.0f;
 		}
@@ -867,7 +867,7 @@ bool FWidgetTransitionFieldNotifyTextBindingPerformanceTest::RunTest(const FStri
 	}
 
 	Subsystem->TickTransitionsForTesting(DeltaTime);
-	for (FWidgetTransitionUpdateState& UpdateState : Subsystem->UpdateStates)
+	for (FWidgetTransitionUpdateState& UpdateState : Subsystem->CallbackStore.UpdateStates)
 	{
 		UpdateState.UpdateElapsed = 0.0f;
 	}

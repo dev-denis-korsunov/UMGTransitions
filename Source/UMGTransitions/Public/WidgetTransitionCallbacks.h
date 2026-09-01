@@ -60,14 +60,27 @@ struct FWidgetTransitionUpdateEvent
 	FWidgetTransitionValue Value;
 };
 
-namespace WidgetTransitionCallbacks
+/** Owns callback sidecars and transient dispatch queues for a subsystem. */
+struct FWidgetTransitionCallbackStore
 {
 	void Register(UWidgetTransitionSubsystem& Subsystem, int32 TransitionIndex, FWidgetTransitionCallbacks Callbacks);
 	void EnsureLinks(UWidgetTransitionSubsystem& Subsystem);
 	void Remove(UWidgetTransitionSubsystem& Subsystem, int32 TransitionIndex);
-	bool IsPendingRemoval(const UWidgetTransitionSubsystem& Subsystem, int32 TransitionIndex);
 	void QueueStarted(UWidgetTransitionSubsystem& Subsystem, int32 TransitionIndex);
 	void StoreOverrideValue(UWidgetTransitionSubsystem& Subsystem, int32 TransitionIndex, FWidgetTransitionValue Value);
 	void QueueCompleted(UWidgetTransitionSubsystem& Subsystem, int32 TransitionIndex, FWidgetTransitionValue Value);
 	void TickAndDispatch(UWidgetTransitionSubsystem& Subsystem, float DeltaTime);
-} // namespace WidgetTransitionCallbacks
+
+	TArray<FWidgetTransitionLifecycleCallbacks> LifecycleCallbacks;
+	TArray<FWidgetTransitionUpdateState> UpdateStates;
+	TArray<FWidgetTransitionCallbackLinks> Links;
+	TArray<FWidgetTransitionLifecycleEvent> StartedEvents;
+	TArray<FWidgetTransitionUpdateEvent> FinalUpdatedEvents;
+	TArray<FWidgetTransitionLifecycleEvent> FinishedEvents;
+
+private:
+	bool IsPendingRemoval(const UWidgetTransitionSubsystem& Subsystem, int32 TransitionIndex) const;
+	void DispatchLifecycleEvents(TArray<FWidgetTransitionLifecycleEvent>& Events);
+	void DispatchFinalUpdatedCallbacks();
+	void TickUpdateStates(UWidgetTransitionSubsystem& Subsystem, float DeltaTime);
+};

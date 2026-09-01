@@ -142,7 +142,7 @@ void UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 		++TransitionIndex;
 	}
 	const int32 TransitionIndex = Transitions.Emplace(MoveTemp(Transition));
-	WidgetTransitionCallbacks::Register(*this, TransitionIndex, MoveTemp(Callbacks));
+	CallbackStore.Register(*this, TransitionIndex, MoveTemp(Callbacks));
 	StartSpring(TransitionIndex, Transitions[TransitionIndex]);
 }
 
@@ -206,7 +206,7 @@ void UWidgetTransitionSubsystem::RemoveTransition(int32 TransitionIndex)
 	FWidgetTransition& Transition = Transitions[TransitionIndex];
 	const int32 LastTransitionIndex = Transitions.Num() - 1;
 	RemoveSpring(Transition);
-	WidgetTransitionCallbacks::Remove(*this, TransitionIndex);
+	CallbackStore.Remove(*this, TransitionIndex);
 	if (TransitionIndex < LastTransitionIndex)
 	{
 		const FWidgetTransition& LastTransition = Transitions.Last();
@@ -291,7 +291,7 @@ bool UWidgetTransitionSubsystem::RestartTransition(int32 TransitionIndex, FWidge
 void UWidgetTransitionSubsystem::TickTransitions(float DeltaTime)
 {
 	bDeferringTransitionRemovals = true;
-	WidgetTransitionCallbacks::EnsureLinks(*this);
+	CallbackStore.EnsureLinks(*this);
 	const float EffectiveDeltaTime = FMath::Clamp(DeltaTime, 0.0f, 1.0f / 20.0f);
 	for (FWidgetTransitionSpring& Spring : Springs)
 	{
@@ -315,7 +315,7 @@ void UWidgetTransitionSubsystem::TickTransitions(float DeltaTime)
 		if (!InitialTransition.bStarted)
 		{
 			InitialTransition.bStarted = true;
-			WidgetTransitionCallbacks::QueueStarted(*this, TransitionIndex);
+			CallbackStore.QueueStarted(*this, TransitionIndex);
 		}
 		FWidgetTransition& Transition = Transitions[TransitionIndex];
 		const FWidgetTransitionSample Sample = SampleTransition(Transition);
@@ -332,7 +332,7 @@ void UWidgetTransitionSubsystem::TickTransitions(float DeltaTime)
 			SampleValue.Type = CurrentTransition.ToValue.Type;
 			if (RestartTransition(TransitionIndex, CurrentTransition))
 			{
-				WidgetTransitionCallbacks::StoreOverrideValue(*this, TransitionIndex, MoveTemp(SampleValue));
+				CallbackStore.StoreOverrideValue(*this, TransitionIndex, MoveTemp(SampleValue));
 				++TransitionIndex;
 				continue;
 			}
@@ -340,14 +340,14 @@ void UWidgetTransitionSubsystem::TickTransitions(float DeltaTime)
 			{
 				CurrentTransition.PropertyBinding.BroadcastFieldNotify(CurrentTransition.Widget.Get());
 			}
-			WidgetTransitionCallbacks::QueueCompleted(*this, TransitionIndex, MoveTemp(SampleValue));
+			CallbackStore.QueueCompleted(*this, TransitionIndex, MoveTemp(SampleValue));
 			RequestTransitionRemoval(TransitionIndex);
 			++TransitionIndex;
 			continue;
 		}
 		++TransitionIndex;
 	}
-	WidgetTransitionCallbacks::TickAndDispatch(*this, EffectiveDeltaTime);
+	CallbackStore.TickAndDispatch(*this, EffectiveDeltaTime);
 	bDeferringTransitionRemovals = false;
 	FlushPendingRemovals();
 }
@@ -356,7 +356,7 @@ void UWidgetTransitionSubsystem::TickTransitions(float DeltaTime)
 void UWidgetTransitionSubsystem::AddTransitionForTesting(FWidgetTransition Transition, FWidgetTransitionCallbacks Callbacks)
 {
 	const int32 TransitionIndex = Transitions.Add(MoveTemp(Transition));
-	WidgetTransitionCallbacks::Register(*this, TransitionIndex, MoveTemp(Callbacks));
+	CallbackStore.Register(*this, TransitionIndex, MoveTemp(Callbacks));
 }
 
 void UWidgetTransitionSubsystem::TickTransitionsForTesting(float DeltaTime)
