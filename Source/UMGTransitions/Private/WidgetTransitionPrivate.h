@@ -11,8 +11,6 @@ namespace WidgetTransitionPrivate
 		bool bCompleted = false;
 	};
 
-	bool IsMaterialBinding(FName WidgetProperty);
-	FName GetMaterialParameter(FName WidgetProperty);
 	FORCEINLINE FSample SampleTransition(const UWidgetTransitionSubsystem& Subsystem, const FWidgetTransition& Transition)
 	{
 		FSample Sample;

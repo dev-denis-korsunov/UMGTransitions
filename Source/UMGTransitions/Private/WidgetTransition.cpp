@@ -80,12 +80,12 @@ namespace WidgetTransitionPrivate
 		return ChannelCount >= 1 && ChannelCount <= 4;
 	}
 
-	bool IsMaterialBinding(FName WidgetProperty)
+	static bool IsMaterialBinding(FName WidgetProperty)
 	{
 		return WidgetProperty.ToString().StartsWith(TEXT("Material."));
 	}
 
-	FName GetMaterialParameter(FName WidgetProperty)
+	static FName GetMaterialParameter(FName WidgetProperty)
 	{
 		return FName(*WidgetProperty.ToString().RightChop(9));
 	}

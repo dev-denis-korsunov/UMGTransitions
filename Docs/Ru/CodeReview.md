@@ -16,6 +16,7 @@
 | Low | Solved | Module boilerplate | Runtime module class не имел логики startup/shutdown. | Модуль использует `FDefaultModuleImpl`; неиспользуемый публичный module header удалён. |
 | Low | Solved | Build dependencies | Часть зависимостей runtime/editor модулей не имела прямого API- или include-использования. | Удалены runtime `DeveloperSettings`, `Slate`, `SlateCore` и editor `PropertyEditor`, `Settings`. `InputCore` оставлен: инстанцированные Slate list widgets линкуются с `EKeys`; editor target проверен полной сборкой. |
 | Low | Solved | Документация spring | `FWidgetTransitionSpring` всё ещё был описан как heap-allocated после переноса springs в плотное хранилище subsystem. | Комментарий типа теперь описывает актуальный dense spring array. |
+| Low | Solved | Поверхность private helpers | Material-binding helpers оставались объявлены в общем private header после удаления единственного внешнего caller. | Helpers стали implementation-local static-функциями в `WidgetTransition.cpp`. |
 | Отдельный эксперимент | Реализован; automation pending | Lifecycle payload | Внутренние lifecycle callbacks передавали widget, поэтому async action хранил binding и target value. | Started, Updated и Finished теперь используют единый value-only payload. Из каждого async action убраны 88 B binding cache и 32 B копии target value; widget остаётся только в короткой lifecycle dispatch-записи, где он нужен для Remove From Parent. |
 
 ## Структуры, которые оставляем намеренно
