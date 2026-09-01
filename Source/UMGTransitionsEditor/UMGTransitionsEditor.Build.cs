@@ -18,9 +18,7 @@ public class UMGTransitionsEditor : ModuleRules
 				"SlateCore",
 				"GraphEditor",
 				"UnrealEd",
-				"BlueprintGraph",
-				"PropertyEditor",
-				"Settings"
+				"BlueprintGraph"
 			});
 	}
 }

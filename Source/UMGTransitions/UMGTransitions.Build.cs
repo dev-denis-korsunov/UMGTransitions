@@ -10,7 +10,6 @@ public class UMGTransitions : ModuleRules
 			new string[]
 			{
 				"Core",
-				"DeveloperSettings",
 				"FieldNotification",
 				"UMG"
 			});
@@ -20,9 +19,7 @@ public class UMGTransitions : ModuleRules
 			{
 				"CoreUObject",
 				"Engine",
-				"PropertyPath",
-				"Slate",
-				"SlateCore"
+				"PropertyPath"
 			});
 	}
 }

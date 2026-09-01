@@ -14,7 +14,7 @@
 | Medium | Solved | Промежуточные данные tick | `FSample` хранил normalized/eased progress, которые после вычисления sample никто не читал. | Progress теперь локален внутри `SampleTransition`; в `FSample` остались только вычисленное значение и признак завершения. |
 | Medium | Solved | Поверхность рефлексии | `EWidgetTransitionValueType` был помечен `BlueprintType`, хотя не использовался как enum-пин Blueprint. `FWidgetTransitionPropertyBinding` отражался как структура без отражаемых полей. | Оба стали обычными C++ типами. Отражаемые endpoints `FWidgetTransitionValue` и `FWidgetTransition` не изменились, editor-селектор продолжает работать с их native-полями. |
 | Low | Solved | Module boilerplate | Runtime module class не имел логики startup/shutdown. | Модуль использует `FDefaultModuleImpl`; неиспользуемый публичный module header удалён. |
-| Low | Planned | Build dependencies | Часть зависимостей runtime/editor модулей выглядит неиспользуемой. | Убирать по одной и подтверждать очистку полной Development-сборкой editor target. |
+| Low | Solved | Build dependencies | Часть зависимостей runtime/editor модулей не имела прямого API- или include-использования. | Удалены runtime `DeveloperSettings`, `Slate`, `SlateCore` и editor `PropertyEditor`, `Settings`. `InputCore` оставлен: инстанцированные Slate list widgets линкуются с `EKeys`; editor target проверен полной сборкой. |
 | Отдельный эксперимент | Deferred | Lifecycle payload | Внутренние lifecycle callbacks всё ещё передают widget, поэтому async action хранит binding и target value. | Отдельно прототипировать value-only lifecycle payload и оставить его только при улучшении читаемости, поведения, памяти и производительности. |
 
 ## Структуры, которые оставляем намеренно
