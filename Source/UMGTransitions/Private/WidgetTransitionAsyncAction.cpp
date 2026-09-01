@@ -1,6 +1,7 @@
-#include "WidgetTransition.h"
+#include "WidgetTransitionAsyncAction.h"
 
-#include "WidgetTransitionPrivate.h"
+#include "Engine/Engine.h"
+#include "WidgetTransitionSubsystem.h"
 
 UWidgetTransitionAsyncAction* UWidgetTransitionAsyncAction::AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition)
 {
@@ -33,7 +34,11 @@ void UWidgetTransitionAsyncAction::Activate()
 	}
 	// Finished must remain bound even when its execution output is unused so this action can release itself.
 	Callbacks.OnFinished.BindDynamic(this, &UWidgetTransitionAsyncAction::HandleFinished);
-	WidgetTransitionPrivate::StartTransition(Context, MoveTemp(PendingTransition), MoveTemp(Callbacks));
+	const UWorld* World = GEngine->GetWorldFromContextObject(Context, EGetWorldErrorMode::LogAndReturnNull);
+	if (UWidgetTransitionSubsystem* Subsystem = World ? World->GetSubsystem<UWidgetTransitionSubsystem>() : nullptr)
+	{
+		Subsystem->StartTransition(MoveTemp(PendingTransition), MoveTemp(Callbacks));
+	}
 }
 
 void UWidgetTransitionAsyncAction::HandleStarted(FWidgetTransitionValue Value)

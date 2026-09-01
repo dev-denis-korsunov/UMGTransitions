@@ -4,9 +4,6 @@
 #include "Binding/DynamicPropertyPath.h"
 #include "Engine/CurveTable.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
-#include "Kismet/BlueprintAsyncActionBase.h"
-#include "Spring.h"
-#include "Subsystems/WorldSubsystem.h"
 
 #include "WidgetTransition.generated.h"
 
@@ -38,58 +35,6 @@ struct UMGTRANSITIONS_API FWidgetTransitionValue
 	EWidgetTransitionValueType Type = EWidgetTransitionValueType::Float;
 };
 
-DECLARE_DYNAMIC_DELEGATE_OneParam(FOnWidgetTransitionUpdate, FWidgetTransitionValue, Value);
-
-/** Callback input package used while a transition is created. */
-struct FWidgetTransitionCallbacks
-{
-	FOnWidgetTransitionUpdate OnStarted;
-	FOnWidgetTransitionUpdate OnFinished;
-	FOnWidgetTransitionUpdate OnUpdated;
-};
-
-/** Rare lifecycle callbacks stored separately from the update hot path. */
-struct FWidgetTransitionLifecycleCallbacks
-{
-	FOnWidgetTransitionUpdate OnStarted;
-	FOnWidgetTransitionUpdate OnFinished;
-	int32 TransitionIndex = INDEX_NONE;
-};
-
-/** Dense state for Updated callbacks and FieldNotify throttling. */
-struct FWidgetTransitionUpdateState
-{
-	FOnWidgetTransitionUpdate OnUpdated;
-	FWidgetTransitionValue OverrideValue;
-	int32 TransitionIndex = INDEX_NONE;
-	float UpdateElapsed = 0.0f;
-	bool bFieldNotify = false;
-	bool bHasOverrideSample = false;
-};
-
-/** Callback-system sidecar stored parallel to the transition array. */
-struct FWidgetTransitionCallbackLinks
-{
-	int32 LifecycleIndex = INDEX_NONE;
-	int32 UpdateStateIndex = INDEX_NONE;
-};
-
-/** Rare lifecycle callback copied into a short dispatch queue. */
-struct FWidgetTransitionLifecycleEvent
-{
-	FOnWidgetTransitionUpdate Callback;
-	FWidgetTransitionValue Value;
-	TWeakObjectPtr<UWidget> Widget;
-	bool bRemoveFromParent = false;
-};
-
-/** Final update callback copied before its completed transition is removed. */
-struct FWidgetTransitionUpdateEvent
-{
-	FOnWidgetTransitionUpdate Callback;
-	FWidgetTransitionValue Value;
-};
-
 enum class EWidgetTransitionBindingKind : uint8
 {
 	Property,
@@ -103,8 +48,6 @@ enum class EWidgetTransitionBindingKind : uint8
 	RenderTransformAngle,
 	RenderTransformPivot,
 };
-
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWidgetTransitionAsyncValue, FWidgetTransitionValue, Value);
 
 /** Cached access to a transition property on a widget. */
 struct UMGTRANSITIONS_API FWidgetTransitionPropertyBinding
@@ -237,86 +180,4 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Widget Transition", meta = (WorldContext = "WorldContextObject"))
 	static void ClearAllWidgetTransitions(const UObject* WorldContextObject, UWidget* Widget);
-};
-
-/** Blueprint async action which exposes transition lifecycle callbacks as execution outputs. */
-UCLASS()
-class UMGTRANSITIONS_API UWidgetTransitionAsyncAction final : public UBlueprintAsyncActionBase
-{
-	GENERATED_BODY()
-
-public:
-	UPROPERTY(BlueprintAssignable)
-	FOnWidgetTransitionAsyncValue Started;
-	UPROPERTY(BlueprintAssignable)
-	FOnWidgetTransitionAsyncValue Updated;
-	UPROPERTY(BlueprintAssignable)
-	FOnWidgetTransitionAsyncValue Finished;
-
-	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Add Widget Transition Async"), Category = "Widget Transition")
-	static UWidgetTransitionAsyncAction* AddWidgetTransition(const UObject* WorldContextObject, FWidgetTransition Transition);
-
-	virtual void Activate() override;
-
-private:
-	UFUNCTION()
-	void HandleStarted(FWidgetTransitionValue Value);
-	UFUNCTION()
-	void HandleUpdated(FWidgetTransitionValue Value);
-	UFUNCTION()
-	void HandleFinished(FWidgetTransitionValue Value);
-
-	FWidgetTransition PendingTransition;
-	FWidgetTransitionValue EventValue;
-	TWeakObjectPtr<const UObject> WorldContextObject;
-
-#if WITH_DEV_AUTOMATION_TESTS
-public:
-	/** Initializes the update output path without a UWorld for automation benchmarks. */
-	bool InitializeUpdateForTesting(FWidgetTransition Transition);
-	/** Dispatches one update through the same async output handler used at runtime. */
-	void DispatchUpdatedForTesting(FWidgetTransitionValue Value);
-#endif
-};
-
-UCLASS()
-class UMGTRANSITIONS_API UWidgetTransitionSubsystem final : public UTickableWorldSubsystem
-{
-	GENERATED_BODY()
-
-public:
-	virtual ETickableTickType GetTickableTickType() const override;
-	virtual void Tick(float DeltaTime) override;
-	virtual TStatId GetStatId() const override { RETURN_QUICK_DECLARE_CYCLE_STAT(UWidgetTransitionSubsystem, STATGROUP_Tickables); }
-	virtual bool IsTickableInEditor() const override { return true; }
-
-	/** Dense transition records; removal uses RemoveAtSwap and repairs spring-owner indices. */
-	TArray<FWidgetTransition> Transitions;
-	/** Dense spring simulation pass, stored separately from transition records. */
-	TArray<FWidgetTransitionSpring> Springs;
-	/** Owning transition array index for every entry in Springs. */
-	TArray<int32> SpringTransitionIndices;
-	/** Rare lifecycle callbacks, stored outside the update hot path. */
-	TArray<FWidgetTransitionLifecycleCallbacks> LifecycleCallbacks;
-	/** Dense data for Updated callbacks and FieldNotify throttling. */
-	TArray<FWidgetTransitionUpdateState> UpdateStates;
-	/** Callback indices stored parallel to Transitions. */
-	TArray<FWidgetTransitionCallbackLinks> CallbackLinks;
-	/** Transition indices requested for removal during callback dispatch. */
-	TArray<int32> PendingRemovalIndices;
-	/** Lifecycle events accumulated by the transition pass and dispatched after it. */
-	TArray<FWidgetTransitionLifecycleEvent> StartedCallbackEvents;
-	TArray<FWidgetTransitionUpdateEvent> FinalUpdatedCallbackEvents;
-	TArray<FWidgetTransitionLifecycleEvent> FinishedCallbackEvents;
-	/** Defers structural mutation while transition and callback passes are active. */
-	bool bDeferringTransitionRemovals = false;
-
-#if WITH_DEV_AUTOMATION_TESTS
-	/** Adds a transition and its callback package without requiring an initialized UWorld. */
-	void AddTransitionForTesting(FWidgetTransition Transition, FWidgetTransitionCallbacks Callbacks);
-	/** Invokes the transition hot path without requiring an initialized UWorld. */
-	void TickTransitionsForTesting(float DeltaTime);
-	/** Clears transitions through the same removal path used by Clear All Widget Transitions. */
-	void ClearTransitionsForTesting(UWidget* Widget);
-#endif
 };

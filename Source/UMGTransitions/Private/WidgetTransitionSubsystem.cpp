@@ -1,0 +1,371 @@
+#include "WidgetTransitionSubsystem.h"
+
+#include "Components/Widget.h"
+#include "Curves/RealCurve.h"
+
+namespace
+{
+	bool NormalizeValue(const FWidgetTransitionValue& Value, uint8 ChannelCount, FVector4f& OutValue)
+	{
+		if (ChannelCount == 0 || ChannelCount > 4)
+		{
+			return false;
+		}
+		switch (Value.Type)
+		{
+		case EWidgetTransitionValueType::Float:
+		{
+			OutValue = FVector4f(Value.Channels.X, Value.Channels.X, Value.Channels.X, Value.Channels.X);
+			return true;
+		}
+		case EWidgetTransitionValueType::Vector2D:
+		{
+			if (ChannelCount != 2)
+			{
+				return false;
+			}
+			OutValue = Value.Channels;
+			return true;
+		}
+		case EWidgetTransitionValueType::LinearColor:
+		{
+			if (ChannelCount != 4)
+			{
+				return false;
+			}
+			OutValue = Value.Channels;
+			return true;
+		}
+		default:
+		{
+			return false;
+		}
+		}
+	}
+
+	bool IsSpringCompatible(uint8 ChannelCount)
+	{
+		return ChannelCount >= 1 && ChannelCount <= 4;
+	}
+
+	bool IsMaterialBinding(FName WidgetProperty)
+	{
+		return WidgetProperty.ToString().StartsWith(TEXT("Material."));
+	}
+
+	FName GetMaterialParameter(FName WidgetProperty)
+	{
+		return FName(*WidgetProperty.ToString().RightChop(9));
+	}
+}
+
+ETickableTickType UWidgetTransitionSubsystem::GetTickableTickType() const
+{
+	return IsTemplate() ? ETickableTickType::Never : ETickableTickType::Always;
+}
+
+void UWidgetTransitionSubsystem::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+	TickTransitions(DeltaTime);
+}
+
+void UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, FWidgetTransitionCallbacks Callbacks)
+{
+	UWidget* TargetWidget = Transition.Widget.Get();
+	if (!IsValid(TargetWidget))
+	{
+		return;
+	}
+	Transition.Time = FMath::Max(0.0f, Transition.Time);
+	Transition.Delay = FMath::Max(0.0f, Transition.Delay);
+	Transition.RepeatCount = FMath::Max(-1, Transition.RepeatCount);
+	Transition.UpdateInterval = FMath::Max(0.0f, Transition.UpdateInterval);
+	Transition.bBound = !Transition.WidgetProperty.IsNone();
+	Transition.EasingCurve = Transition.Easing.IsNull() ? nullptr : Transition.Easing.GetCurve(TEXT("Widget Transition"), false);
+	if (!Transition.Easing.IsNull() && !Transition.EasingCurve)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Widget Transition: easing row '%s' could not be resolved; using linear interpolation."), *Transition.Easing.RowName.ToString());
+		Transition.Easing = FCurveTableRowHandle();
+	}
+	if (Transition.bBound)
+	{
+		const bool bResolved = IsMaterialBinding(Transition.WidgetProperty)
+			? Transition.PropertyBinding.ResolveMaterial(TargetWidget, GetMaterialParameter(Transition.WidgetProperty))
+			: Transition.PropertyBinding.Resolve(TargetWidget, Transition.WidgetProperty.ToString());
+		if (!bResolved)
+		{
+			return;
+		}
+		if (!NormalizeValue(Transition.ToValue, Transition.PropertyBinding.ChannelCount, Transition.ToValue.Channels))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Widget Transition: target value type is incompatible with '%s'."), *Transition.WidgetProperty.ToString());
+			return;
+		}
+		if (Transition.bUseFrom)
+		{
+			if (!NormalizeValue(Transition.FromValue, Transition.PropertyBinding.ChannelCount, Transition.FromValue.Channels))
+			{
+				UE_LOG(LogTemp, Warning, TEXT("Widget Transition: From value type is incompatible with '%s'."), *Transition.WidgetProperty.ToString());
+				return;
+			}
+		}
+		else if (!Transition.PropertyBinding.Read(TargetWidget, Transition.FromValue.Channels))
+		{
+			return;
+		}
+		if (Transition.Delay > 0.0f && Transition.bUseFrom && !Transition.bDeferFromValue)
+		{
+			Transition.PropertyBinding.Apply(TargetWidget, Transition.FromValue.Channels);
+		}
+	}
+	else
+	{
+		Transition.PropertyBinding.ChannelCount = Transition.ToValue.Type == EWidgetTransitionValueType::Float ? 1 : Transition.ToValue.Type == EWidgetTransitionValueType::Vector2D ? 2 : 4;
+		Transition.FromValue.Channels = Transition.bUseFrom ? Transition.FromValue.Channels : FVector4f::Zero();
+	}
+	if (!IsSpringCompatible(Transition.PropertyBinding.ChannelCount))
+	{
+		Transition.bUseSpring = false;
+	}
+	for (int32 TransitionIndex = 0; Transition.bBound && TransitionIndex < Transitions.Num();)
+	{
+		const FWidgetTransition& ExistingTransition = Transitions[TransitionIndex];
+		if (ExistingTransition.Widget == TargetWidget && ExistingTransition.WidgetProperty == Transition.WidgetProperty)
+		{
+			RequestTransitionRemoval(TransitionIndex);
+			if (!bDeferringTransitionRemovals)
+			{
+				continue;
+			}
+		}
+		++TransitionIndex;
+	}
+	const int32 TransitionIndex = Transitions.Emplace(MoveTemp(Transition));
+	WidgetTransitionCallbacks::Register(*this, TransitionIndex, MoveTemp(Callbacks));
+	StartSpring(TransitionIndex, Transitions[TransitionIndex]);
+}
+
+void UWidgetTransitionSubsystem::ClearTransitions(UWidget* Widget)
+{
+	for (int32 TransitionIndex = 0; TransitionIndex < Transitions.Num();)
+	{
+		if (Transitions[TransitionIndex].Widget == Widget)
+		{
+			RequestTransitionRemoval(TransitionIndex);
+			if (!bDeferringTransitionRemovals)
+			{
+				continue;
+			}
+		}
+		++TransitionIndex;
+	}
+}
+
+FWidgetTransitionSample UWidgetTransitionSubsystem::SampleTransition(const FWidgetTransition& Transition) const
+{
+	FWidgetTransitionSample Sample;
+	Sample.bCompleted = !Transition.bUseSpring && (Transition.Time <= 0.0f || Transition.CurrentTime >= Transition.Delay + Transition.Time);
+	const float NormalizedProgress = Transition.Time <= 0.0f ? 1.0f : FMath::Clamp((Transition.CurrentTime - Transition.Delay) / Transition.Time, 0.0f, 1.0f);
+	const float EasedProgress = Transition.EasingCurve ? Transition.EasingCurve->Eval(NormalizedProgress) : NormalizedProgress;
+	Sample.Value = FMath::Lerp(Transition.FromValue.Channels, Transition.ToValue.Channels, EasedProgress);
+	const bool bReachedSpringDeadline = Transition.bUseSpring && Transition.bFitSpringToTime && Transition.CurrentTime >= Transition.Delay + Transition.Time;
+	if (Transition.bUseSpring && Springs.IsValidIndex(Transition.SpringIndex) && !bReachedSpringDeadline)
+	{
+		const FWidgetTransitionSpring& Spring = Springs[Transition.SpringIndex];
+		Sample.Value = Spring.GetValue();
+		Sample.bCompleted = Spring.IsCompleted();
+	}
+	if (bReachedSpringDeadline)
+	{
+		Sample.Value = Transition.ToValue.Channels;
+		Sample.bCompleted = true;
+	}
+	return Sample;
+}
+
+void UWidgetTransitionSubsystem::RemoveSpring(FWidgetTransition& Transition)
+{
+	if (Transition.SpringIndex == INDEX_NONE)
+	{
+		return;
+	}
+	const int32 SpringIndex = Transition.SpringIndex;
+	const int32 LastSpringIndex = Springs.Num() - 1;
+	Springs.RemoveAtSwap(SpringIndex);
+	SpringTransitionIndices.RemoveAtSwap(SpringIndex);
+	if (SpringIndex < LastSpringIndex)
+	{
+		Transitions[SpringTransitionIndices[SpringIndex]].SpringIndex = SpringIndex;
+	}
+	Transition.SpringIndex = INDEX_NONE;
+}
+
+void UWidgetTransitionSubsystem::RemoveTransition(int32 TransitionIndex)
+{
+	FWidgetTransition& Transition = Transitions[TransitionIndex];
+	const int32 LastTransitionIndex = Transitions.Num() - 1;
+	RemoveSpring(Transition);
+	WidgetTransitionCallbacks::Remove(*this, TransitionIndex);
+	if (TransitionIndex < LastTransitionIndex)
+	{
+		const FWidgetTransition& LastTransition = Transitions.Last();
+		if (LastTransition.SpringIndex != INDEX_NONE)
+		{
+			SpringTransitionIndices[LastTransition.SpringIndex] = TransitionIndex;
+		}
+	}
+	Transitions.RemoveAtSwap(TransitionIndex);
+}
+
+void UWidgetTransitionSubsystem::RequestTransitionRemoval(int32 TransitionIndex)
+{
+	if (bDeferringTransitionRemovals)
+	{
+		PendingRemovalIndices.AddUnique(TransitionIndex);
+		return;
+	}
+	RemoveTransition(TransitionIndex);
+}
+
+void UWidgetTransitionSubsystem::FlushPendingRemovals()
+{
+	PendingRemovalIndices.Sort([](int32 Left, int32 Right)
+	{
+		return Left > Right;
+	});
+	int32 PreviousIndex = INDEX_NONE;
+	for (const int32 TransitionIndex : PendingRemovalIndices)
+	{
+		if (TransitionIndex != PreviousIndex && Transitions.IsValidIndex(TransitionIndex))
+		{
+			RemoveTransition(TransitionIndex);
+		}
+		PreviousIndex = TransitionIndex;
+	}
+	PendingRemovalIndices.Reset();
+}
+
+void UWidgetTransitionSubsystem::StartSpring(int32 TransitionIndex, FWidgetTransition& Transition)
+{
+	if (!Transition.bUseSpring || !IsSpringCompatible(Transition.PropertyBinding.ChannelCount))
+	{
+		return;
+	}
+	const float DampingRatio = FMath::Lerp(1.0f, 0.15f, FMath::Clamp(Transition.SpringBounce, 0.0f, 1.0f));
+	// e^(-zeta * omega * Time) <= 0.001: choose omega so the envelope
+	// reaches the same relative tolerance used by FWidgetTransitionSpring completion tests.
+	const float Frequency = Transition.bFitSpringToTime && Transition.Time > UE_SMALL_NUMBER
+								? (-FMath::Loge(0.001f) / (DampingRatio * Transition.Time)) * FMath::Lerp(1.0f, 3.0f, FMath::Clamp(Transition.SpringSpeed, 0.0f, 1.0f))
+								: 4.0f * FMath::Pow(6.0f, FMath::Clamp(Transition.SpringSpeed, 0.0f, 1.0f));
+	const float SpringFactor = Frequency * Frequency;
+	const float DampingFactor = 2.0f * DampingRatio * Frequency;
+	if (Transition.SpringIndex == INDEX_NONE)
+	{
+		Transition.SpringIndex = Springs.Emplace(SpringFactor, DampingFactor);
+		SpringTransitionIndices.Add(TransitionIndex);
+	}
+	FWidgetTransitionSpring& Spring = Springs[Transition.SpringIndex];
+	Spring.Start(Transition.FromValue.Channels, Transition.ToValue.Channels, FMath::Max(0.0f, Transition.Delay - Transition.CurrentTime));
+}
+
+bool UWidgetTransitionSubsystem::RestartTransition(int32 TransitionIndex, FWidgetTransition& Transition)
+{
+	if (Transition.RepeatCount == 0)
+	{
+		return false;
+	}
+	if (Transition.RepeatCount > 0)
+	{
+		--Transition.RepeatCount;
+	}
+	Transition.CurrentTime = Transition.bIgnoreDelayOnRepeat ? Transition.Delay : 0.0f;
+	if (Transition.bYoYo)
+	{
+		Swap(Transition.FromValue, Transition.ToValue);
+	}
+	StartSpring(TransitionIndex, Transition);
+	return true;
+}
+
+void UWidgetTransitionSubsystem::TickTransitions(float DeltaTime)
+{
+	bDeferringTransitionRemovals = true;
+	WidgetTransitionCallbacks::EnsureLinks(*this);
+	const float EffectiveDeltaTime = FMath::Clamp(DeltaTime, 0.0f, 1.0f / 20.0f);
+	for (FWidgetTransitionSpring& Spring : Springs)
+	{
+		Spring.Tick(EffectiveDeltaTime);
+	}
+	for (int32 TransitionIndex = 0; TransitionIndex < Transitions.Num();)
+	{
+		FWidgetTransition& InitialTransition = Transitions[TransitionIndex];
+		if (!InitialTransition.Widget.IsValid())
+		{
+			RequestTransitionRemoval(TransitionIndex);
+			++TransitionIndex;
+			continue;
+		}
+		InitialTransition.CurrentTime += EffectiveDeltaTime;
+		if (InitialTransition.CurrentTime < InitialTransition.Delay)
+		{
+			++TransitionIndex;
+			continue;
+		}
+		if (!InitialTransition.bStarted)
+		{
+			InitialTransition.bStarted = true;
+			WidgetTransitionCallbacks::QueueStarted(*this, TransitionIndex);
+		}
+		FWidgetTransition& Transition = Transitions[TransitionIndex];
+		const FWidgetTransitionSample Sample = SampleTransition(Transition);
+		const bool bFieldNotify = Transition.bBound && Transition.PropertyBinding.IsFieldNotify();
+		if (Transition.bBound && !bFieldNotify)
+		{
+			Transition.PropertyBinding.Apply(Transition.Widget.Get(), Sample.Value);
+		}
+		FWidgetTransition& CurrentTransition = Transitions[TransitionIndex];
+		if (Sample.bCompleted)
+		{
+			FWidgetTransitionValue SampleValue;
+			SampleValue.Channels = Sample.Value;
+			SampleValue.Type = CurrentTransition.ToValue.Type;
+			if (RestartTransition(TransitionIndex, CurrentTransition))
+			{
+				WidgetTransitionCallbacks::StoreOverrideValue(*this, TransitionIndex, MoveTemp(SampleValue));
+				++TransitionIndex;
+				continue;
+			}
+			if (bFieldNotify && CurrentTransition.PropertyBinding.Apply(CurrentTransition.Widget.Get(), Sample.Value, false))
+			{
+				CurrentTransition.PropertyBinding.BroadcastFieldNotify(CurrentTransition.Widget.Get());
+			}
+			WidgetTransitionCallbacks::QueueCompleted(*this, TransitionIndex, MoveTemp(SampleValue));
+			RequestTransitionRemoval(TransitionIndex);
+			++TransitionIndex;
+			continue;
+		}
+		++TransitionIndex;
+	}
+	WidgetTransitionCallbacks::TickAndDispatch(*this, EffectiveDeltaTime);
+	bDeferringTransitionRemovals = false;
+	FlushPendingRemovals();
+}
+
+#if WITH_DEV_AUTOMATION_TESTS
+void UWidgetTransitionSubsystem::AddTransitionForTesting(FWidgetTransition Transition, FWidgetTransitionCallbacks Callbacks)
+{
+	const int32 TransitionIndex = Transitions.Add(MoveTemp(Transition));
+	WidgetTransitionCallbacks::Register(*this, TransitionIndex, MoveTemp(Callbacks));
+}
+
+void UWidgetTransitionSubsystem::TickTransitionsForTesting(float DeltaTime)
+{
+	TickTransitions(DeltaTime);
+}
+
+void UWidgetTransitionSubsystem::ClearTransitionsForTesting(UWidget* Widget)
+{
+	ClearTransitions(Widget);
+}
+#endif

@@ -1,4 +1,6 @@
 #include "WidgetTransition.h"
+#include "WidgetTransitionAsyncAction.h"
+#include "WidgetTransitionSubsystem.h"
 #include "WidgetSelectorLibrary.h"
 #include "WidgetTransitionTestTypes.h"
 

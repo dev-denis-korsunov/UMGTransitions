@@ -1,7 +1,7 @@
 #include "WidgetTransitionCallbacks.h"
 
 #include "Components/Widget.h"
-#include "WidgetTransition.h"
+#include "WidgetTransitionSubsystem.h"
 
 namespace WidgetTransitionCallbacks
 {
@@ -188,7 +188,7 @@ namespace WidgetTransitionCallbacks
 				FWidgetTransitionValue Value = MoveTemp(OverrideValue);
 				if (!bHasOverrideSample)
 				{
-					const WidgetTransitionPrivate::FSample Sample = WidgetTransitionPrivate::SampleTransition(Subsystem, Transition);
+					const FWidgetTransitionSample Sample = Subsystem.SampleTransition(Transition);
 					Value.Channels = Sample.Value;
 					Value.Type = Transition.ToValue.Type;
 				}

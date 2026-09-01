@@ -1,4 +1,5 @@
 #include "WidgetTransition.h"
+#include "WidgetTransitionSubsystem.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
