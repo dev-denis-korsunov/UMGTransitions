@@ -52,6 +52,88 @@ namespace
 		return ChannelCount >= 1 && ChannelCount <= 4;
 	}
 
+	FVector4f InterpolateColorHSV(const FVector4f& From, const FVector4f& To, float Alpha)
+	{
+		const FLinearColor FromHSV = FLinearColor(From.X, From.Y, From.Z, From.W).LinearRGBToHSV();
+		const FLinearColor ToHSV = FLinearColor(To.X, To.Y, To.Z, To.W).LinearRGBToHSV();
+		float HueDelta = ToHSV.R - FromHSV.R;
+		if (HueDelta > 180.0f)
+		{
+			HueDelta -= 360.0f;
+		}
+		else if (HueDelta < -180.0f)
+		{
+			HueDelta += 360.0f;
+		}
+		const FLinearColor HSVValue(
+			FromHSV.R + HueDelta * Alpha,
+			FMath::Lerp(FromHSV.G, ToHSV.G, Alpha),
+			FMath::Lerp(FromHSV.B, ToHSV.B, Alpha),
+			FMath::Lerp(From.W, To.W, Alpha));
+		const FLinearColor RGBValue = HSVValue.HSVToLinearRGB();
+		return FVector4f(RGBValue.R, RGBValue.G, RGBValue.B, RGBValue.A);
+	}
+
+	float SignedCbrt(float Value)
+	{
+		return FMath::Sign(Value) * FMath::Pow(FMath::Abs(Value), 1.0f / 3.0f);
+	}
+
+	FVector4f InterpolateColorOKLCH(const FVector4f& From, const FVector4f& To, float Alpha)
+	{
+		const auto ToOKLab = [](const FVector4f& Color)
+		{
+			const float L = 0.4122214708f * Color.X + 0.5363325363f * Color.Y + 0.0514459929f * Color.Z;
+			const float M = 0.2119034982f * Color.X + 0.6806995451f * Color.Y + 0.1073969566f * Color.Z;
+			const float S = 0.0883024619f * Color.X + 0.2817188376f * Color.Y + 0.6299787005f * Color.Z;
+			const float LRoot = SignedCbrt(L);
+			const float MRoot = SignedCbrt(M);
+			const float SRoot = SignedCbrt(S);
+			return FVector4f(
+				0.2104542553f * LRoot + 0.7936177850f * MRoot - 0.0040720468f * SRoot,
+				1.9779984951f * LRoot - 2.4285922050f * MRoot + 0.4505937099f * SRoot,
+				0.0259040371f * LRoot + 0.7827717662f * MRoot - 0.8086757660f * SRoot,
+				Color.W);
+		};
+		const auto FromOKLab = [](const FVector4f& Lab)
+		{
+			const float LRoot = Lab.X + 0.3963377774f * Lab.Y + 0.2158037573f * Lab.Z;
+			const float MRoot = Lab.X - 0.1055613458f * Lab.Y - 0.0638541728f * Lab.Z;
+			const float SRoot = Lab.X - 0.0894841775f * Lab.Y - 1.2914855480f * Lab.Z;
+			const float L = LRoot * LRoot * LRoot;
+			const float M = MRoot * MRoot * MRoot;
+			const float S = SRoot * SRoot * SRoot;
+			return FVector4f(
+				4.0767416621f * L - 3.3077115913f * M + 0.2309699292f * S,
+				-1.2684380046f * L + 2.6097574011f * M - 0.3413193965f * S,
+				-0.0041960863f * L - 0.7034186147f * M + 1.7076147010f * S,
+				Lab.W);
+		};
+		const FVector4f FromLab = ToOKLab(From);
+		const FVector4f ToLab = ToOKLab(To);
+		const float FromC = FMath::Sqrt(FromLab.Y * FromLab.Y + FromLab.Z * FromLab.Z);
+		const float ToC = FMath::Sqrt(ToLab.Y * ToLab.Y + ToLab.Z * ToLab.Z);
+		const float FromH = FMath::Atan2(FromLab.Z, FromLab.Y);
+		const float ToH = FMath::Atan2(ToLab.Z, ToLab.Y);
+		float HueDelta = ToH - FromH;
+		if (HueDelta > PI)
+		{
+			HueDelta -= 2.0f * PI;
+		}
+		else if (HueDelta < -PI)
+		{
+			HueDelta += 2.0f * PI;
+		}
+		const float Chroma = FMath::Lerp(FromC, ToC, Alpha);
+		const float Hue = FromH + HueDelta * Alpha;
+		const FVector4f InterpolatedLab(
+			FMath::Lerp(FromLab.X, ToLab.X, Alpha),
+			Chroma * FMath::Cos(Hue),
+			Chroma * FMath::Sin(Hue),
+			FMath::Lerp(From.W, To.W, Alpha));
+		return FromOKLab(InterpolatedLab);
+	}
+
 	bool IsMaterialBinding(FName WidgetProperty)
 	{
 		return WidgetProperty.ToString().StartsWith(TEXT("Material."));
@@ -181,7 +263,11 @@ FWidgetTransitionSample UWidgetTransitionSubsystem::SampleTransition(const FWidg
 	Sample.bCompleted = !Transition.bUseSpring && (Transition.Time <= 0.0f || Transition.CurrentTime >= Transition.Delay + Transition.Time);
 	const float NormalizedProgress = Transition.Time <= 0.0f ? 1.0f : FMath::Clamp((Transition.CurrentTime - Transition.Delay) / Transition.Time, 0.0f, 1.0f);
 	const float EasedProgress = Transition.EasingCurve ? Transition.EasingCurve->Eval(NormalizedProgress) : NormalizedProgress;
-	Sample.Value = FMath::Lerp(Transition.FromValue.Channels, Transition.ToValue.Channels, EasedProgress);
+	Sample.Value = Transition.bInterpolateColorInOKLCH
+		? InterpolateColorOKLCH(Transition.FromValue.Channels, Transition.ToValue.Channels, EasedProgress)
+		: Transition.bInterpolateColorInHSV
+		? InterpolateColorHSV(Transition.FromValue.Channels, Transition.ToValue.Channels, EasedProgress)
+		: FMath::Lerp(Transition.FromValue.Channels, Transition.ToValue.Channels, EasedProgress);
 	const bool bReachedSpringDeadline = Transition.bUseSpring && Transition.bFitSpringToTime && Transition.CurrentTime >= Transition.Delay + Transition.Time;
 	if (Transition.bUseSpring && Springs.IsValidIndex(Transition.SpringIndex) && !bReachedSpringDeadline)
 	{

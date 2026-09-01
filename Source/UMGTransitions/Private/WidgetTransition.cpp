@@ -452,10 +452,12 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::From(FWidgetTransition Trans
 	return Transition;
 }
 
-FWidgetTransition UWidgetTransitionFunctionLibrary::Options(FWidgetTransition Transition, bool bDeferFromValue, bool bIgnoreDelayOnRepeat, float CallbackUpdateInterval)
+FWidgetTransition UWidgetTransitionFunctionLibrary::Options(FWidgetTransition Transition, bool bDeferFromValue, bool bIgnoreDelayOnRepeat, float CallbackUpdateInterval, bool bInterpolateColorInHSV, bool bInterpolateColorInOKLCH)
 {
 	Transition.bDeferFromValue = bDeferFromValue;
 	Transition.bIgnoreDelayOnRepeat = bIgnoreDelayOnRepeat;
+	Transition.bInterpolateColorInHSV = bInterpolateColorInHSV;
+	Transition.bInterpolateColorInOKLCH = bInterpolateColorInOKLCH;
 	Transition.UpdateInterval = FMath::Max(0.0f, CallbackUpdateInterval);
 	return Transition;
 }

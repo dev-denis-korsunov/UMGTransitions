@@ -121,6 +121,10 @@ struct UMGTRANSITIONS_API FWidgetTransition
 	uint16 bFitSpringToTime : 1 = false;
 	/** Whether this transition writes its sampled value to a widget property. */
 	uint16 bBound : 1 = false;
+	/** Interpolates linear-color properties through HSV instead of RGB. */
+	uint16 bInterpolateColorInHSV : 1 = false;
+	/** Interpolates linear-color properties through OKLCH instead of RGB. */
+	uint16 bInterpolateColorInOKLCH : 1 = false;
 	/** Index into UWidgetTransitionSubsystem::Springs when bUseSpring is enabled. */
 	int32 SpringIndex = INDEX_NONE;
 	/** Resolved once when the transition is added, avoiding a CurveTable lookup every tick. */
@@ -140,7 +144,7 @@ public:
 	static FWidgetTransition From(FWidgetTransition Transition, bool bUseFrom, FWidgetTransitionValue FromValue);
 	/** Configures optional transition behavior and notification frequency. */
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
-	static FWidgetTransition Options(FWidgetTransition Transition, UPARAM(meta = (ToolTip = "Defers applying From Value until the transition starts after Delay.")) bool bDeferFromValue = false, bool bIgnoreDelayOnRepeat = false, UPARAM(meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", ToolTip = "Seconds between Updated callbacks and FieldNotify broadcasts. Zero updates every tick.")) float CallbackUpdateInterval = 0.033f);
+	static FWidgetTransition Options(FWidgetTransition Transition, UPARAM(meta = (ToolTip = "Defers applying From Value until the transition starts after Delay.")) bool bDeferFromValue = false, bool bIgnoreDelayOnRepeat = false, UPARAM(meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", ToolTip = "Seconds between Updated callbacks and FieldNotify broadcasts. Zero updates every tick.")) float CallbackUpdateInterval = 0.033f, UPARAM(meta = (ToolTip = "Interpolates color properties through HSV instead of RGB.")) bool bInterpolateColorInHSV = false, UPARAM(meta = (ToolTip = "Interpolates color properties through OKLCH instead of RGB.")) bool bInterpolateColorInOKLCH = false);
 
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DataTablePin = "CurveTable", ReturnDisplayName = "Transition"))
 	static FWidgetTransition Easing(FWidgetTransition Transition, UCurveTable* CurveTable, FName RowName);
