@@ -8,8 +8,6 @@ namespace WidgetTransitionPrivate
 	struct FSample
 	{
 		FVector4f Value = FVector4f::Zero();
-		float NormalizedProgress = 0.0f;
-		float EasedProgress = 0.0f;
 		bool bCompleted = false;
 	};
 
@@ -19,9 +17,9 @@ namespace WidgetTransitionPrivate
 	{
 		FSample Sample;
 		Sample.bCompleted = !Transition.bUseSpring && (Transition.Time <= 0.0f || Transition.CurrentTime >= Transition.Delay + Transition.Time);
-		Sample.NormalizedProgress = Transition.Time <= 0.0f ? 1.0f : FMath::Clamp((Transition.CurrentTime - Transition.Delay) / Transition.Time, 0.0f, 1.0f);
-		Sample.EasedProgress = Transition.EasingCurve ? Transition.EasingCurve->Eval(Sample.NormalizedProgress) : Sample.NormalizedProgress;
-		Sample.Value = FMath::Lerp(Transition.FromValue.Channels, Transition.ToValue.Channels, Sample.EasedProgress);
+		const float NormalizedProgress = Transition.Time <= 0.0f ? 1.0f : FMath::Clamp((Transition.CurrentTime - Transition.Delay) / Transition.Time, 0.0f, 1.0f);
+		const float EasedProgress = Transition.EasingCurve ? Transition.EasingCurve->Eval(NormalizedProgress) : NormalizedProgress;
+		Sample.Value = FMath::Lerp(Transition.FromValue.Channels, Transition.ToValue.Channels, EasedProgress);
 		const bool bReachedSpringDeadline = Transition.bUseSpring && Transition.bFitSpringToTime && Transition.CurrentTime >= Transition.Delay + Transition.Time;
 		if (Transition.bUseSpring && Subsystem.Springs.IsValidIndex(Transition.SpringIndex) && !bReachedSpringDeadline)
 		{
