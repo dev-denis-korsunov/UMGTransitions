@@ -2,7 +2,7 @@
 
 #include "CoreMinimal.h"
 
-/** Heap-allocated four-channel spring used by spring transitions. */
+/** Four-channel spring state stored in the subsystem's dense spring array. */
 struct UMGTRANSITIONS_API FWidgetTransitionSpring
 {
 	FWidgetTransitionSpring(float SpringFactor, float DampingFactor);

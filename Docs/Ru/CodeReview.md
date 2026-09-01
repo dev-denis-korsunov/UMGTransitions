@@ -15,6 +15,7 @@
 | Medium | Solved | Поверхность рефлексии | `EWidgetTransitionValueType` был помечен `BlueprintType`, хотя не использовался как enum-пин Blueprint. `FWidgetTransitionPropertyBinding` отражался как структура без отражаемых полей. | Оба стали обычными C++ типами. Отражаемые endpoints `FWidgetTransitionValue` и `FWidgetTransition` не изменились, editor-селектор продолжает работать с их native-полями. |
 | Low | Solved | Module boilerplate | Runtime module class не имел логики startup/shutdown. | Модуль использует `FDefaultModuleImpl`; неиспользуемый публичный module header удалён. |
 | Low | Solved | Build dependencies | Часть зависимостей runtime/editor модулей не имела прямого API- или include-использования. | Удалены runtime `DeveloperSettings`, `Slate`, `SlateCore` и editor `PropertyEditor`, `Settings`. `InputCore` оставлен: инстанцированные Slate list widgets линкуются с `EKeys`; editor target проверен полной сборкой. |
+| Low | Solved | Документация spring | `FWidgetTransitionSpring` всё ещё был описан как heap-allocated после переноса springs в плотное хранилище subsystem. | Комментарий типа теперь описывает актуальный dense spring array. |
 | Отдельный эксперимент | Deferred | Lifecycle payload | Внутренние lifecycle callbacks всё ещё передают widget, поэтому async action хранит binding и target value. | Отдельно прототипировать value-only lifecycle payload и оставить его только при улучшении читаемости, поведения, памяти и производительности. |
 
 ## Структуры, которые оставляем намеренно
