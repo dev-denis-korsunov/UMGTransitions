@@ -14,7 +14,6 @@ class UWidget;
 class UMaterialInstanceDynamic;
 struct FRealCurve;
 
-UENUM(BlueprintType)
 enum class EWidgetTransitionValueType : uint8
 {
 	Float,
@@ -108,11 +107,8 @@ enum class EWidgetTransitionBindingKind : uint8
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWidgetTransitionAsyncValue, FWidgetTransitionValue, Value);
 
 /** Cached access to a transition property on a widget. */
-USTRUCT()
 struct UMGTRANSITIONS_API FWidgetTransitionPropertyBinding
 {
-	GENERATED_BODY()
-
 	/** Resolved property path, retained to avoid resolving it each tick. */
 	FDynamicPropertyPath CachedPropertyPath;
 	/** Whether the property path has been successfully resolved. */
