@@ -13,7 +13,7 @@
 | [ModeAndDirtyIndexExperiments.md](Testing/ModeAndDirtyIndexExperiments.md) | Гипотезы и методика экспериментов для индексов режимов и dirty widget. |
 | [TestResults.md](TestResults.md) | Хронологический журнал завершённых запусков. |
 
-Регулярные тесты находятся в `Source/UMGTransitions/Private/Tests/WidgetTransitionTests.cpp`; исторические эксперименты — в `Tests/Experiments/`. Все включены только при `WITH_DEV_AUTOMATION_TESTS`.
+Регулярные тесты находятся в `Source/UMGTransitionsTests/Private/WidgetTransitionTests.cpp`; исторические эксперименты — в `Source/UMGTransitionsTests/Private/Experiments/`. Editor-only модуль `UMGTransitionsTests` компилирует их только при включённых development automation tests.
 
 ## Как запускать
 

@@ -12,6 +12,8 @@ This section separates correctness specifications, benchmark methodology, and hi
 | [AsyncCallbackOptimization.md](Testing/AsyncCallbackOptimization.md) | Async callback storage roadmap. |
 | [TestResults.md](TestResults.md) | Chronological test log. |
 
+Regular tests live in `Source/UMGTransitionsTests/Private/WidgetTransitionTests.cpp`; historical experiments live in `Source/UMGTransitionsTests/Private/Experiments/`. The editor-only `UMGTransitionsTests` module compiles them only when development automation tests are enabled.
+
 ## Running tests
 
 In Unreal Editor, open Automation and filter for `UMGTransitions.WidgetTransition`.
