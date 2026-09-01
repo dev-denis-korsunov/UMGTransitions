@@ -4,7 +4,15 @@ This file records completed runs. Test descriptions are in [Testing.md](Testing.
 
 The current accepted baseline is described in the latest entries of the Russian history and is reproduced in the English optimization documents. Performance values must be compared only between runs with the same machine, editor session, build configuration, and warm-up state.
 
-## Latest verified run
+## Latest correctness verification
+
+UE 5.7.4, Mac arm64 Development, 2026-09-01: all 23 tests under `UMGTransitions.WidgetTransition` passed with automation exit code `0`. This includes runtime, editor metadata, diagnostics, performance tests, and historical experiments. The value-only lifecycle regression verifies From Value on Started, To Value on Finished, and callback reentrancy.
+
+Current deterministic layout: `FWidgetTransition` 256 B, callback links 8 B, lifecycle state 72 B, update state 80 B, transient lifecycle event 80 B, and `UWidgetTransitionAsyncAction` 432 B.
+
+Performance numbers from this full cold run are not a new baseline because Asset Registry/background editor startup work overlapped the early benchmarks. Performance comparisons still use isolated, warmed runs.
+
+## Latest stable performance baseline
 
 UE 5.7, Mac arm64 Development, Run 4:
 

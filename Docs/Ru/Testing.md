@@ -19,7 +19,7 @@
 
 В Unreal Editor откройте Automation и отфильтруйте `UMGTransitions.WidgetTransition`.
 
-Для commandlet-прогона используйте `UnrealEditor-Cmd` с проектом и `-NullRHI`:
+Команды для Automation:
 
 ```text
 Automation RunTests UMGTransitions.WidgetTransition.Runtime
@@ -27,6 +27,17 @@ Automation RunTests UMGTransitions.WidgetTransition.Editor
 Automation RunTests UMGTransitions.WidgetTransition.Diagnostics
 Automation RunTests UMGTransitions.WidgetTransition.Performance.<TestName>
 Automation RunTests UMGTransitions.WidgetTransition.Experiments.<TestName>
+```
+
+На проверенной установке UE 5.7 для macOS нужно запускать executable внутри app bundle. Отдельный bootstrap `Engine/Binaries/Mac/UnrealEditor-Cmd` теряет абсолютный путь этого проекта с пробелами:
+
+```bash
+"/path/to/UE_5.7/Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor" \
+  "/path/to/ElasticUMGProject.uproject" \
+  -unattended -NullRHI -nop4 -nosplash \
+  -ExecCmds="Automation RunTests UMGTransitions.WidgetTransition; Quit" \
+  -TestExit="Automation Test Queue Empty" \
+  -abslog="/tmp/UMGTransitionsAutomation.log"
 ```
 
 Runtime и editor-тесты должны запускаться перед изменениями хранения или Blueprint metadata. Performance-тесты не являются pass/fail порогами: их запускают отдельно, на одинаковой машине и конфигурации, затем добавляют результат в журнал.

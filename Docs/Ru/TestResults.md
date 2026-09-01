@@ -53,6 +53,7 @@
 | 2026-08-31 | UE 5.7 / Mac arm64 Development | Callback hybrid + empty-sidecar fast path | Passed, accepted | Transition 256 B + link 8 B; update state 80 B. 100 no-callback 6.224/7.667, lifecycle 6.339/7.783, `Updated` 79.678/80.243 μs/frame. Reentrancy, swap removal и interval прошли. |
 | 2026-08-31 | UE 5.7 / Mac arm64 Development | Value-only lazy callback | Passed, accepted | `Updated` возвращает только value. 100 no-callback 6.248/7.539, lifecycle 6.107/7.457, `Updated` 83.256/84.086 μs/frame. Async text 80.535 против 83.403 у предыдущего API. Все callback runtime-тесты прошли. |
 | 2026-08-31 | UE 5.7 / Mac arm64 Development | Value-only lazy callback, Run 12 | Passed | 100 no-callback 6.477/7.482, lifecycle 6.122/7.268, `Updated` 83.812/86.959 μs/frame. Async text 79.750; runtime-тесты повторно прошли. |
+| 2026-09-01 | UE 5.7.4 / Mac arm64 Development | Полный `UMGTransitions.WidgetTransition` suite | Passed, 23/23 | Exit code 0. Value-only lifecycle проверяет From Value в Started, To Value в Finished и callback reentrancy. Layout: transition 256 B, links 8 B, lifecycle 72 B, update state 80 B, временный lifecycle event 80 B, async action 432 B. Perf-значения cold full-suite не приняты как baseline из-за параллельной работы Asset Registry/editor startup. |
 
 ## Актуальный baseline
 

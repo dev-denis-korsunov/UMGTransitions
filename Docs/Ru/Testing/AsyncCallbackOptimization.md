@@ -21,7 +21,7 @@ Async action хранит только pending transition, текущее `Event
 | --- | --- | --- | --- | --- |
 | 0. Baseline | Завершён | Зафиксировать async/plain и callback benchmarks | Сравнимая точка отсчёта | Низкий |
 | 1. Убрать постоянный callback-пакет | Завершён | Удалить поле `Callbacks` из `UWidgetTransitionAsyncAction`; создавать его локально в `Activate()` | Экономия `96 B` на async UObject | Низкий |
-| 2. Проверить размер UObject | Реализован, нужен новый прогон | `Diagnostics.StorageLayout` выводит размер async action и временного lifecycle event | Подтвердить реальную экономию с учётом alignment/UObject | Низкий |
+| 2. Проверить размер UObject | Завершён | `Diagnostics.StorageLayout`: async action `432 B`, временный lifecycle event `80 B` | Реальный layout зафиксирован полным automation-прогоном | Низкий |
 | 3. Уменьшить async value state | Завершён | Передавать Started/Finished value из runtime и удалить binding/target copy из action | Удалено `120 B` native-полей на action | Средний |
 | 4. Async-specific dispatcher | Отложен | Заменить три dynamic delegate в runtime на компактную ссылку на async action и mask событий | Снижение runtime callback storage для async | Высокий |
 | 5. Контроль lifetime | Обязателен для этапа 4 | Гарантировать, что async action не уничтожается до `Finished`, включая очистку widget и reentrancy | Исключить dangling UObject callback | Высокий |

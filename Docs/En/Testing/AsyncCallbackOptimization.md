@@ -44,9 +44,9 @@ Every callback-storage change must run:
 - `Runtime.RemoveAtSwap`;
 - `Runtime.UpdateInterval`.
 
-The previously accepted update path passes the reentrancy, swap-removal, interval, and repeat-boundary regressions. After changing the lifecycle payload, rerun the same group plus the Started/Finished value assertions before recording a new baseline. Performance values should only be compared within the same editor session, configuration, and warm-up state.
+The value-only lifecycle path passes the full 23-test suite, including reentrancy, swap removal, intervals, repeat boundaries, and Started/Finished value assertions. Performance values should only be compared within the same editor session, configuration, and warm-up state.
 
-`Diagnostics.StorageLayout` also reports `UWidgetTransitionAsyncAction` and the transient `FWidgetTransitionLifecycleEvent`, so resident UObject savings and rare queue-record cost stay visible together.
+`Diagnostics.StorageLayout` reports `UWidgetTransitionAsyncAction` at `432 B` and the transient `FWidgetTransitionLifecycleEvent` at `80 B`, so resident UObject savings and rare queue-record cost stay visible together.
 
 ## Deferred options
 

@@ -28,4 +28,15 @@ Automation RunTests UMGTransitions.WidgetTransition.Performance.<TestName>
 Automation RunTests UMGTransitions.WidgetTransition.Experiments.<TestName>
 ```
 
+On the verified macOS UE 5.7 installation, launch the executable inside the editor app bundle. The separate `Engine/Binaries/Mac/UnrealEditor-Cmd` bootstrap does not preserve this project's absolute path with spaces:
+
+```bash
+"/path/to/UE_5.7/Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor" \
+  "/path/to/ElasticUMGProject.uproject" \
+  -unattended -NullRHI -nop4 -nosplash \
+  -ExecCmds="Automation RunTests UMGTransitions.WidgetTransition; Quit" \
+  -TestExit="Automation Test Queue Empty" \
+  -abslog="/tmp/UMGTransitionsAutomation.log"
+```
+
 Performance tests are comparative measurements, not hard pass/fail thresholds. Compare runs made with the same editor configuration.
