@@ -15,21 +15,25 @@ namespace
 		{
 		case EWidgetTransitionValueType::Float:
 		{
-			OutValue = FVector4f(Value.Channels.X, Value.Channels.X, Value.Channels.X, Value.Channels.X);
+			if (ChannelCount < 1)
+			{
+				return false;
+			}
+			OutValue = FVector4f(Value.Channels.X, 0.0f, 0.0f, 0.0f);
 			return true;
 		}
 		case EWidgetTransitionValueType::Vector2D:
 		{
-			if (ChannelCount != 2)
+			if (ChannelCount < 2)
 			{
 				return false;
 			}
-			OutValue = Value.Channels;
+			OutValue = FVector4f(Value.Channels.X, Value.Channels.Y, 0.0f, 0.0f);
 			return true;
 		}
 		case EWidgetTransitionValueType::LinearColor:
 		{
-			if (ChannelCount != 4)
+			if (ChannelCount < 4)
 			{
 				return false;
 			}
@@ -95,6 +99,7 @@ void UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 			: Transition.PropertyBinding.Resolve(TargetWidget, Transition.WidgetProperty.ToString());
 		if (!bResolved)
 		{
+			UE_LOG(LogTemp, Warning, TEXT("Widget Transition: could not resolve property '%s' on widget '%s'. For material bindings, the widget must be an Image or Border with a material parameter."), *Transition.WidgetProperty.ToString(), *GetNameSafe(TargetWidget));
 			return;
 		}
 		if (!NormalizeValue(Transition.ToValue, Transition.PropertyBinding.ChannelCount, Transition.ToValue.Channels))
@@ -133,6 +138,7 @@ void UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 		const FWidgetTransition& ExistingTransition = Transitions[TransitionIndex];
 		if (ExistingTransition.Widget == TargetWidget && ExistingTransition.WidgetProperty == Transition.WidgetProperty)
 		{
+			UE_LOG(LogTemp, Verbose, TEXT("Widget Transition: replacing existing transition for '%s' on widget '%s'."), *Transition.WidgetProperty.ToString(), *GetNameSafe(TargetWidget));
 			RequestTransitionRemoval(TransitionIndex);
 			if (!bDeferringTransitionRemovals)
 			{
