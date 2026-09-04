@@ -351,17 +351,17 @@ void UWidgetTransitionSubsystem::StartSpring(int32 TransitionIndex, FWidgetTrans
 	{
 		return;
 	}
-	const float DampingRatio = FMath::Lerp(1.0f, 0.15f, FMath::Clamp(Transition.SpringBounce, 0.0f, 1.0f));
+	const float DampingRatio = FMath::Lerp(0.15f, 1.0f, FMath::Clamp(Transition.SpringDamping, 0.0f, 1.0f));
 	// e^(-zeta * omega * Time) <= 0.001: choose omega so the envelope
 	// reaches the same relative tolerance used by FWidgetTransitionSpring completion tests.
 	const float Frequency = Transition.bFitSpringToTime && Transition.Time > UE_SMALL_NUMBER
-								? (-FMath::Loge(0.001f) / (DampingRatio * Transition.Time)) * FMath::Lerp(1.0f, 3.0f, FMath::Clamp(Transition.SpringSpeed, 0.0f, 1.0f))
-								: 4.0f * FMath::Pow(6.0f, FMath::Clamp(Transition.SpringSpeed, 0.0f, 1.0f));
+								? (-FMath::Loge(0.001f) / (DampingRatio * Transition.Time)) * FMath::Lerp(1.0f, 3.0f, FMath::Clamp(Transition.SpringForce, 0.0f, 1.0f))
+								: 4.0f * FMath::Pow(6.0f, FMath::Clamp(Transition.SpringForce, 0.0f, 1.0f));
 	const float SpringFactor = Frequency * Frequency;
 	const float DampingFactor = 2.0f * DampingRatio * Frequency;
 	if (Transition.SpringIndex == INDEX_NONE)
 	{
-		Transition.SpringIndex = Springs.Emplace(SpringFactor, DampingFactor);
+		Transition.SpringIndex = Springs.Emplace(SpringFactor, DampingFactor, Transition.SpringMaxSpeed);
 		SpringTransitionIndices.Add(TransitionIndex);
 	}
 	FWidgetTransitionSpring& Spring = Springs[Transition.SpringIndex];

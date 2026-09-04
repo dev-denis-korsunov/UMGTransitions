@@ -504,11 +504,12 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::YoYo(FWidgetTransition Trans
 	Transition.bYoYo = bYoYo;
 	return Transition;
 }
-FWidgetTransition UWidgetTransitionFunctionLibrary::Spring(FWidgetTransition Transition, float SpringSpeed, float SpringBounce, bool bFitSimulationToTime)
+FWidgetTransition UWidgetTransitionFunctionLibrary::Spring(FWidgetTransition Transition, float SpringForce, float SpringDamping, float SpringMaxSpeed, bool bFitSimulationToTime)
 {
 	Transition.bUseSpring = true;
-	Transition.SpringSpeed = FMath::Clamp(SpringSpeed, 0.0f, 1.0f);
-	Transition.SpringBounce = FMath::Clamp(SpringBounce, 0.0f, 1.0f);
+	Transition.SpringForce = FMath::Clamp(SpringForce, 0.0f, 1.0f);
+	Transition.SpringDamping = FMath::Clamp(SpringDamping, 0.0f, 1.0f);
+	Transition.SpringMaxSpeed = FMath::Max(0.0f, SpringMaxSpeed);
 	Transition.bFitSpringToTime = bFitSimulationToTime;
 	return Transition;
 }

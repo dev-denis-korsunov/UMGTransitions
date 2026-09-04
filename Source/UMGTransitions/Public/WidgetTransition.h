@@ -103,8 +103,9 @@ struct UMGTRANSITIONS_API FWidgetTransition
 	float Time = 0.2f;
 	float Delay = 0.0f;
 	float CurrentTime = 0.0f;
-	float SpringSpeed = 0.65f;
-	float SpringBounce = 0.45f;
+	float SpringForce = 0.65f;
+	float SpringDamping = 0.45f;
+	float SpringMaxSpeed = 0.0f;
 	int32 RepeatCount = 0;
 	/** Seconds between Updated callbacks and FieldNotify broadcasts; zero preserves per-tick updates. */
 	float UpdateInterval = 0.033f;
@@ -153,7 +154,7 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Yo Yo", ReturnDisplayName = "Transition"))
 	static FWidgetTransition YoYo(FWidgetTransition Transition, bool bYoYo = true);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
-	static FWidgetTransition Spring(FWidgetTransition Transition, float SpringSpeed = 0.65f, float SpringBounce = 0.45f, bool bFitSimulationToTime = false);
+	static FWidgetTransition Spring(FWidgetTransition Transition, float SpringForce = 0.65f, float SpringDamping = 0.45f, float SpringMaxSpeed = 0.0f, bool bFitSimulationToTime = false);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
 	static FWidgetTransition RemoveFromParent(FWidgetTransition Transition, bool bRemoveFromParent = true);
 	/** Makes a scalar transition endpoint. */
