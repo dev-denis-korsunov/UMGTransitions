@@ -5,7 +5,7 @@
 /** Four-channel spring state stored in the subsystem's dense spring array. */
 struct UMGTRANSITIONS_API FWidgetTransitionSpring
 {
-	FWidgetTransitionSpring(float SpringFactor, float DampingFactor);
+	FWidgetTransitionSpring(float SpringFactor, float DampingFactor, float InMaxSpeed = 0.0f);
 
 	void Tick(float DeltaTime);
 	void Start(FVector4f InStartValue, FVector4f InTargetValue, float InDelay = 0.0f, FVector4f InInitialVelocity = FVector4f::Zero());
@@ -21,6 +21,7 @@ private:
 	const float Frequency = 0.0f;
 	const float DampingRatio = 1.0f;
 	const float DampedFrequency = 0.0f;
+	const float MaxSpeed = 0.0f;
 	FVector4f TargetValue = FVector4f::Zero();
 	FVector4f CurrentValue = FVector4f::Zero();
 	FVector4f Velocity = FVector4f::Zero();

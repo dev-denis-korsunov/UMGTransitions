@@ -236,7 +236,7 @@ bool FWidgetTransitionBuilderTest::RunTest(const FString&)
 	Transition = UWidgetTransitionFunctionLibrary::Options(MoveTemp(Transition), true, true, 0.05f);
 	Transition = UWidgetTransitionFunctionLibrary::Repeat(MoveTemp(Transition), 2);
 	Transition = UWidgetTransitionFunctionLibrary::YoYo(MoveTemp(Transition));
-	Transition = UWidgetTransitionFunctionLibrary::Spring(MoveTemp(Transition), 0.8f, 0.25f, true);
+	Transition = UWidgetTransitionFunctionLibrary::Spring(MoveTemp(Transition), 0.8f, 0.25f, 0.0f, true);
 	TestEqual(TEXT("Target retains semantic Float type"), Transition.ToValue.Type, EWidgetTransitionValueType::Float);
 	TestEqual(TEXT("From retains independent Vector2D type"), Transition.FromValue.Type, EWidgetTransitionValueType::Vector2D);
 	TestTrue(TEXT("From modifier is enabled"), Transition.bUseFrom);
@@ -609,7 +609,7 @@ bool FWidgetTransitionConstructionPerformanceTest::RunTest(const FString&)
 		Transition = UWidgetTransitionFunctionLibrary::Options(MoveTemp(Transition), true, true);
 		Transition = UWidgetTransitionFunctionLibrary::Repeat(MoveTemp(Transition), 3);
 		Transition = UWidgetTransitionFunctionLibrary::YoYo(MoveTemp(Transition));
-		return UWidgetTransitionFunctionLibrary::Spring(MoveTemp(Transition), 0.65f, 0.45f, true);
+		return UWidgetTransitionFunctionLibrary::Spring(MoveTemp(Transition), 0.65f, 0.45f, 0.0f, true);
 	});
 
 	TestTrue(TEXT("Construction benchmark executed"), Sink > 0);

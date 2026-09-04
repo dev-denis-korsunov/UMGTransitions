@@ -8,11 +8,12 @@ namespace
 	}
 }
 
-FWidgetTransitionSpring::FWidgetTransitionSpring(float InSpringFactor, float InDampingFactor)
+FWidgetTransitionSpring::FWidgetTransitionSpring(float InSpringFactor, float InDampingFactor, float InMaxSpeed)
 	: SpringFactor(InSpringFactor)
 	, Frequency(FMath::Sqrt(InSpringFactor))
 	, DampingRatio(InDampingFactor / (2.0f * Frequency))
 	, DampedFrequency(DampingRatio < 1.0f ? Frequency * FMath::Sqrt(1.0f - DampingRatio * DampingRatio) : 0.0f)
+	, MaxSpeed(FMath::Max(0.0f, InMaxSpeed))
 	, bStarted(false)
 	, bCompleted(false)
 {
@@ -72,6 +73,14 @@ void FWidgetTransitionSpring::Tick(float DeltaTime)
 		const FVector4f Coefficient = Velocity + Frequency * Offset;
 		CurrentValue = TargetValue + Exponential * (Offset + Coefficient * DeltaTime);
 		Velocity = Exponential * (Velocity - Frequency * Coefficient * DeltaTime);
+	}
+	if (MaxSpeed > 0.0f)
+	{
+		const float SpeedSquared = LengthSquared(Velocity);
+		if (SpeedSquared > MaxSpeed * MaxSpeed)
+		{
+			Velocity *= MaxSpeed / FMath::Sqrt(SpeedSquared);
+		}
 	}
 	bCompleted = LengthSquared(CurrentValue - TargetValue) <= CompletionThresholdSquared && LengthSquared(Velocity) <= CompletionThresholdSquared * SpringFactor;
 	if (bCompleted)
