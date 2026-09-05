@@ -279,6 +279,19 @@ bool FWidgetTransitionPropertyBindingTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionPropertySynchronizationTest, "UMGTransitions.WidgetTransition.Runtime.PropertyBinding.Synchronization", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetTransitionPropertySynchronizationTest::RunTest(const FString&)
+{
+	UWidgetTransitionTestSynchronizedWidget* Widget = NewObject<UWidgetTransitionTestSynchronizedWidget>(GetTransientPackage());
+	FWidgetTransitionPropertyBinding Binding;
+	TestTrue(TEXT("Custom property resolves"), Binding.Resolve(Widget, TEXT("AnimatedValue")));
+	TestTrue(TEXT("Custom property can be written"), Binding.Apply(Widget, FVector4f(0.75f, 0.0f, 0.0f, 0.0f)));
+	TestTrue(TEXT("Animated property was updated"), FMath::IsNearlyEqual(Widget->AnimatedValue, 0.75f, Tolerance));
+	TestEqual(TEXT("Synchronization callback fires once"), Widget->SynchronizationCount, 1);
+	TestEqual(TEXT("Synchronization receives the full property path"), Widget->LastSynchronizedProperty, FString(TEXT("AnimatedValue")));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionExplicitFromTest, "UMGTransitions.WidgetTransition.Runtime.ExplicitFrom", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionExplicitFromTest::RunTest(const FString&)
 {

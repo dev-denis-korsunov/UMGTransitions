@@ -77,6 +77,55 @@ namespace
 		return true;
 	}
 
+	/**
+	 * Widgets with Slate-backed state can opt into this convention without making
+	 * UMGTransitions depend on their module. The callback must be:
+	 * UFUNCTION() void SynchronizeTransitionProperty(const FString& PropertyPath)
+	 */
+	static FName FindSynchronizationFunction(const UWidget* Widget)
+	{
+		static const FName FunctionName(TEXT("SynchronizeTransitionProperty"));
+		const UFunction* Function = IsValid(Widget) ? Widget->FindFunction(FunctionName) : nullptr;
+		if (!Function)
+		{
+			return NAME_None;
+		}
+
+		const FProperty* InputProperty = nullptr;
+		for (TFieldIterator<FProperty> It(Function); It; ++It)
+		{
+			const FProperty* Property = *It;
+			if (!Property->HasAnyPropertyFlags(CPF_Parm))
+			{
+				continue;
+			}
+			if (Property->HasAnyPropertyFlags(CPF_ReturnParm) || InputProperty || !Property->IsA<FStrProperty>())
+			{
+				return NAME_None;
+			}
+			InputProperty = Property;
+		}
+
+		return InputProperty ? FunctionName : NAME_None;
+	}
+
+	static void NotifyPropertySynchronized(UWidget* Widget, FName FunctionName, const FString& PropertyPath)
+	{
+		if (FunctionName.IsNone() || !IsValid(Widget))
+		{
+			return;
+		}
+		if (UFunction* Function = Widget->FindFunction(FunctionName))
+		{
+			struct FParameters
+			{
+				FString PropertyPath;
+			};
+			FParameters Parameters { PropertyPath };
+			Widget->ProcessEvent(Function, &Parameters);
+		}
+	}
+
 } // namespace
 
 bool FWidgetTransitionPropertyBinding::Resolve(UWidget* InWidget, const FString& InPropertyPath)
@@ -92,6 +141,7 @@ bool FWidgetTransitionPropertyBinding::Resolve(UWidget* InWidget, const FString&
 		return true;
 	}
 	Kind = EWidgetTransitionBindingKind::Property;
+	PropertyPath = InPropertyPath;
 	CachedPropertyPath = FDynamicPropertyPath(InPropertyPath);
 	bResolved = CachedPropertyPath.IsValid() && CachedPropertyPath.Resolve(InWidget);
 	if (!bResolved)
@@ -122,6 +172,7 @@ bool FWidgetTransitionPropertyBinding::Resolve(UWidget* InWidget, const FString&
 	}
 	if (bResolved && LeafProperty)
 	{
+		SynchronizationFunction = FindSynchronizationFunction(InWidget);
 		const UE::FieldNotification::FFieldId FieldId = InWidget->GetFieldNotificationDescriptor().GetField(InWidget->GetClass(), LeafProperty->GetFName());
 		if (FieldId.IsValid())
 		{
@@ -177,6 +228,8 @@ bool FWidgetTransitionPropertyBinding::ResolveMaterial(UWidget* InWidget, FName 
 void FWidgetTransitionPropertyBinding::Invalidate()
 {
 	CachedPropertyPath = FDynamicPropertyPath();
+	PropertyPath.Reset();
+	SynchronizationFunction = NAME_None;
 	bResolved = false;
 	bUsesDouble = false;
 	ChannelCount = 0;
@@ -278,6 +331,10 @@ bool FWidgetTransitionPropertyBinding::Apply(UWidget* Widget, const FVector4f& V
 	if (bApplied && bBroadcastFieldNotify)
 	{
 		BroadcastFieldNotify(Widget);
+	}
+	if (bApplied)
+	{
+		NotifyPropertySynchronized(Widget, SynchronizationFunction, PropertyPath);
 	}
 	return bApplied;
 }

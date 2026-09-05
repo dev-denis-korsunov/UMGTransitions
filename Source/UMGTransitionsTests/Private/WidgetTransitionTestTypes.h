@@ -2,7 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "Components/Widget.h"
+#include "Components/Image.h"
 #include "WidgetTransition.h"
 
 #include "WidgetTransitionTestTypes.generated.h"
@@ -56,4 +56,25 @@ public:
 
 	UFUNCTION()
 	FText GetCounterText();
+};
+
+/** Verifies the optional synchronization convention used by Slate-backed widgets. */
+UCLASS()
+class UWidgetTransitionTestSynchronizedWidget final : public UImage
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY()
+	float AnimatedValue = 0.0f;
+
+	UFUNCTION()
+	void SynchronizeTransitionProperty(const FString& PropertyPath)
+	{
+		LastSynchronizedProperty = PropertyPath;
+		++SynchronizationCount;
+	}
+
+	FString LastSynchronizedProperty;
+	int32 SynchronizationCount = 0;
 };
