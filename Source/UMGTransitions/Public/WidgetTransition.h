@@ -54,10 +54,6 @@ struct UMGTRANSITIONS_API FWidgetTransitionPropertyBinding
 {
 	/** Resolved property path, retained to avoid resolving it each tick. */
 	FDynamicPropertyPath CachedPropertyPath;
-	/** Original path supplied by the animation editor. */
-	FString PropertyPath;
-	/** Optional widget callback invoked after a direct property-path write. */
-	FName SynchronizationFunction;
 	/** Whether the property path has been successfully resolved. */
 	bool bResolved = false;
 	/** Whether a floating-point property uses double precision storage. */

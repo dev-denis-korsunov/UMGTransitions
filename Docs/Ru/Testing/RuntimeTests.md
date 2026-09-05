@@ -8,7 +8,6 @@
 | `WidgetSelector.Runtime.Hierarchy` | DFS-порядок, уровни, имена, parents и переход через вложенный `WidgetTree → UUserWidget`. | Защищает selector от обрыва поиска на границе составного UserWidget. |
 | `Runtime.SpecBuilders` | Pure-функции `Create`, `From`, `Options`, `Repeat`, `YoYo` и `Spring` сохраняют независимые параметры, типы значений, binding и callback update interval. | Blueprint pure-цепочка строит value-semantics объект; тест не даёт одному modifier потерять данные другого. |
 | `Runtime.PropertyBinding.Channels` | Fast binding resolve/read/write для `RenderOpacity`, всех поддержанных полей `RenderTransform` и pivot; проверяет число каналов. | Защищает публичные getter/setter пути UE и соответствие между типом Widget Property и числом каналов transition value. |
-| `Runtime.PropertyBinding.Synchronization` | После прямой записи property-path вызывает необязательный callback виджета с исходным путём. | Даёт Slate-backed виджетам возможность синхронизировать native state, не вводя зависимость на конкретный плагин. |
 | `Runtime.Spring.Converges` | Единый четырёхканальный spring достигает target. | После оптимизаций частоты, damping и completion check пружина обязана сохранять корректную сходимость для float, vector и color каналов. |
 | `Runtime.UpdateInterval` | `Updated` и FieldNotify с интервалом 0.033 секунды вызываются по накопленному времени; финальное значение отправляется, даже если интервал ещё не достигнут. | Позволяет уменьшать стоимость Blueprint callback и push-binding без зависимости от FPS и без пропуска конечного состояния transition. |
 | `Runtime.RemoveAtSwap` | Удаление transition с spring перемещает последний transition и spring без рассинхронизации `SpringIndex` и `SpringTransitionIndices`. | `TArray<FWidgetTransition>` использует нестабильные индексы. Это главный структурный инвариант архитектуры с dense spring pass. |
@@ -21,14 +20,3 @@
 - Они не устанавливают performance-бюджет: для этого существуют отдельные perf-тесты.
 
 При добавлении нового fast adapter необходимы минимум две проверки: корректность `Resolve`/`Read`/`Apply` в `Runtime.PropertyBinding.Channels` и отдельная строка в `Performance.FastBindings`.
-
-## Синхронизация Slate-backed свойств
-
-Обычный property-path binding меняет `UPROPERTY` напрямую. Если у виджета есть отдельное Slate-состояние, он может объявить следующий callback:
-
-```cpp
-UFUNCTION()
-void SynchronizeTransitionProperty(const FString& PropertyPath);
-```
-
-После успешной записи transition вызовет его с полным путём свойства, например `BorderRadius.TopLeft.Value`. Callback необязателен и применяется только к generic property-path binding; `RenderOpacity`, transform и material binding не получают его. Виджет должен обновить только затронутую Slate-часть, а не вызывать полную `SynchronizeProperties()` на каждом кадре.
