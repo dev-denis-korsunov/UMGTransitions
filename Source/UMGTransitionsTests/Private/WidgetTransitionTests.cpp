@@ -279,6 +279,33 @@ bool FWidgetTransitionPropertyBindingTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionExplicitFromTest, "UMGTransitions.WidgetTransition.Runtime.ExplicitFrom", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetTransitionExplicitFromTest::RunTest(const FString&)
+{
+	UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+	UImage* Widget = NewObject<UImage>(GetTransientPackage());
+	Widget->SetRenderOpacity(1.0f);
+	FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(
+		Widget,
+		TEXT("RenderOpacity"),
+		UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(1.0f),
+		0.2f,
+		0.0f);
+	Transition = UWidgetTransitionFunctionLibrary::From(
+		MoveTemp(Transition),
+		true,
+		UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.0f));
+	Subsystem->StartTransition(MoveTemp(Transition));
+	TestTrue(TEXT("Explicit From is applied before the first tick"), FMath::IsNearlyEqual(Widget->GetRenderOpacity(), 0.0f, Tolerance));
+	Subsystem->TickTransitionsForTesting(0.05f);
+	Subsystem->TickTransitionsForTesting(0.05f);
+	TestTrue(TEXT("Explicit From interpolates RenderOpacity at half time"), FMath::IsNearlyEqual(Widget->GetRenderOpacity(), 0.5f, Tolerance));
+	Subsystem->TickTransitionsForTesting(0.05f);
+	Subsystem->TickTransitionsForTesting(0.05f);
+	TestTrue(TEXT("Explicit From reaches the target opacity"), FMath::IsNearlyEqual(Widget->GetRenderOpacity(), 1.0f, Tolerance));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionSpringTest, "UMGTransitions.WidgetTransition.Runtime.Spring.Converges", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionSpringTest::RunTest(const FString&)
 {

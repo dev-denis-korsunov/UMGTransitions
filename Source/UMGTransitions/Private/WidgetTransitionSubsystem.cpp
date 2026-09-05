@@ -19,7 +19,7 @@ namespace
 			{
 				return false;
 			}
-			OutValue = FVector4f(Value.Channels.X, 0.0f, 0.0f, 0.0f);
+			OutValue = FVector4f(Value.Channels.X, Value.Channels.X, Value.Channels.X, Value.Channels.X);
 			return true;
 		}
 		case EWidgetTransitionValueType::Vector2D:
@@ -201,7 +201,7 @@ void UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 		{
 			return;
 		}
-		if (Transition.Delay > 0.0f && Transition.bUseFrom && !Transition.bDeferFromValue)
+		if (Transition.bUseFrom && !Transition.bDeferFromValue)
 		{
 			Transition.PropertyBinding.Apply(TargetWidget, Transition.FromValue.Channels);
 		}
