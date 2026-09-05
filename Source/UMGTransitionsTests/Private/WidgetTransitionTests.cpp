@@ -38,6 +38,17 @@ namespace
 		return FString::Printf(TEXT("%.3f us"), Seconds * 1000000.0);
 	}
 
+	TArray<UWidget*> GetDescendantValues(const TArray<FWidgetDescendant>& Descendants)
+	{
+		TArray<UWidget*> Values;
+		Values.Reserve(Descendants.Num());
+		for (const FWidgetDescendant& Descendant : Descendants)
+		{
+			Values.Add(Descendant.Value);
+		}
+		return Values;
+	}
+
 	FWidgetTransition MakeRuntimeOpacityTransition(UImage* Widget)
 	{
 		FWidgetTransition Transition;
@@ -211,8 +222,16 @@ bool FWidgetSelectorHierarchyTest::RunTest(const FString&)
 	TestTrue(TEXT("Direct child order follows the panel"), Children == TArray<UWidget*>({First, Branch, NestedUserWidget}));
 	TestTrue(TEXT("Nested User Widget exposes its WidgetTree root as a child"), UWidgetSelectorLibrary::GetWidgetChildren(NestedUserWidget) == TArray<UWidget*>({NestedRoot}));
 
-	const TArray<UWidget*> Descendants = UWidgetSelectorLibrary::GetWidgetDescendants(Root);
-	TestTrue(TEXT("Descendants use depth-first order across WidgetTree boundaries"), Descendants == TArray<UWidget*>({First, Branch, Grandchild, NestedUserWidget, NestedRoot}));
+	const TArray<FWidgetDescendant> Descendants = UWidgetSelectorLibrary::GetWidgetDescendants(Root);
+	TestTrue(TEXT("Descendants use depth-first order across WidgetTree boundaries"), GetDescendantValues(Descendants) == TArray<UWidget*>({First, Branch, Grandchild, NestedUserWidget, NestedRoot}));
+	TestTrue(TEXT("Descendants inherit their top-level parent's wave index"), Descendants[0].WaveIndex == 1 && Descendants[1].WaveIndex == 2 && Descendants[2].WaveIndex == 2 && Descendants[3].WaveIndex == 3 && Descendants[4].WaveIndex == 3);
+	TestTrue(TEXT("Descendants retain hierarchy depth"), Descendants[0].Depth == 1 && Descendants[1].Depth == 1 && Descendants[2].Depth == 2 && Descendants[3].Depth == 1 && Descendants[4].Depth == 2);
+	TestTrue(TEXT("Max depth one returns only direct children"), GetDescendantValues(UWidgetSelectorLibrary::GetWidgetDescendants(Root, 1)) == TArray<UWidget*>({First, Branch, NestedUserWidget}));
+	TestTrue(TEXT("Breadth-first traversal completes each level before the next"), GetDescendantValues(UWidgetSelectorLibrary::GetWidgetDescendants(Root, -1, EWidgetDescendantTraversal::BreadthFirst)) == TArray<UWidget*>({First, Branch, NestedUserWidget, Grandchild, NestedRoot}));
+	TestTrue(TEXT("Right-to-left ordering reverses every sibling group"), GetDescendantValues(UWidgetSelectorLibrary::GetWidgetDescendants(Root, -1, EWidgetDescendantTraversal::DepthFirst, EWidgetSiblingOrder::RightToLeft)) == TArray<UWidget*>({NestedUserWidget, NestedRoot, Branch, Grandchild, First}));
+	const TArray<FWidgetDescendant> CenterOut = UWidgetSelectorLibrary::GetWidgetDescendants(Root, 1, EWidgetDescendantTraversal::DepthFirst, EWidgetSiblingOrder::CenterOut);
+	TestTrue(TEXT("Center-out ordering starts at the central direct child"), GetDescendantValues(CenterOut) == TArray<UWidget*>({Branch, First, NestedUserWidget}));
+	TestTrue(TEXT("Center-out siblings share wave indices symmetrically"), CenterOut[0].WaveIndex == 1 && CenterOut[1].WaveIndex == 2 && CenterOut[2].WaveIndex == 2);
 	TestTrue(TEXT("Depth zero is the root"), UWidgetSelectorLibrary::GetWidgetsAtDepth(Root, 0) == TArray<UWidget*>({Root}));
 	TestTrue(TEXT("Depth one contains direct children"), UWidgetSelectorLibrary::GetWidgetsAtDepth(Root, 1) == TArray<UWidget*>({First, Branch, NestedUserWidget}));
 	TestTrue(TEXT("Depth two crosses into the nested WidgetTree"), UWidgetSelectorLibrary::GetWidgetsAtDepth(Root, 2) == TArray<UWidget*>({Grandchild, NestedRoot}));
