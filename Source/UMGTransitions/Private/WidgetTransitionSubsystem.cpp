@@ -370,6 +370,19 @@ void UWidgetTransitionSubsystem::StartSpring(int32 TransitionIndex, FWidgetTrans
 
 bool UWidgetTransitionSubsystem::RestartTransition(int32 TransitionIndex, FWidgetTransition& Transition)
 {
+	if (Transition.bYoYo && !Transition.bYoYoReverse)
+	{
+		Transition.bYoYoReverse = true;
+		Swap(Transition.FromValue, Transition.ToValue);
+		Transition.CurrentTime = Transition.Delay;
+		StartSpring(TransitionIndex, Transition);
+		return true;
+	}
+	if (Transition.bYoYoReverse)
+	{
+		Transition.bYoYoReverse = false;
+		Swap(Transition.FromValue, Transition.ToValue);
+	}
 	if (Transition.RepeatCount == 0)
 	{
 		return false;
@@ -379,10 +392,6 @@ bool UWidgetTransitionSubsystem::RestartTransition(int32 TransitionIndex, FWidge
 		--Transition.RepeatCount;
 	}
 	Transition.CurrentTime = Transition.bIgnoreDelayOnRepeat ? Transition.Delay : 0.0f;
-	if (Transition.bYoYo)
-	{
-		Swap(Transition.FromValue, Transition.ToValue);
-	}
 	StartSpring(TransitionIndex, Transition);
 	return true;
 }

@@ -117,6 +117,8 @@ struct UMGTRANSITIONS_API FWidgetTransition
 	uint16 bYoYo : 1 = false;
 	uint16 bRemoveFromParent : 1 = false;
 	uint16 bUseSpring : 1 = false;
+	/** Runtime phase flag: true while the reverse half of a Yo Yo cycle is active. */
+	uint16 bYoYoReverse : 1 = false;
 	uint16 bStarted : 1 = false;
 	/** Derives spring frequency from Time so the simulation settles within its requested duration. */
 	uint16 bFitSpringToTime : 1 = false;

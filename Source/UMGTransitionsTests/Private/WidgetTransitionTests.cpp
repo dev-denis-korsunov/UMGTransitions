@@ -1,4 +1,5 @@
 #include "WidgetTransition.h"
+#include "WidgetTransitionBuilder.h"
 #include "WidgetTransitionAsyncAction.h"
 #include "WidgetTransitionSubsystem.h"
 #include "WidgetSelectorLibrary.h"
@@ -52,13 +53,12 @@ namespace
 
 	FWidgetTransition MakeRuntimeOpacityTransition(UImage* Widget)
 	{
-		FWidgetTransition Transition;
-		Transition.Widget = Widget;
-		Transition.WidgetProperty = TEXT("RenderOpacity");
-		Transition.FromValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.0f);
-		Transition.ToValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(1.0f);
-		Transition.Time = 60.0f;
-		Transition.bUseFrom = true;
+		FWidgetTransition Transition = FWidgetTransitionBuilder::Make(GetTransientPackage())
+			.Target(Widget, TEXT("RenderOpacity"))
+			.From(0.0f)
+			.To(1.0f)
+			.Time(60.0f)
+			.GetTransition();
 		Transition.bBound = Transition.PropertyBinding.Resolve(Widget, TEXT("RenderOpacity"));
 		return Transition;
 	}
@@ -301,9 +301,13 @@ bool FWidgetSelectorGridWaveTranslationTest::RunTest(const FString&)
 		const int32 Column = ImageIndex % GridSize;
 		const FVector2D GridPosition(static_cast<float>(Column - GridSize / 2), static_cast<float>(Row - GridSize / 2));
 		const FVector2D ExpectedTranslation = GridPosition.GetSafeNormal() * TranslationDistance;
-		FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Images[ImageIndex], TEXT("RenderTransform.Translation"), UWidgetTransitionFunctionLibrary::MakeVectorTransitionValue(ExpectedTranslation), 0.2f);
-		Transition = UWidgetTransitionFunctionLibrary::From(MoveTemp(Transition), true, UWidgetTransitionFunctionLibrary::MakeVectorTransitionValue(FVector2D::ZeroVector));
-		Subsystem->StartTransition(MoveTemp(Transition));
+		const bool bAdded = FWidgetTransitionBuilder::Make(Subsystem)
+			.Target(Images[ImageIndex], TEXT("RenderTransform.Translation"))
+			.From(FVector2D::ZeroVector)
+			.To(ExpectedTranslation)
+			.Time(0.2f)
+			.Add();
+		TestTrue(FString::Printf(TEXT("Runtime cell %d,%d is added through the subsystem context"), Row, Column), bAdded);
 	}
 	for (int32 TickIndex = 0; TickIndex < 4; ++TickIndex)
 	{
@@ -372,6 +376,30 @@ bool FWidgetTransitionBuilderTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionNativeBuilderTest, "UMGTransitions.WidgetTransition.Runtime.NativeBuilder", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetTransitionNativeBuilderTest::RunTest(const FString&)
+{
+	UImage* Widget = NewObject<UImage>(GetTransientPackage());
+	int32 CompletionCount = 0;
+	FWidgetTransitionBuilder Builder = FWidgetTransitionBuilder::Make(GetTransientPackage())
+		.Target(Widget, TEXT("RenderTransform.Translation"))
+		.From(FVector2D(10.0f, 20.0f))
+		.To(0.0f)
+		.Time(0.5f)
+		.SpringForce(1.0f)
+		.DeferValue(true)
+		.OnComplete([&CompletionCount]() { ++CompletionCount; });
+	TestFalse(TEXT("Native builder rejects a context without a world"), Builder.Add());
+	const FWidgetTransition Transition = Builder.GetTransition();
+
+	TestTrue(TEXT("Native builder keeps its target widget and property"), Transition.Widget == Widget && Transition.WidgetProperty == TEXT("RenderTransform.Translation"));
+	TestTrue(TEXT("Native builder enables explicit From"), Transition.bUseFrom && Transition.FromValue.Type == EWidgetTransitionValueType::Vector2D);
+	TestTrue(TEXT("Native builder configures To, time, spring and defer options"), Transition.ToValue.Type == EWidgetTransitionValueType::Float && FMath::IsNearlyEqual(Transition.Time, 0.5f) && Transition.bUseSpring && Transition.bDeferFromValue);
+	TestTrue(TEXT("Native builder accepts a lambda completion callback"), Builder.GetTransition().Widget == Widget);
+	TestEqual(TEXT("Builder test callback remains untouched until Start"), CompletionCount, 0);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionPropertyBindingTest, "UMGTransitions.WidgetTransition.Runtime.PropertyBinding.Channels", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionPropertyBindingTest::RunTest(const FString&)
 {
@@ -408,17 +436,12 @@ bool FWidgetTransitionExplicitFromTest::RunTest(const FString&)
 	UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
 	UImage* Widget = NewObject<UImage>(GetTransientPackage());
 	Widget->SetRenderOpacity(1.0f);
-	FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(
-		Widget,
-		TEXT("RenderOpacity"),
-		UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(1.0f),
-		0.2f,
-		0.0f);
-	Transition = UWidgetTransitionFunctionLibrary::From(
-		MoveTemp(Transition),
-		true,
-		UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.0f));
-	Subsystem->StartTransition(MoveTemp(Transition));
+	TestTrue(TEXT("Explicit From transition is added through the builder"), FWidgetTransitionBuilder::Make(Subsystem)
+		.Target(Widget, TEXT("RenderOpacity"))
+		.From(0.0f)
+		.To(1.0f)
+		.Time(0.2f)
+		.Add());
 	TestTrue(TEXT("Explicit From is applied before the first tick"), FMath::IsNearlyEqual(Widget->GetRenderOpacity(), 0.0f, Tolerance));
 	Subsystem->TickTransitionsForTesting(0.05f);
 	Subsystem->TickTransitionsForTesting(0.05f);
@@ -440,6 +463,31 @@ bool FWidgetTransitionSpringTest::RunTest(const FString&)
 	}
 	TestTrue(TEXT("Four-channel spring completes"), Spring.IsCompleted());
 	TestTrue(TEXT("Four-channel spring settles at target"), Spring.GetValue().Equals(FVector4f(100.0f, -50.0f, 25.0f, 1.0f), Tolerance));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionYoYoTest, "UMGTransitions.WidgetTransition.Runtime.YoYo", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetTransitionYoYoTest::RunTest(const FString&)
+{
+	UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+	UImage* Widget = NewObject<UImage>(GetTransientPackage());
+	TestTrue(TEXT("Yo Yo transition is added through the builder"), FWidgetTransitionBuilder::Make(Subsystem)
+		.Target(Widget, TEXT("RenderOpacity"))
+		.From(0.0f)
+		.To(1.0f)
+		.Time(0.1f)
+		.YoYo()
+		.Add());
+
+	float MaximumOpacity = 0.0f;
+	for (int32 Step = 0; Step < 60; ++Step)
+	{
+		Subsystem->TickTransitionsForTesting(1.0f / 60.0f);
+		MaximumOpacity = FMath::Max(MaximumOpacity, Widget->GetRenderOpacity());
+	}
+
+	TestTrue(TEXT("Yo Yo reaches the forward target without Repeat"), FMath::IsNearlyEqual(MaximumOpacity, 1.0f, Tolerance));
+	TestTrue(TEXT("Yo Yo returns to the original value without Repeat"), FMath::IsNearlyEqual(Widget->GetRenderOpacity(), 0.0f, Tolerance));
 	return true;
 }
 
@@ -477,17 +525,13 @@ bool FWidgetTransitionInvalidEasingFallbackTest::RunTest(const FString&)
 {
 	UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
 	UImage* Widget = NewObject<UImage>(GetTransientPackage());
-	FWidgetTransition Transition;
-	Transition.Widget = Widget;
-	Transition.WidgetProperty = TEXT("RenderOpacity");
-	Transition.FromValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.0f);
-	Transition.ToValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(1.0f);
-	Transition.Time = 0.0f;
-	Transition.bUseFrom = true;
-	Transition.bBound = Transition.PropertyBinding.Resolve(Widget, TEXT("RenderOpacity"));
-	Transition.Easing.CurveTable = NewObject<UCurveTable>(GetTransientPackage());
-	Transition.Easing.RowName = TEXT("MissingRow");
-	Subsystem->Transitions.Add(MoveTemp(Transition));
+	TestTrue(TEXT("Invalid easing transition is added through the builder"), FWidgetTransitionBuilder::Make(Subsystem)
+		.Target(Widget, TEXT("RenderOpacity"))
+		.From(0.0f)
+		.To(1.0f)
+		.Time(0.0f)
+		.Easing(NewObject<UCurveTable>(GetTransientPackage()), TEXT("MissingRow"))
+		.Add());
 
 	Subsystem->TickTransitionsForTesting(1.0f / 60.0f);
 

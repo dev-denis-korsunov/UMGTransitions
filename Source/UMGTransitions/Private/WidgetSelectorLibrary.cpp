@@ -37,6 +37,12 @@ namespace WidgetSelector
 		int32 WaveIndex = 0;
 	};
 
+	struct FWidgetWaveData
+	{
+		int32 WaveIndex = 0;
+		FVector2D Direction = FVector2D::ZeroVector;
+	};
+
 	static TArray<FIndexedWidget> GetOrderedChildren(UWidget* Widget, EWidgetSiblingOrder SiblingOrder)
 	{
 		TArray<UWidget*> Children;
@@ -99,76 +105,98 @@ namespace WidgetSelector
 		return true;
 	}
 
-	static float GetSmallestPositiveAxisStep(const TArray<FVector2D>& Centers, bool bHorizontal)
+	static float GetAxisTolerance(const TArray<FIndexedWidget>& Children, bool bHorizontal)
 	{
-		TArray<float> Coordinates;
-		Coordinates.Reserve(Centers.Num());
-		for (const FVector2D& Center : Centers)
-		{
-			Coordinates.Add(bHorizontal ? Center.X : Center.Y);
-		}
-		Coordinates.Sort();
-
-		float SmallestStep = TNumericLimits<float>::Max();
-		for (int32 CoordinateIndex = 1; CoordinateIndex < Coordinates.Num(); ++CoordinateIndex)
-		{
-			const float Step = Coordinates[CoordinateIndex] - Coordinates[CoordinateIndex - 1];
-			if (Step > KINDA_SMALL_NUMBER)
-			{
-				SmallestStep = FMath::Min(SmallestStep, Step);
-			}
-		}
-		return SmallestStep == TNumericLimits<float>::Max() ? 1.0f : SmallestStep;
-	}
-
-	static int32 GetAxisLevelCount(const TArray<FVector2D>& Centers, bool bHorizontal)
-	{
-		TArray<float> Coordinates;
-		Coordinates.Reserve(Centers.Num());
-		for (const FVector2D& Center : Centers)
-		{
-			Coordinates.Add(bHorizontal ? Center.X : Center.Y);
-		}
-		Coordinates.Sort();
-
-		int32 LevelCount = 0;
-		float PreviousCoordinate = 0.0f;
-		for (const float Coordinate : Coordinates)
-		{
-			if (LevelCount == 0 || Coordinate - PreviousCoordinate > KINDA_SMALL_NUMBER)
-			{
-				++LevelCount;
-				PreviousCoordinate = Coordinate;
-			}
-		}
-		return LevelCount;
-	}
-
-	static TMap<UWidget*, int32> GetTopLevelWaveIndices(UWidget* Root, EWidgetSiblingOrder SiblingOrder, EWidgetWavePattern WavePattern, EWidgetWaveOrigin WaveOrigin, UWidget* OriginWidget)
-	{
-		const TArray<FIndexedWidget> Children = GetOrderedChildren(Root, SiblingOrder);
-		TMap<UWidget*, int32> WaveIndices;
-		WaveIndices.Reserve(Children.Num());
+		float SmallestExtent = TNumericLimits<float>::Max();
 		for (const FIndexedWidget& Child : Children)
 		{
-			WaveIndices.Add(Child.Widget, Child.WaveIndex);
+			if (!IsValid(Child.Widget))
+			{
+				continue;
+			}
+			const FVector2D LocalSize = Child.Widget->GetCachedGeometry().GetLocalSize();
+			const float Extent = bHorizontal ? LocalSize.X : LocalSize.Y;
+			if (Extent > KINDA_SMALL_NUMBER)
+			{
+				SmallestExtent = FMath::Min(SmallestExtent, Extent);
+			}
+		}
+		return SmallestExtent == TNumericLimits<float>::Max() ? 1.0f : FMath::Max(1.0f, SmallestExtent * 0.25f);
+	}
+
+	static TArray<float> GetAxisLevels(const TArray<FVector2D>& Centers, bool bHorizontal, float Tolerance)
+	{
+		TArray<float> Coordinates;
+		Coordinates.Reserve(Centers.Num());
+		for (const FVector2D& Center : Centers)
+		{
+			Coordinates.Add(bHorizontal ? Center.X : Center.Y);
+		}
+		Coordinates.Sort();
+
+		TArray<float> Levels;
+		for (const float Coordinate : Coordinates)
+		{
+			if (Levels.IsEmpty() || FMath::Abs(Coordinate - Levels.Last()) > Tolerance)
+			{
+				Levels.Add(Coordinate);
+			}
+			else
+			{
+				Levels.Last() = (Levels.Last() + Coordinate) * 0.5f;
+			}
+		}
+		return Levels;
+	}
+
+	static int32 GetNearestAxisLevel(const TArray<float>& Levels, float Coordinate)
+	{
+		if (Levels.IsEmpty())
+		{
+			return 0;
+		}
+
+		int32 NearestIndex = 0;
+		float NearestDistance = FMath::Abs(Levels[0] - Coordinate);
+		for (int32 LevelIndex = 1; LevelIndex < Levels.Num(); ++LevelIndex)
+		{
+			const float Distance = FMath::Abs(Levels[LevelIndex] - Coordinate);
+			if (Distance < NearestDistance)
+			{
+				NearestIndex = LevelIndex;
+				NearestDistance = Distance;
+			}
+		}
+		return NearestIndex;
+	}
+
+	static TMap<UWidget*, FWidgetWaveData> GetTopLevelWaveData(UWidget* Root, EWidgetSiblingOrder SiblingOrder, EWidgetWavePattern WavePattern, EWidgetWaveOrigin WaveOrigin, UWidget* OriginWidget)
+	{
+		const TArray<FIndexedWidget> Children = GetOrderedChildren(Root, SiblingOrder);
+		const FGeometry& RootGeometry = Root->GetCachedGeometry();
+		TMap<UWidget*, FWidgetWaveData> WaveData;
+		WaveData.Reserve(Children.Num());
+		for (const FIndexedWidget& Child : Children)
+		{
+			WaveData.Add(Child.Widget, {Child.WaveIndex, FVector2D::ZeroVector});
 		}
 
 		TArray<FVector2D> Centers;
 		Centers.Reserve(Children.Num());
 		for (const FIndexedWidget& Child : Children)
 		{
-			FVector2D Center;
-			if (!GetWidgetGeometryCenter(Child.Widget, Center))
+			FVector2D AbsoluteCenter;
+			if (!GetWidgetGeometryCenter(Child.Widget, AbsoluteCenter))
 			{
-				return WaveIndices;
+				return WaveData;
 			}
+			const FVector2D Center = RootGeometry.AbsoluteToLocal(AbsoluteCenter);
 			Centers.Add(Center);
 		}
 
 		if (Centers.IsEmpty())
 		{
-			return WaveIndices;
+			return WaveData;
 		}
 
 		FVector2D Minimum = Centers[0];
@@ -206,10 +234,13 @@ namespace WidgetSelector
 		}
 		case EWidgetWaveOrigin::Widget:
 		{
-			FVector2D WidgetCenter;
-			if (GetWidgetGeometryCenter(OriginWidget, WidgetCenter))
+			FVector2D WidgetAbsoluteCenter;
+			if (GetWidgetGeometryCenter(OriginWidget, WidgetAbsoluteCenter))
 			{
-				WaveOriginPosition = WidgetCenter;
+				WaveOriginPosition = RootGeometry.AbsoluteToLocal(WidgetAbsoluteCenter);
+			}
+			else
+			{
 			}
 			break;
 		}
@@ -223,15 +254,21 @@ namespace WidgetSelector
 		}
 		}
 
-		const float HorizontalStep = GetSmallestPositiveAxisStep(Centers, true);
-		const float VerticalStep = GetSmallestPositiveAxisStep(Centers, false);
-		const float CenterHorizontalSpan = WaveOrigin == EWidgetWaveOrigin::Center && GetAxisLevelCount(Centers, true) % 2 == 0 ? 0.5f : 0.0f;
-		const float CenterVerticalSpan = WaveOrigin == EWidgetWaveOrigin::Center && GetAxisLevelCount(Centers, false) % 2 == 0 ? 0.5f : 0.0f;
+		const float HorizontalTolerance = GetAxisTolerance(Children, true);
+		const float VerticalTolerance = GetAxisTolerance(Children, false);
+		const TArray<float> HorizontalLevels = GetAxisLevels(Centers, true, HorizontalTolerance);
+		const TArray<float> VerticalLevels = GetAxisLevels(Centers, false, VerticalTolerance);
+		const float CenterHorizontalSpan = WaveOrigin == EWidgetWaveOrigin::Center && HorizontalLevels.Num() % 2 == 0 ? 0.5f : 0.0f;
+		const float CenterVerticalSpan = WaveOrigin == EWidgetWaveOrigin::Center && VerticalLevels.Num() % 2 == 0 ? 0.5f : 0.0f;
+		const int32 OriginHorizontalLevel = GetNearestAxisLevel(HorizontalLevels, WaveOriginPosition.X);
+		const int32 OriginVerticalLevel = GetNearestAxisLevel(VerticalLevels, WaveOriginPosition.Y);
 		for (int32 ChildIndex = 0; ChildIndex < Children.Num(); ++ChildIndex)
 		{
 			const FVector2D Delta = Centers[ChildIndex] - WaveOriginPosition;
-			const float HorizontalDistance = FMath::Max(0.0f, FMath::Abs(Delta.X) / HorizontalStep - CenterHorizontalSpan);
-			const float VerticalDistance = FMath::Max(0.0f, FMath::Abs(Delta.Y) / VerticalStep - CenterVerticalSpan);
+			const int32 HorizontalLevel = GetNearestAxisLevel(HorizontalLevels, Centers[ChildIndex].X);
+			const int32 VerticalLevel = GetNearestAxisLevel(VerticalLevels, Centers[ChildIndex].Y);
+			const float HorizontalDistance = FMath::Max(0.0f, FMath::Abs(static_cast<float>(HorizontalLevel - OriginHorizontalLevel)) - CenterHorizontalSpan);
+			const float VerticalDistance = FMath::Max(0.0f, FMath::Abs(static_cast<float>(VerticalLevel - OriginVerticalLevel)) - CenterVerticalSpan);
 			float Distance = 0.0f;
 			switch (WavePattern)
 			{
@@ -260,21 +297,23 @@ namespace WidgetSelector
 				break;
 			}
 			}
-			WaveIndices.Add(Children[ChildIndex].Widget, FMath::FloorToInt(Distance + KINDA_SMALL_NUMBER) + 1);
+			const int32 WaveIndex = FMath::FloorToInt(Distance + KINDA_SMALL_NUMBER) + 1;
+			const FVector2D Direction = Delta.GetSafeNormal();
+			WaveData.Add(Children[ChildIndex].Widget, {WaveIndex, Direction});
 		}
-		return WaveIndices;
+		return WaveData;
 	}
 
-	static int32 GetInheritedWaveIndex(const TMap<UWidget*, int32>& TopLevelWaveIndices, UWidget* Widget, int32 InheritedWaveIndex)
+	static FWidgetWaveData GetInheritedWaveData(const TMap<UWidget*, FWidgetWaveData>& TopLevelWaveData, UWidget* Widget, const FWidgetWaveData& InheritedWaveData)
 	{
-		if (const int32* WaveIndex = TopLevelWaveIndices.Find(Widget))
+		if (const FWidgetWaveData* WaveData = TopLevelWaveData.Find(Widget))
 		{
-			return *WaveIndex;
+			return *WaveData;
 		}
-		return InheritedWaveIndex;
+		return InheritedWaveData;
 	}
 
-	static void AppendDescendantsDepthFirst(UWidget* Root, int32 CurrentDepth, int32 MaxDepth, EWidgetSiblingOrder SiblingOrder, int32 InheritedWaveIndex, const TMap<UWidget*, int32>& TopLevelWaveIndices, TArray<FWidgetDescendant>& OutWidgets)
+	static void AppendDescendantsDepthFirst(UWidget* Root, int32 CurrentDepth, int32 MaxDepth, EWidgetSiblingOrder SiblingOrder, const FWidgetWaveData& InheritedWaveData, const TMap<UWidget*, FWidgetWaveData>& TopLevelWaveData, TArray<FWidgetDescendant>& OutWidgets)
 	{
 		if (MaxDepth >= 0 && CurrentDepth >= MaxDepth)
 		{
@@ -283,22 +322,22 @@ namespace WidgetSelector
 		const TArray<FIndexedWidget> Children = GetOrderedChildren(Root, SiblingOrder);
 		for (const FIndexedWidget& Child : Children)
 		{
-			const int32 WaveIndex = GetInheritedWaveIndex(TopLevelWaveIndices, Child.Widget, InheritedWaveIndex);
-			OutWidgets.Add({WaveIndex, CurrentDepth + 1, Child.Widget});
-			AppendDescendantsDepthFirst(Child.Widget, CurrentDepth + 1, MaxDepth, SiblingOrder, WaveIndex, TopLevelWaveIndices, OutWidgets);
+			const FWidgetWaveData WaveData = GetInheritedWaveData(TopLevelWaveData, Child.Widget, InheritedWaveData);
+			OutWidgets.Add({WaveData.WaveIndex, CurrentDepth + 1, Child.Widget, WaveData.Direction});
+			AppendDescendantsDepthFirst(Child.Widget, CurrentDepth + 1, MaxDepth, SiblingOrder, WaveData, TopLevelWaveData, OutWidgets);
 		}
 	}
 
-	static void AppendDescendantsBreadthFirst(UWidget* Root, int32 MaxDepth, EWidgetSiblingOrder SiblingOrder, const TMap<UWidget*, int32>& TopLevelWaveIndices, TArray<FWidgetDescendant>& OutWidgets)
+	static void AppendDescendantsBreadthFirst(UWidget* Root, int32 MaxDepth, EWidgetSiblingOrder SiblingOrder, const TMap<UWidget*, FWidgetWaveData>& TopLevelWaveData, TArray<FWidgetDescendant>& OutWidgets)
 	{
 		struct FPendingWidget
 		{
 			UWidget* Widget = nullptr;
 			int32 Depth = 0;
-			int32 WaveIndex = 0;
+			FWidgetWaveData WaveData;
 		};
 		TArray<FPendingWidget> PendingWidgets;
-		PendingWidgets.Add({Root, 0, 0});
+		PendingWidgets.Add({Root, 0, {}});
 		for (int32 PendingIndex = 0; PendingIndex < PendingWidgets.Num(); ++PendingIndex)
 		{
 			const FPendingWidget Pending = PendingWidgets[PendingIndex];
@@ -309,9 +348,9 @@ namespace WidgetSelector
 			const TArray<FIndexedWidget> Children = GetOrderedChildren(Pending.Widget, SiblingOrder);
 			for (const FIndexedWidget& Child : Children)
 			{
-				const int32 WaveIndex = GetInheritedWaveIndex(TopLevelWaveIndices, Child.Widget, Pending.WaveIndex);
-				OutWidgets.Add({WaveIndex, Pending.Depth + 1, Child.Widget});
-				PendingWidgets.Add({Child.Widget, Pending.Depth + 1, WaveIndex});
+				const FWidgetWaveData WaveData = GetInheritedWaveData(TopLevelWaveData, Child.Widget, Pending.WaveData);
+				OutWidgets.Add({WaveData.WaveIndex, Pending.Depth + 1, Child.Widget, WaveData.Direction});
+				PendingWidgets.Add({Child.Widget, Pending.Depth + 1, WaveData});
 			}
 		}
 	}
@@ -399,14 +438,14 @@ TArray<FWidgetDescendant> UWidgetSelectorLibrary::GetWidgetDescendants(UWidget* 
 	{
 		Widgets.Add({0, 0, Root});
 	}
-	const TMap<UWidget*, int32> TopLevelWaveIndices = WidgetSelector::GetTopLevelWaveIndices(Root, SiblingOrder, WavePattern, WaveOrigin, OriginWidget);
+	const TMap<UWidget*, WidgetSelector::FWidgetWaveData> TopLevelWaveData = WidgetSelector::GetTopLevelWaveData(Root, SiblingOrder, WavePattern, WaveOrigin, OriginWidget);
 	if (Traversal == EWidgetDescendantTraversal::BreadthFirst)
 	{
-		WidgetSelector::AppendDescendantsBreadthFirst(Root, MaxDepth, SiblingOrder, TopLevelWaveIndices, Widgets);
+		WidgetSelector::AppendDescendantsBreadthFirst(Root, MaxDepth, SiblingOrder, TopLevelWaveData, Widgets);
 	}
 	else
 	{
-		WidgetSelector::AppendDescendantsDepthFirst(Root, 0, MaxDepth, SiblingOrder, 0, TopLevelWaveIndices, Widgets);
+		WidgetSelector::AppendDescendantsDepthFirst(Root, 0, MaxDepth, SiblingOrder, {}, TopLevelWaveData, Widgets);
 	}
 	return Widgets;
 }

@@ -502,6 +502,7 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::Repeat(FWidgetTransition Tra
 FWidgetTransition UWidgetTransitionFunctionLibrary::YoYo(FWidgetTransition Transition, bool bYoYo)
 {
 	Transition.bYoYo = bYoYo;
+	Transition.bYoYoReverse = false;
 	return Transition;
 }
 FWidgetTransition UWidgetTransitionFunctionLibrary::Spring(FWidgetTransition Transition, float SpringForce, float SpringDamping, float SpringMaxSpeed, bool bFitSimulationToTime)

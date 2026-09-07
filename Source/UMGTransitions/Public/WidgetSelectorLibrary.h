@@ -49,14 +49,18 @@ struct UMGTRANSITIONS_API FWidgetDescendant
 	GENERATED_BODY()
 
 	FWidgetDescendant() = default;
-	FWidgetDescendant(int32 InWaveIndex, int32 InDepth, UWidget* InValue)
-		: WaveIndex(InWaveIndex), Depth(InDepth), Value(InValue)
+	FWidgetDescendant(int32 InWaveIndex, int32 InDepth, UWidget* InValue, FVector2D InWaveDirection = FVector2D::ZeroVector)
+		: WaveIndex(InWaveIndex), WaveDirection(InWaveDirection), Depth(InDepth), Value(InValue)
 	{
 	}
 
 	/** One-based animation wave index. It can repeat when widgets share a wave. */
 	UPROPERTY(BlueprintReadOnly, Category = "Widget Selector")
 	int32 WaveIndex = 0;
+
+	/** Normalized screen-space direction from the wave origin to the top-level widget. */
+	UPROPERTY(BlueprintReadOnly, Category = "Widget Selector")
+	FVector2D WaveDirection = FVector2D::ZeroVector;
 
 	/** Hierarchy depth relative to the input root. */
 	UPROPERTY(BlueprintReadOnly, Category = "Widget Selector")

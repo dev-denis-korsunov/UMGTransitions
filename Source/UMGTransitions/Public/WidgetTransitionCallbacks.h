@@ -9,6 +9,7 @@ class UWidgetTransitionSubsystem;
 
 UDELEGATE()
 DECLARE_DYNAMIC_DELEGATE_OneParam(FOnWidgetTransitionUpdate, FWidgetTransitionValue, Value);
+DECLARE_DELEGATE_OneParam(FOnWidgetTransitionNativeUpdate, FWidgetTransitionValue);
 
 /** Callback input package used while a transition is created. */
 struct FWidgetTransitionCallbacks
@@ -16,6 +17,9 @@ struct FWidgetTransitionCallbacks
 	FOnWidgetTransitionUpdate OnStarted;
 	FOnWidgetTransitionUpdate OnFinished;
 	FOnWidgetTransitionUpdate OnUpdated;
+	FOnWidgetTransitionNativeUpdate OnStartedNative;
+	FOnWidgetTransitionNativeUpdate OnFinishedNative;
+	FOnWidgetTransitionNativeUpdate OnUpdatedNative;
 };
 
 /** Rare lifecycle callbacks stored separately from the update hot path. */
@@ -23,6 +27,8 @@ struct FWidgetTransitionLifecycleCallbacks
 {
 	FOnWidgetTransitionUpdate OnStarted;
 	FOnWidgetTransitionUpdate OnFinished;
+	FOnWidgetTransitionNativeUpdate OnStartedNative;
+	FOnWidgetTransitionNativeUpdate OnFinishedNative;
 	int32 TransitionIndex = INDEX_NONE;
 };
 
@@ -30,6 +36,7 @@ struct FWidgetTransitionLifecycleCallbacks
 struct FWidgetTransitionUpdateState
 {
 	FOnWidgetTransitionUpdate OnUpdated;
+	FOnWidgetTransitionNativeUpdate OnUpdatedNative;
 	FWidgetTransitionValue OverrideValue;
 	int32 TransitionIndex = INDEX_NONE;
 	float UpdateElapsed = 0.0f;
@@ -48,6 +55,7 @@ struct FWidgetTransitionCallbackLinks
 struct FWidgetTransitionLifecycleEvent
 {
 	FOnWidgetTransitionUpdate Callback;
+	FOnWidgetTransitionNativeUpdate NativeCallback;
 	FWidgetTransitionValue Value;
 	TWeakObjectPtr<UWidget> Widget;
 	bool bRemoveFromParent = false;
@@ -57,6 +65,7 @@ struct FWidgetTransitionLifecycleEvent
 struct FWidgetTransitionUpdateEvent
 {
 	FOnWidgetTransitionUpdate Callback;
+	FOnWidgetTransitionNativeUpdate NativeCallback;
 	FWidgetTransitionValue Value;
 };
 
