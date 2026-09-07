@@ -9,6 +9,7 @@
 #include "Components/Image.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
+#include "Components/UniformGridPanel.h"
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetTree.h"
 #include "Curves/RichCurve.h"
@@ -241,6 +242,109 @@ bool FWidgetSelectorHierarchyTest::RunTest(const FString&)
 	TestTrue(TEXT("Nested root climbs through the owning User Widget"), UWidgetSelectorLibrary::GetWidgetParents(NestedRoot) == TArray<UWidget*>({NestedUserWidget, Root}));
 	TestTrue(TEXT("Single name lookup finds a descendant"), UWidgetSelectorLibrary::FindWidgetDescendantsByName(Root, TEXT("Grandchild")) == TArray<UWidget*>({Grandchild}));
 	TestTrue(TEXT("Multiple name lookup preserves tree order"), UWidgetSelectorLibrary::FindWidgetDescendantsByNames(Root, {TEXT("Grandchild"), TEXT("First")}) == TArray<UWidget*>({First, Grandchild}));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetSelectorGridWaveTranslationTest, "UMGTransitions.WidgetSelector.Diagnostics.GridWaveTranslation", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetSelectorGridWaveTranslationTest::RunTest(const FString&)
+{
+	constexpr int32 GridSize = 5;
+	constexpr float TranslationDistance = 40.0f;
+	UUniformGridPanel* Grid = NewObject<UUniformGridPanel>(GetTransientPackage(), TEXT("WaveGrid5x5"));
+	TestNotNull(TEXT("5x5 wave grid is created"), Grid);
+	if (Grid == nullptr)
+	{
+		return false;
+	}
+	Grid->SetMinDesiredSlotWidth(40.0f);
+	Grid->SetMinDesiredSlotHeight(40.0f);
+
+	TArray<UImage*> Images;
+	Images.Reserve(GridSize * GridSize);
+	for (int32 Row = 0; Row < GridSize; ++Row)
+	{
+		for (int32 Column = 0; Column < GridSize; ++Column)
+		{
+			const FString ImageName = FString::Printf(TEXT("WaveImage_%d_%d"), Row, Column);
+			UImage* Image = NewObject<UImage>(Grid, *ImageName);
+			Grid->AddChildToUniformGrid(Image, Row, Column);
+			Images.Add(Image);
+		}
+	}
+
+	TestEqual(TEXT("Grid contains exactly 25 square image slots"), Images.Num(), GridSize * GridSize);
+	for (int32 ImageIndex = 0; ImageIndex < Images.Num(); ++ImageIndex)
+	{
+		const int32 Row = ImageIndex / GridSize;
+		const int32 Column = ImageIndex % GridSize;
+		const FVector2D GridPosition(static_cast<float>(Column - GridSize / 2), static_cast<float>(Row - GridSize / 2));
+		const FVector2D WaveDirection = GridPosition.GetSafeNormal();
+		const FVector2D ExpectedTranslation = WaveDirection * TranslationDistance;
+		const FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Images[ImageIndex], TEXT("RenderTransform.Translation"), UWidgetTransitionFunctionLibrary::MakeVectorTransitionValue(ExpectedTranslation), 1.0f);
+
+		TestEqual(FString::Printf(TEXT("Cell %d,%d uses a vector translation"), Row, Column), Transition.ToValue.Type, EWidgetTransitionValueType::Vector2D);
+		TestTrue(FString::Printf(TEXT("Cell %d,%d stores deterministic WaveDirection translation"), Row, Column), FMath::IsNearlyEqual(Transition.ToValue.Channels.X, ExpectedTranslation.X, Tolerance) && FMath::IsNearlyEqual(Transition.ToValue.Channels.Y, ExpectedTranslation.Y, Tolerance));
+		if (Row == GridSize / 2 && Column == GridSize / 2)
+		{
+			TestTrue(TEXT("Grid center has no wave translation"), ExpectedTranslation.IsNearlyZero());
+		}
+		else
+		{
+			TestTrue(FString::Printf(TEXT("Cell %d,%d has constant 40px translation magnitude"), Row, Column), FMath::IsNearlyEqual(ExpectedTranslation.Size(), TranslationDistance, Tolerance));
+		}
+	}
+
+	UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage(), TEXT("GridWaveSubsystem"));
+	for (int32 ImageIndex = 0; ImageIndex < Images.Num(); ++ImageIndex)
+	{
+		const int32 Row = ImageIndex / GridSize;
+		const int32 Column = ImageIndex % GridSize;
+		const FVector2D GridPosition(static_cast<float>(Column - GridSize / 2), static_cast<float>(Row - GridSize / 2));
+		const FVector2D ExpectedTranslation = GridPosition.GetSafeNormal() * TranslationDistance;
+		FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Images[ImageIndex], TEXT("RenderTransform.Translation"), UWidgetTransitionFunctionLibrary::MakeVectorTransitionValue(ExpectedTranslation), 0.2f);
+		Transition = UWidgetTransitionFunctionLibrary::From(MoveTemp(Transition), true, UWidgetTransitionFunctionLibrary::MakeVectorTransitionValue(FVector2D::ZeroVector));
+		Subsystem->StartTransition(MoveTemp(Transition));
+	}
+	for (int32 TickIndex = 0; TickIndex < 4; ++TickIndex)
+	{
+		Subsystem->TickTransitionsForTesting(0.05f);
+	}
+	for (int32 ImageIndex = 0; ImageIndex < Images.Num(); ++ImageIndex)
+	{
+		const int32 Row = ImageIndex / GridSize;
+		const int32 Column = ImageIndex % GridSize;
+		const FVector2D GridPosition(static_cast<float>(Column - GridSize / 2), static_cast<float>(Row - GridSize / 2));
+		const FVector2D ExpectedTranslation = GridPosition.GetSafeNormal() * TranslationDistance;
+		TestTrue(FString::Printf(TEXT("Runtime cell %d,%d reaches its deterministic translation"), Row, Column), Images[ImageIndex]->GetRenderTransform().Translation.Equals(ExpectedTranslation, Tolerance));
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetSelectorNoDuplicateDescendantsTest, "UMGTransitions.WidgetSelector.Diagnostics.NoDuplicateDescendants", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetSelectorNoDuplicateDescendantsTest::RunTest(const FString&)
+{
+	UVerticalBox* Root = NewObject<UVerticalBox>(GetTransientPackage(), TEXT("DuplicateRoot"));
+	UVerticalBox* Branch = NewObject<UVerticalBox>(Root, TEXT("DuplicateBranch"));
+	UImage* SharedImage = NewObject<UImage>(Root, TEXT("SharedImage"));
+	UImage* NestedImage = NewObject<UImage>(Branch, TEXT("NestedImage"));
+	Root->AddChild(SharedImage);
+	Root->AddChild(Branch);
+	Branch->AddChild(NestedImage);
+
+	// A panel should reject a second ownership entry for the same widget.
+	Root->AddChild(SharedImage);
+	const TArray<FWidgetDescendant> Descendants = UWidgetSelectorLibrary::GetWidgetDescendants(Root);
+	TSet<UWidget*> UniqueWidgets;
+	for (const FWidgetDescendant& Descendant : Descendants)
+	{
+		UniqueWidgets.Add(Descendant.Value);
+	}
+
+	TestEqual(TEXT("Selector returns the expected valid descendants"), Descendants.Num(), 3);
+	TestEqual(TEXT("Selector returns no duplicate widget pointers"), UniqueWidgets.Num(), Descendants.Num());
+	TestTrue(TEXT("Shared widget appears only once"), UniqueWidgets.Contains(SharedImage) && GetDescendantValues(Descendants).FilterByPredicate([SharedImage](UWidget* Widget) { return Widget == SharedImage; }).Num() == 1);
+	TestTrue(TEXT("Nested widget appears only once"), UniqueWidgets.Contains(NestedImage) && GetDescendantValues(Descendants).FilterByPredicate([NestedImage](UWidget* Widget) { return Widget == NestedImage; }).Num() == 1);
 	return true;
 }
 
