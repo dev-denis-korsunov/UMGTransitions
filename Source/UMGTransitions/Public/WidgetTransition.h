@@ -19,6 +19,7 @@ enum class EWidgetTransitionColorInterpolation : uint8
 	OKLCH
 };
 
+UENUM()
 enum class EWidgetTransitionValueType : uint8
 {
 	Float,
@@ -40,6 +41,7 @@ struct UMGTRANSITIONS_API FWidgetTransitionValue
 	FVector4f Channels = FVector4f::Zero();
 
 	/** Semantic type selected by Make Transition Value. Kept internal so split pins stay compact. */
+	UPROPERTY()
 	EWidgetTransitionValueType Type = EWidgetTransitionValueType::Float;
 };
 

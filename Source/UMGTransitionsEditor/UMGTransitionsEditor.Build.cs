@@ -16,6 +16,7 @@ public class UMGTransitionsEditor : ModuleRules
 				"InputCore",
 				"Slate",
 				"SlateCore",
+				"AppFramework",
 				"GraphEditor",
 				"UnrealEd",
 				"BlueprintGraph"
