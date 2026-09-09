@@ -17,7 +17,7 @@
 | Low | Solved | Build dependencies | Часть зависимостей runtime/editor модулей не имела прямого API- или include-использования. | Удалены runtime `DeveloperSettings`, `Slate`, `SlateCore` и editor `PropertyEditor`, `Settings`. `InputCore` оставлен: инстанцированные Slate list widgets линкуются с `EKeys`; editor target проверен полной сборкой. |
 | Low | Solved | Документация spring | `FWidgetTransitionSpring` всё ещё был описан как heap-allocated после переноса springs в плотное хранилище subsystem. | Комментарий типа теперь описывает актуальный dense spring array. |
 | Low | Solved | Поверхность private helpers | Material-binding helpers оставались объявлены в общем private header после удаления единственного внешнего caller. | Helpers стали implementation-local static-функциями в `WidgetTransition.cpp`. |
-| Отдельный эксперимент | Solved | Lifecycle payload | Внутренние lifecycle callbacks передавали widget, поэтому async action хранил binding и target value. | Started, Updated и Finished теперь используют единый value-only payload. Из каждого async action убраны 88 B binding cache и 32 B копии target value; widget остаётся только в короткой lifecycle dispatch-записи, где он нужен для Remove From Parent. Полный automation suite 23/23 прошёл. |
+| Отдельный эксперимент | Solved | Lifecycle payload | Внутренние lifecycle callbacks передавали widget, поэтому async action хранил binding и target value. | Started, Updated и Finished используют единый value-only payload. Из async action убраны binding cache и копии target value; после удаления Remove From Parent lifecycle dispatch-запись тоже хранит только callback и value. Полный automation suite прошёл. |
 
 ## Структуры, которые оставляем намеренно
 

@@ -98,7 +98,7 @@ void FWidgetTransitionCallbackStore::QueueStarted(UWidgetTransitionSubsystem& Su
 	{
 		FWidgetTransitionValue Value = Transition.FromValue;
 		Value.Type = Transition.ToValue.Type;
-		StartedEvents.Add({ Callbacks.OnStarted, MoveTemp(Value), Transition.Widget, false });
+		StartedEvents.Add({ Callbacks.OnStarted, MoveTemp(Value) });
 	}
 }
 
@@ -130,11 +130,7 @@ void FWidgetTransitionCallbackStore::QueueCompleted(UWidgetTransitionSubsystem& 
 	if (TransitionLinks.LifecycleIndex != INDEX_NONE && LifecycleCallbacks.IsValidIndex(TransitionLinks.LifecycleIndex))
 	{
 		const FWidgetTransitionLifecycleCallbacks& LifecycleRecord = LifecycleCallbacks[TransitionLinks.LifecycleIndex];
-		FinishedEvents.Add({ LifecycleRecord.OnFinished, MoveTemp(Value), Transition.Widget, Transition.bRemoveFromParent });
-	}
-	else if (Transition.bRemoveFromParent)
-	{
-		FinishedEvents.Add({ {}, MoveTemp(Value), Transition.Widget, true });
+		FinishedEvents.Add({ LifecycleRecord.OnFinished, MoveTemp(Value) });
 	}
 }
 
@@ -142,13 +138,8 @@ void FWidgetTransitionCallbackStore::DispatchLifecycleEvents(TArray<FWidgetTrans
 {
 	for (const FWidgetTransitionLifecycleEvent& Event : Events)
 	{
-		UWidget* Widget = Event.Widget.Get();
 		const FOnWidgetTransitionUpdate Callback = Event.Callback;
 		Callback.ExecuteIfBound(Event.Value);
-		if (Event.bRemoveFromParent && IsValid(Widget))
-		{
-			Widget->RemoveFromParent();
-		}
 	}
 	Events.Reset();
 }

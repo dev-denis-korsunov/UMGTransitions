@@ -434,7 +434,7 @@ void UWidgetTransitionFunctionLibrary::AddWidgetTransitionArray(const UObject* W
 	}
 }
 
-FWidgetTransition UWidgetTransitionFunctionLibrary::CreateWidgetTransition(UWidget* Widget, FName WidgetProperty, FWidgetTransitionValue ToValue, float Time, float Delay, bool bYoYo, int32 RepeatCount, bool bRepeatDelay, EWidgetTransitionAddMode AddMode, EWidgetTransitionColorMix ColorMix, bool bRemoveFromParent, float EventInterval)
+FWidgetTransition UWidgetTransitionFunctionLibrary::CreateWidgetTransition(UWidget* Widget, FName WidgetProperty, FWidgetTransitionValue ToValue, float Time, float Delay, bool bYoYo, int32 RepeatCount, bool bRepeatDelay, EWidgetTransitionAddMode AddMode, EWidgetTransitionColorMix ColorMix, float EventInterval)
 {
 	FWidgetTransition Transition;
 	Transition.Widget = Widget;
@@ -447,7 +447,6 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::CreateWidgetTransition(UWidg
 	Transition.bRepeatDelay = bRepeatDelay;
 	Transition.EventInterval = FMath::Max(0.0f, EventInterval);
 	Transition.ColorMix = ColorMix;
-	Transition.bRemoveFromParent = bRemoveFromParent;
 	Transition.AddMode = AddMode;
 	return Transition;
 }

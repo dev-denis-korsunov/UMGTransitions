@@ -15,7 +15,7 @@ This document covers `UWidgetTransitionAsyncAction` and the callback runtime sto
 
 The async action retains only its pending transition, current event value, and world context. It no longer owns a permanent `FWidgetTransitionCallbacks` member, saving `96 B` per action object. Started and Finished now receive `FWidgetTransitionValue` directly from runtime, removing another `120 B` of native fields: an `88 B` property-binding cache and a `32 B` target-value copy.
 
-All three Blueprint outputs use the same value-only contract. The runtime transition provides From Value to Started, the sampled value to Updated, and the final To Value to Finished. The widget pointer remains only in the short-lived lifecycle dispatch record because `Remove From Parent` may need it after Finished.
+All three Blueprint outputs use the same value-only contract. The runtime transition provides From Value to Started, the sampled value to Updated, and the final To Value to Finished. Lifecycle dispatch records retain only their callback and value.
 
 ## Runtime callback split
 

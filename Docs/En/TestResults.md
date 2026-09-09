@@ -22,6 +22,9 @@ including `PipeOrder`, which preserves `A→B→C→D` while another property's 
 spring = `0.954 / 14.007 / 70.268 / 381.599 μs`. At 500 this is 0.761/0.763 μs per handoff,
 down from 6.754/6.826 μs. Log: `/tmp/UMGTransitionsPipeQueuePerformanceOptimized.log`.
 
+2026-09-09 — `Remove From Parent` was removed from the public Create API, native builder,
+runtime transition state, and lifecycle dispatch records. Explicit widget removal remains the caller's responsibility.
+
 This file records completed runs. Test descriptions are in [Testing.md](Testing.md), benchmark methodology in [PerformanceTests.md](Testing/PerformanceTests.md), and architectural decisions in [OptimizationHistory.md](Testing/OptimizationHistory.md).
 
 The current accepted baseline is described in the latest entries of the Russian history and is reproduced in the English optimization documents. Performance values must be compared only between runs with the same machine, editor session, build configuration, and warm-up state.

@@ -42,7 +42,6 @@ public:
 	FWidgetTransitionBuilder& RepeatDelay(bool bEnabled = true);
 	FWidgetTransitionBuilder& Repeat(int32 Count);
 	FWidgetTransitionBuilder& YoYo(bool bEnabled = true);
-	FWidgetTransitionBuilder& RemoveFromParent(bool bEnabled = true);
 	FWidgetTransitionBuilder& EventInterval(float Seconds);
 	FWidgetTransitionBuilder& ColorMix(EWidgetTransitionColorMix Value);
 	FWidgetTransitionBuilder& Easing(UCurveTable* CurveTable, FName RowName);

@@ -144,12 +144,6 @@ FWidgetTransitionBuilder& FWidgetTransitionBuilder::YoYo(bool bEnabled)
 	return *this;
 }
 
-FWidgetTransitionBuilder& FWidgetTransitionBuilder::RemoveFromParent(bool bEnabled)
-{
-	Transition.bRemoveFromParent = bEnabled;
-	return *this;
-}
-
 FWidgetTransitionBuilder& FWidgetTransitionBuilder::EventInterval(float Seconds)
 {
 	Transition.EventInterval = FMath::Max(0.0f, Seconds);

@@ -358,7 +358,7 @@ bool FWidgetTransitionBuilderTest::RunTest(const FString&)
 	UImage* Widget = NewObject<UImage>(GetTransientPackage());
 	FWidgetTransitionValue ToValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.8f);
 	FWidgetTransitionValue FromValue = UWidgetTransitionFunctionLibrary::MakeVectorTransitionValue(FVector2D(0.2f, 0.4f));
-	FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderTransform.Scale"), ToValue, 0.25f, 0.4f, true, 2, true, EWidgetTransitionAddMode::Replace, EWidgetTransitionColorMix::HSV, true, 0.05f);
+	FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderTransform.Scale"), ToValue, 0.25f, 0.4f, true, 2, true, EWidgetTransitionAddMode::Replace, EWidgetTransitionColorMix::HSV, 0.05f);
 	Transition = UWidgetTransitionFunctionLibrary::From(MoveTemp(Transition), true, FromValue, true);
 	Transition = UWidgetTransitionFunctionLibrary::Spring(MoveTemp(Transition), 0.8f, 0.25f, 0.0f, true);
 	TestEqual(TEXT("Target retains semantic Float type"), Transition.ToValue.Type, EWidgetTransitionValueType::Float);
@@ -367,7 +367,6 @@ bool FWidgetTransitionBuilderTest::RunTest(const FString&)
 	TestTrue(TEXT("Create retains repeat delay and From delay options"), Transition.bRepeatDelay && Transition.bIgnoreDelay);
 	TestTrue(TEXT("Create retains the event interval"), FMath::IsNearlyEqual(Transition.EventInterval, 0.05f));
 	TestEqual(TEXT("Create retains the color mix mode"), Transition.ColorMix, EWidgetTransitionColorMix::HSV);
-	TestTrue(TEXT("Create retains Remove From Parent"), Transition.bRemoveFromParent);
 	TestTrue(TEXT("Binding is retained"), Transition.Widget == Widget && Transition.WidgetProperty == TEXT("RenderTransform.Scale"));
 	TestTrue(TEXT("Repeat and spring modifiers are retained"), Transition.RepeatCount == 2 && Transition.bYoYo && Transition.bUseSpring && Transition.bFitSpringToTime);
 	Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("Material.Progress"), ToValue, 0.25f, 0.4f);
@@ -915,7 +914,7 @@ bool FWidgetTransitionMetadataTest::RunTest(const FString&)
 	}
 	TestEqual(TEXT("Create function opts into the combined custom property pin"), Create->GetMetaData(TEXT("UMGTransitionsBinding")), FString(TEXT("Combined")));
 	const FString AdvancedDisplay = Create->GetMetaData(TEXT("AdvancedDisplay"));
-	TestTrue(TEXT("Create keeps optional behavior in advanced pins"), AdvancedDisplay.Contains(TEXT("RepeatCount")) && AdvancedDisplay.Contains(TEXT("bYoYo")) && AdvancedDisplay.Contains(TEXT("ColorMix")) && AdvancedDisplay.Contains(TEXT("bRemoveFromParent")));
+	TestTrue(TEXT("Create keeps optional behavior in advanced pins"), AdvancedDisplay.Contains(TEXT("RepeatCount")) && AdvancedDisplay.Contains(TEXT("bYoYo")) && AdvancedDisplay.Contains(TEXT("ColorMix")) && AdvancedDisplay.Contains(TEXT("EventInterval")));
 	const FProperty* WidgetProperty = Create->FindPropertyByName(TEXT("WidgetProperty"));
 	TestTrue(TEXT("Widget Property parameter exists"), WidgetProperty != nullptr);
 	if (WidgetProperty)

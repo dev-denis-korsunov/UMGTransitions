@@ -22,6 +22,10 @@ including `PipeOrder`: `A→B→C→D` stays FIFO when another property's queued
 spring = `0.954 / 14.007 / 70.268 / 381.599 μs`. At 500 this is 0.761/0.763 μs per handoff,
 versus the earlier 6.754/6.826 μs. Log: `/tmp/UMGTransitionsPipeQueuePerformanceOptimized.log`.
 
+2026-09-09 — `Remove From Parent` removed from the public Create API, native builder,
+runtime transition state, and lifecycle dispatch records. This eliminates the ambiguous
+`Pipe` successor after parent removal; explicit widget removal remains the caller's responsibility.
+
 [English summary](../En/TestResults.md)
 
 Здесь записываются только завершённые прогоны. Описание покрытия находится в [Testing.md](Testing.md), методика perf-тестов — в [PerformanceTests.md](Testing/PerformanceTests.md), причины архитектурных решений — в [OptimizationHistory.md](Testing/OptimizationHistory.md).

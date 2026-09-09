@@ -53,8 +53,6 @@ struct FWidgetTransitionLifecycleEvent
 {
 	FOnWidgetTransitionUpdate Callback;
 	FWidgetTransitionValue Value;
-	TWeakObjectPtr<UWidget> Widget;
-	bool bRemoveFromParent = false;
 };
 
 /** Final update callback copied before its completed transition is removed. */
