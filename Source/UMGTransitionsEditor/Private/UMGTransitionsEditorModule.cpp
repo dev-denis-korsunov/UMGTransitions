@@ -332,7 +332,7 @@ namespace UMGTransitionsEditor
 					.Value(this, &STransitionValuePin::GetValueType)
 					.OnValueChanged(this, &STransitionValuePin::SetValueType)
 					+ SSegmentedControl<EWidgetTransitionValueType>::Slot(EWidgetTransitionValueType::Float)[SNew(STextBlock).Text(FText::FromString(TEXT("Float")))]
-					+ SSegmentedControl<EWidgetTransitionValueType>::Slot(EWidgetTransitionValueType::Vector2D)[SNew(STextBlock).Text(FText::FromString(TEXT("Vector 2D")))]
+					+ SSegmentedControl<EWidgetTransitionValueType>::Slot(EWidgetTransitionValueType::Vector2D)[SNew(STextBlock).Text(FText::FromString(TEXT("Vector")))]
 					+ SSegmentedControl<EWidgetTransitionValueType>::Slot(EWidgetTransitionValueType::LinearColor)[SNew(STextBlock).Text(FText::FromString(TEXT("Color")))]
 				]
 			];
