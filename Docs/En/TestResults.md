@@ -12,6 +12,16 @@ The change is startup-only because frequency is derived in `StartSpring`; it add
 `/tmp/UMGTransitionsFitRuntime.log`, `/tmp/UMGTransitionsFitModeMatrix.log`,
 `/tmp/UMGTransitionsFitModeMatrixRepeat.log`, `/tmp/UMGTransitionsFitSpringTarget.log`.
 
+2026-09-09 — controlled A/B `70e79cc` → `f3744b0`, UE 5.7 / Mac arm64 Development.
+Each revision ran `Performance.ModeMatrix` twice in the same project with matching warm-up.
+At 500 springs, baseline measured `10.518 / 10.358` microseconds/frame without binding and
+`25.338 / 25.760` with binding; current measured `10.430 / 10.455` and `25.845 / 25.746`.
+Baseline/current averages are `10.438 / 10.443` without binding (`+0.04%`) and
+`25.549 / 25.796` with binding (`+0.97%`). This is within measurement noise: the Fit To Time
+change has no measurable tick regression. Logs: `/tmp/UMGTransitionsABBaselineModeMatrix1.log`,
+`/tmp/UMGTransitionsABBaselineModeMatrix2.log`, `/tmp/UMGTransitionsABCandidateModeMatrix1.log`,
+`/tmp/UMGTransitionsABCandidateModeMatrix2.log`.
+
 2026-09-09 — UE 5.7 / Mac Development: callback review regression run.
 All 13 `UMGTransitions.WidgetTransition.Runtime` tests passed, including
 `NativeBuilder`, `CallbackCancellation`, `RepeatCallbackDelay` and `CallbackReentrancy`.

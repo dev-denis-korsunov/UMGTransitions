@@ -13,6 +13,16 @@ Two isolated `Performance.ModeMatrix` runs were stable: 500 spring transitions w
 `/tmp/UMGTransitionsFitModeMatrix.log`, `/tmp/UMGTransitionsFitModeMatrixRepeat.log`,
 `/tmp/UMGTransitionsFitSpringTarget.log`.
 
+2026-09-09 — контролируемый A/B `70e79cc` → `f3744b0`, UE 5.7 / Mac arm64 Development.
+Для обоих коммитов `Performance.ModeMatrix` выполнен дважды в одном проекте и с одинаковым
+warm-up. На 500 spring baseline: `10.518 / 10.358` microseconds/frame без binding и
+`25.338 / 25.760` с binding; current: `10.430 / 10.455` и `25.845 / 25.746`.
+Среднее baseline/current: `10.438 / 10.443` без binding (`+0.04%`) и
+`25.549 / 25.796` с binding (`+0.97%`). Это в пределах шума; Fit To Time change не имеет
+измеримой tick-регрессии. Logs: `/tmp/UMGTransitionsABBaselineModeMatrix1.log`,
+`/tmp/UMGTransitionsABBaselineModeMatrix2.log`, `/tmp/UMGTransitionsABCandidateModeMatrix1.log`,
+`/tmp/UMGTransitionsABCandidateModeMatrix2.log`.
+
 2026-09-09 — UE 5.7 / Mac Development: callback review regression run.
 All 13 `UMGTransitions.WidgetTransition.Runtime` tests passed, including
 `NativeBuilder`, `CallbackCancellation`, `RepeatCallbackDelay` and `CallbackReentrancy`.
