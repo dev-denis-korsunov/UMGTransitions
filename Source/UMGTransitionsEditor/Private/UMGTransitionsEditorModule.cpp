@@ -303,6 +303,84 @@ namespace UMGTransitionsEditor
 	{
 		return Pin && Pin->Direction == EGPD_Input && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Struct && Pin->PinType.PinSubCategoryObject == FWidgetTransitionValue::StaticStruct();
 	}
+	static const FProperty* GetFunctionParameter(const UEdGraphPin* Pin)
+	{
+		const UK2Node_CallFunction* Node = Pin ? Cast<UK2Node_CallFunction>(Pin->GetOwningNode()) : nullptr;
+		const UFunction* Function = Node ? Node->GetTargetFunction() : nullptr;
+		return Function ? Function->FindPropertyByName(Pin->PinName) : nullptr;
+	}
+	static bool IsSegmentedEnumPin(const UEdGraphPin* Pin)
+	{
+		return Pin && Pin->Direction == EGPD_Input && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Byte && Cast<UEnum>(Pin->PinType.PinSubCategoryObject.Get()) && GetFunctionParameter(Pin) && GetFunctionParameter(Pin)->HasMetaData(TEXT("UMGTransitionsSegmentedControl"));
+	}
+
+	/** Generic compact enum editor enabled by UMGTransitionsSegmentedControl parameter metadata. */
+	class SSegmentedEnumPin final : public SGraphPin
+	{
+	public:
+		SLATE_BEGIN_ARGS(SSegmentedEnumPin) {} SLATE_END_ARGS()
+		void Construct(const FArguments&, UEdGraphPin* Pin)
+		{
+			SGraphPin::Construct(SGraphPin::FArguments(), Pin);
+		}
+
+	protected:
+		virtual TSharedRef<SWidget> GetDefaultValueWidget() override
+		{
+			const UEnum* Enum = Cast<UEnum>(GraphPinObj->PinType.PinSubCategoryObject.Get());
+			TSharedRef<SSegmentedControl<int64>> SegmentedControl = SNew(SSegmentedControl<int64>)
+				.Value(this, &SSegmentedEnumPin::GetValue)
+				.OnValueChanged(this, &SSegmentedEnumPin::SetValue);
+			if (Enum)
+			{
+				// UEnum stores its generated _MAX sentinel as the final entry.
+				for (int32 Index = 0; Index < Enum->NumEnums() - 1; ++Index)
+				{
+					if (Enum->HasMetaData(TEXT("Hidden"), Index) || Enum->HasMetaData(TEXT("Spacer"), Index))
+					{
+						continue;
+					}
+					const int64 Value = Enum->GetValueByIndex(Index);
+					FText ToolTip = Enum->GetToolTipTextByIndex(Index);
+					if (ToolTip.IsEmpty())
+					{
+						ToolTip = Enum->GetDisplayNameTextByIndex(Index);
+					}
+					SegmentedControl->AddSlot(Value)
+					.ToolTip(ToolTip)
+					[
+						SNew(STextBlock).Text(Enum->GetDisplayNameTextByIndex(Index))
+					];
+				}
+			}
+			return SNew(SBox)
+				.Visibility(this, &SGraphPin::GetDefaultValueVisibility)
+				.IsEnabled(this, &SGraphPin::GetDefaultValueIsEditable)
+				[
+					SegmentedControl
+				];
+		}
+
+	private:
+		int64 GetValue() const
+		{
+			const UEnum* Enum = Cast<UEnum>(GraphPinObj->PinType.PinSubCategoryObject.Get());
+			if (!Enum)
+			{
+				return 0;
+			}
+			const int64 Value = Enum->GetValueByNameString(GraphPinObj->GetDefaultAsString());
+			return Value == INDEX_NONE ? Enum->GetValueByIndex(0) : Value;
+		}
+		void SetValue(int64 Value)
+		{
+			const UEnum* Enum = Cast<UEnum>(GraphPinObj->PinType.PinSubCategoryObject.Get());
+			if (Enum)
+			{
+				GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, Enum->GetNameStringByValue(Value));
+			}
+		}
+	};
 
 	class STransitionValuePin final : public SGraphPin
 	{
@@ -331,9 +409,9 @@ namespace UMGTransitionsEditor
 					.IsEnabled(this, &SGraphPin::GetDefaultValueIsEditable)
 					.Value(this, &STransitionValuePin::GetValueType)
 					.OnValueChanged(this, &STransitionValuePin::SetValueType)
-					+ SSegmentedControl<EWidgetTransitionValueType>::Slot(EWidgetTransitionValueType::Float)[SNew(STextBlock).Text(FText::FromString(TEXT("Float")))]
-					+ SSegmentedControl<EWidgetTransitionValueType>::Slot(EWidgetTransitionValueType::Vector2D)[SNew(STextBlock).Text(FText::FromString(TEXT("Vector")))]
-					+ SSegmentedControl<EWidgetTransitionValueType>::Slot(EWidgetTransitionValueType::LinearColor)[SNew(STextBlock).Text(FText::FromString(TEXT("Color")))]
+					+ SSegmentedControl<EWidgetTransitionValueType>::Slot(EWidgetTransitionValueType::Float)[SNew(STextBlock).Text(FText::FromString(TEXT("Float"))).ToolTipText(FText::FromString(TEXT("Float")))]
+					+ SSegmentedControl<EWidgetTransitionValueType>::Slot(EWidgetTransitionValueType::Vector2D)[SNew(STextBlock).Text(FText::FromString(TEXT("Vec"))).ToolTipText(FText::FromString(TEXT("Vector 2D")))]
+					+ SSegmentedControl<EWidgetTransitionValueType>::Slot(EWidgetTransitionValueType::LinearColor)[SNew(STextBlock).Text(FText::FromString(TEXT("Color"))).ToolTipText(FText::FromString(TEXT("Linear Color")))]
 				]
 			];
 		}
@@ -465,6 +543,10 @@ namespace UMGTransitionsEditor
 			if (IsTransitionValuePin(Pin))
 			{
 				return SNew(STransitionValuePin, Pin);
+			}
+			if (IsSegmentedEnumPin(Pin))
+			{
+				return SNew(SSegmentedEnumPin, Pin);
 			}
 			return nullptr;
 		}

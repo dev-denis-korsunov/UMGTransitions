@@ -166,7 +166,7 @@ bool UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 	Transition.Time = FMath::Max(0.0f, Transition.Time);
 	Transition.Delay = FMath::Max(0.0f, Transition.Delay);
 	Transition.RepeatCount = FMath::Max(-1, Transition.RepeatCount);
-	Transition.UpdateInterval = FMath::Max(0.0f, Transition.UpdateInterval);
+	Transition.EventInterval = FMath::Max(0.0f, Transition.EventInterval);
 	Transition.bBound = !Transition.WidgetProperty.IsNone();
 	Transition.EasingCurve = Transition.Easing.IsNull() ? nullptr : Transition.Easing.GetCurve(TEXT("Widget Transition"), false);
 	if (!Transition.Easing.IsNull() && !Transition.EasingCurve)
@@ -201,7 +201,7 @@ bool UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 		{
 			return false;
 		}
-		if (Transition.bUseFrom && !Transition.bApplyFromAfterDelay)
+		if (Transition.bUseFrom && Transition.bIgnoreDelay)
 		{
 			Transition.PropertyBinding.Apply(TargetWidget, Transition.FromValue.Channels);
 		}
@@ -270,14 +270,14 @@ FWidgetTransitionSample UWidgetTransitionSubsystem::SampleTransition(const FWidg
 	}
 	else
 	{
-		switch (Transition.ColorInterpolation)
+		switch (Transition.ColorMix)
 		{
-		case EWidgetTransitionColorInterpolation::HSV:
+		case EWidgetTransitionColorMix::HSV:
 		{
 			Sample.Value = InterpolateColorHSV(Transition.FromValue.Channels, Transition.ToValue.Channels, EasedProgress);
 			break;
 		}
-		case EWidgetTransitionColorInterpolation::OKLCH:
+		case EWidgetTransitionColorMix::OKLCH:
 		{
 			Sample.Value = InterpolateColorOKLCH(Transition.FromValue.Channels, Transition.ToValue.Channels, EasedProgress);
 			break;
@@ -412,7 +412,7 @@ bool UWidgetTransitionSubsystem::RestartTransition(int32 TransitionIndex, FWidge
 	{
 		--Transition.RepeatCount;
 	}
-	Transition.CurrentTime = Transition.bIgnoreDelayOnRepeat ? Transition.Delay : 0.0f;
+	Transition.CurrentTime = Transition.bRepeatDelay ? 0.0f : Transition.Delay;
 	StartSpring(TransitionIndex, Transition);
 	return true;
 }

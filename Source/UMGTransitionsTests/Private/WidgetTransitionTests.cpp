@@ -358,15 +358,15 @@ bool FWidgetTransitionBuilderTest::RunTest(const FString&)
 	UImage* Widget = NewObject<UImage>(GetTransientPackage());
 	FWidgetTransitionValue ToValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.8f);
 	FWidgetTransitionValue FromValue = UWidgetTransitionFunctionLibrary::MakeVectorTransitionValue(FVector2D(0.2f, 0.4f));
-	FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderTransform.Scale"), ToValue, 0.25f, 0.4f, 2, true, true, true, 0.05f, EWidgetTransitionColorInterpolation::HSV, true);
-	Transition = UWidgetTransitionFunctionLibrary::From(MoveTemp(Transition), true, FromValue);
+	FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderTransform.Scale"), ToValue, 0.25f, 0.4f, true, 2, true, EWidgetTransitionColorMix::HSV, true, 0.05f);
+	Transition = UWidgetTransitionFunctionLibrary::From(MoveTemp(Transition), true, FromValue, true);
 	Transition = UWidgetTransitionFunctionLibrary::Spring(MoveTemp(Transition), 0.8f, 0.25f, 0.0f, true);
 	TestEqual(TEXT("Target retains semantic Float type"), Transition.ToValue.Type, EWidgetTransitionValueType::Float);
 	TestEqual(TEXT("From retains independent Vector2D type"), Transition.FromValue.Type, EWidgetTransitionValueType::Vector2D);
 	TestTrue(TEXT("From modifier is enabled"), Transition.bUseFrom);
-	TestTrue(TEXT("Advanced create options are retained"), Transition.bApplyFromAfterDelay && Transition.bIgnoreDelayOnRepeat);
-	TestTrue(TEXT("Create retains the callback update interval"), FMath::IsNearlyEqual(Transition.UpdateInterval, 0.05f));
-	TestEqual(TEXT("Create retains the color interpolation mode"), Transition.ColorInterpolation, EWidgetTransitionColorInterpolation::HSV);
+	TestTrue(TEXT("Create retains repeat delay and From delay options"), Transition.bRepeatDelay && Transition.bIgnoreDelay);
+	TestTrue(TEXT("Create retains the event interval"), FMath::IsNearlyEqual(Transition.EventInterval, 0.05f));
+	TestEqual(TEXT("Create retains the color mix mode"), Transition.ColorMix, EWidgetTransitionColorMix::HSV);
 	TestTrue(TEXT("Create retains Remove From Parent"), Transition.bRemoveFromParent);
 	TestTrue(TEXT("Binding is retained"), Transition.Widget == Widget && Transition.WidgetProperty == TEXT("RenderTransform.Scale"));
 	TestTrue(TEXT("Repeat and spring modifiers are retained"), Transition.RepeatCount == 2 && Transition.bYoYo && Transition.bUseSpring && Transition.bFitSpringToTime);
@@ -419,7 +419,8 @@ bool FWidgetTransitionRepeatCallbackTest::RunTest(const FString&)
 	FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(
 		Widget, TEXT("CounterValue"), UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(10.0f), 0.01f, 0.04f);
 	Transition.RepeatCount = 1;
-	Transition.UpdateInterval = 1.0f;
+	Transition.bRepeatDelay = true;
+	Transition.EventInterval = 1.0f;
 	FWidgetTransitionCallbacks Callbacks;
 	Callbacks.OnUpdated.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleUpdatedAndCapture);
 	Subsystem->StartTransition(Transition, MoveTemp(Callbacks));
@@ -446,14 +447,14 @@ bool FWidgetTransitionNativeBuilderTest::RunTest(const FString&)
 		.To(0.0f)
 		.Time(0.5f)
 		.SpringForce(1.0f)
-		.ApplyFromAfterDelay(true)
+		.IgnoreDelay(false)
 		.BindFinish(Finished);
 	TestFalse(TEXT("Native builder rejects a context without a world"), Builder.Add());
 	const FWidgetTransition Transition = Builder.GetTransition();
 
 	TestTrue(TEXT("Native builder keeps its target widget and property"), Transition.Widget == Widget && Transition.WidgetProperty == TEXT("RenderTransform.Translation"));
 	TestTrue(TEXT("Native builder enables explicit From"), Transition.bUseFrom && Transition.FromValue.Type == EWidgetTransitionValueType::Vector2D);
-	TestTrue(TEXT("Native builder configures To, time, spring and delayed From options"), Transition.ToValue.Type == EWidgetTransitionValueType::Float && FMath::IsNearlyEqual(Transition.Time, 0.5f) && Transition.bUseSpring && Transition.bApplyFromAfterDelay);
+	TestTrue(TEXT("Native builder configures To, time, spring and delayed From options"), Transition.ToValue.Type == EWidgetTransitionValueType::Float && FMath::IsNearlyEqual(Transition.Time, 0.5f) && Transition.bUseSpring && !Transition.bIgnoreDelay);
 	TestTrue(TEXT("Native builder accepts a dynamic completion callback"), Builder.GetTransition().Widget == Widget);
 	TestEqual(TEXT("Builder test callback remains untouched until Start"), Receiver->FinishedCount, 0);
 
@@ -613,8 +614,8 @@ bool FWidgetTransitionInvalidEasingFallbackTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionUpdateIntervalTest, "UMGTransitions.WidgetTransition.Runtime.UpdateInterval", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-bool FWidgetTransitionUpdateIntervalTest::RunTest(const FString&)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionEventIntervalTest, "UMGTransitions.WidgetTransition.Runtime.EventInterval", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetTransitionEventIntervalTest::RunTest(const FString&)
 {
 	{
 		UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
@@ -623,7 +624,7 @@ bool FWidgetTransitionUpdateIntervalTest::RunTest(const FString&)
 		FWidgetTransition Transition;
 		Transition.Widget = Widget;
 		Transition.Time = 60.0f;
-		Transition.UpdateInterval = 0.033f;
+		Transition.EventInterval = 0.033f;
 		FWidgetTransitionCallbacks Callbacks;
 		Callbacks.OnUpdated.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleUpdated);
 		AddTransitionWithCallbacks(Subsystem, MoveTemp(Transition), MoveTemp(Callbacks));
@@ -632,7 +633,7 @@ bool FWidgetTransitionUpdateIntervalTest::RunTest(const FString&)
 		{
 			Subsystem->TickTransitionsForTesting(0.011f);
 		}
-		TestEqual(TEXT("UpdateInterval=0.033 dispatches after each elapsed thirty-three milliseconds"), Receiver->UpdatedCount, 1);
+		TestEqual(TEXT("EventInterval=0.033 dispatches after each elapsed thirty-three milliseconds"), Receiver->UpdatedCount, 1);
 	}
 
 	{
@@ -646,7 +647,7 @@ bool FWidgetTransitionUpdateIntervalTest::RunTest(const FString&)
 		Transition.bUseFrom = true;
 		Transition.Time = 0.01f;
 		Transition.RepeatCount = 1;
-		Transition.UpdateInterval = 0.0f;
+		Transition.EventInterval = 0.0f;
 		FWidgetTransitionCallbacks Callbacks;
 		Callbacks.OnUpdated.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleUpdatedAndCapture);
 		AddTransitionWithCallbacks(Subsystem, MoveTemp(Transition), MoveTemp(Callbacks));
@@ -662,7 +663,7 @@ bool FWidgetTransitionUpdateIntervalTest::RunTest(const FString&)
 		FWidgetTransition Transition;
 		Transition.Widget = Widget;
 		Transition.Time = 0.0f;
-		Transition.UpdateInterval = 0.3f;
+		Transition.EventInterval = 0.3f;
 		FWidgetTransitionCallbacks Callbacks;
 		Callbacks.OnUpdated.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleUpdated);
 		AddTransitionWithCallbacks(Subsystem, MoveTemp(Transition), MoveTemp(Callbacks));
@@ -684,7 +685,7 @@ bool FWidgetTransitionUpdateIntervalTest::RunTest(const FString&)
 		FWidgetTransition Transition;
 		Transition.Widget = Widget;
 		Transition.Time = 60.0f;
-		Transition.UpdateInterval = 0.033f;
+		Transition.EventInterval = 0.033f;
 		Transition.bBound = Transition.PropertyBinding.Resolve(Widget, TEXT("CounterValue"));
 		TestTrue(TEXT("CounterValue resolves as a FieldNotify transition binding"), Transition.PropertyBinding.IsFieldNotify());
 		AddTransitionWithCallbacks(Subsystem, MoveTemp(Transition), {});
@@ -693,7 +694,7 @@ bool FWidgetTransitionUpdateIntervalTest::RunTest(const FString&)
 		{
 			Subsystem->TickTransitionsForTesting(0.011f);
 		}
-		TestEqual(TEXT("UpdateInterval throttles FieldNotify broadcasts with Updated callbacks disabled"), NotificationCount, 1);
+		TestEqual(TEXT("EventInterval throttles FieldNotify broadcasts with Update callbacks disabled"), NotificationCount, 1);
 	}
 
 	return true;
@@ -711,7 +712,7 @@ bool FWidgetTransitionCallbackReentrancyTest::RunTest(const FString&)
 		Transition.Time = Time;
 		Transition.bUseFrom = true;
 		Transition.bStarted = bStarted;
-		Transition.UpdateInterval = Callbacks.OnUpdated.IsBound() ? 0.0f : Transition.UpdateInterval;
+		Transition.EventInterval = Callbacks.OnUpdated.IsBound() ? 0.0f : Transition.EventInterval;
 		AddTransitionWithCallbacks(Subsystem, MoveTemp(Transition), MoveTemp(Callbacks));
 	};
 
@@ -827,12 +828,18 @@ bool FWidgetTransitionMetadataTest::RunTest(const FString&)
 	}
 	TestEqual(TEXT("Create function opts into the combined custom property pin"), Create->GetMetaData(TEXT("UMGTransitionsBinding")), FString(TEXT("Combined")));
 	const FString AdvancedDisplay = Create->GetMetaData(TEXT("AdvancedDisplay"));
-	TestTrue(TEXT("Create keeps optional behavior in advanced pins"), AdvancedDisplay.Contains(TEXT("RepeatCount")) && AdvancedDisplay.Contains(TEXT("bYoYo")) && AdvancedDisplay.Contains(TEXT("ColorInterpolation")) && AdvancedDisplay.Contains(TEXT("bRemoveFromParent")));
+	TestTrue(TEXT("Create keeps optional behavior in advanced pins"), AdvancedDisplay.Contains(TEXT("RepeatCount")) && AdvancedDisplay.Contains(TEXT("bYoYo")) && AdvancedDisplay.Contains(TEXT("ColorMix")) && AdvancedDisplay.Contains(TEXT("bRemoveFromParent")));
 	const FProperty* WidgetProperty = Create->FindPropertyByName(TEXT("WidgetProperty"));
 	TestTrue(TEXT("Widget Property parameter exists"), WidgetProperty != nullptr);
 	if (WidgetProperty)
 	{
 		TestEqual(TEXT("Widget Property opts into the custom selector role"), WidgetProperty->GetMetaData(TEXT("UMGTransitionsRole")), FString(TEXT("WidgetProperty")));
+	}
+	const FProperty* ColorMix = Create->FindPropertyByName(TEXT("ColorMix"));
+	TestTrue(TEXT("ColorMix parameter exists"), ColorMix != nullptr);
+	if (ColorMix)
+	{
+		TestTrue(TEXT("ColorMix opts into the generic segmented enum pin"), ColorMix->HasMetaData(TEXT("UMGTransitionsSegmentedControl")));
 	}
 	return true;
 }
@@ -873,7 +880,7 @@ bool FWidgetTransitionConstructionPerformanceTest::RunTest(const FString&)
 	});
 	Measure(TEXT("Full pure pipeline"), [&Widget, &FromValue, &ToValue]()
 	{
-		FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderOpacity"), ToValue, 0.2f, 0.1f, 3, true, true, true);
+		FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderOpacity"), ToValue, 0.2f, 0.1f, true, 3, true);
 		Transition = UWidgetTransitionFunctionLibrary::From(MoveTemp(Transition), true, FromValue);
 		return UWidgetTransitionFunctionLibrary::Spring(MoveTemp(Transition), 0.65f, 0.45f, 0.0f, true);
 	});
@@ -958,7 +965,7 @@ bool FWidgetTransitionCallbacksPerformanceTest::RunTest(const FString&)
 				}
 				else
 				{
-					Transition.UpdateInterval = 0.0f;
+					Transition.EventInterval = 0.0f;
 					Callbacks.OnUpdated.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleUpdated);
 				}
 			}
@@ -1043,25 +1050,25 @@ bool FWidgetTransitionSpringTargetUpdatePerformanceTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionUpdateIntervalPerformanceTest, "UMGTransitions.WidgetTransition.Performance.UpdateInterval", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
-bool FWidgetTransitionUpdateIntervalPerformanceTest::RunTest(const FString&)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionEventIntervalPerformanceTest, "UMGTransitions.WidgetTransition.Performance.EventInterval", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
+bool FWidgetTransitionEventIntervalPerformanceTest::RunTest(const FString&)
 {
 	constexpr int32 TransitionCount = 100;
 	constexpr int32 FrameCount = 300;
 	constexpr float DeltaTime = 1.0f / 60.0f;
-	struct FUpdateIntervalCase
+	struct FEventIntervalCase
 	{
 		float Interval;
 		int32 ExpectedUpdatesPerTransition;
 	};
-	const FUpdateIntervalCase Cases[] =
+	const FEventIntervalCase Cases[] =
 	{
 		{ 0.0f, 300 },
 		{ 1.0f / 30.0f, 150 },
 		{ 1.0f / 20.0f, 100 },
 		{ 0.1f, 50 },
 	};
-	for (const FUpdateIntervalCase& Case : Cases)
+	for (const FEventIntervalCase& Case : Cases)
 	{
 		UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
 		UWidgetTransitionTestEventReceiver* Receiver = NewObject<UWidgetTransitionTestEventReceiver>(GetTransientPackage());
@@ -1073,7 +1080,7 @@ bool FWidgetTransitionUpdateIntervalPerformanceTest::RunTest(const FString&)
 			FWidgetTransition Transition;
 			Transition.Widget = Widget;
 			Transition.Time = 60.0f;
-			Transition.UpdateInterval = Case.Interval;
+			Transition.EventInterval = Case.Interval;
 			FWidgetTransitionCallbacks Callbacks;
 			Callbacks.OnUpdated.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleUpdated);
 			AddTransitionWithCallbacks(Subsystem, MoveTemp(Transition), MoveTemp(Callbacks));
@@ -1175,7 +1182,7 @@ bool FWidgetTransitionFieldNotifyTextBindingPerformanceTest::RunTest(const FStri
 		Transition.FromValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.0f);
 		Transition.ToValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(100.0f);
 		Transition.Time = 60.0f;
-		Transition.UpdateInterval = 1.0f / 30.0f;
+		Transition.EventInterval = 1.0f / 30.0f;
 		Transition.bBound = Transition.PropertyBinding.Resolve(Widget, TEXT("CounterValue"));
 		TestTrue(FString::Printf(TEXT("CounterValue resolves for FieldNotify widget %d"), Index), Transition.bBound);
 		AddTransitionWithCallbacks(Subsystem, MoveTemp(Transition), {});

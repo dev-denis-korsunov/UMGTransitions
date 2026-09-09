@@ -177,7 +177,7 @@ void FWidgetTransitionCallbackStore::TickUpdateStates(UWidgetTransitionSubsystem
 		{
 			continue;
 		}
-		const bool bDispatchUpdate = UpdateState.bHasOverrideSample || Transition.UpdateInterval <= 0.0f || (UpdateState.UpdateElapsed += DeltaTime) >= Transition.UpdateInterval;
+		const bool bDispatchUpdate = UpdateState.bHasOverrideSample || Transition.EventInterval <= 0.0f || (UpdateState.UpdateElapsed += DeltaTime) >= Transition.EventInterval;
 		const bool bHasOverrideSample = UpdateState.bHasOverrideSample;
 		FWidgetTransitionValue OverrideValue;
 		if (bHasOverrideSample)
@@ -187,7 +187,7 @@ void FWidgetTransitionCallbackStore::TickUpdateStates(UWidgetTransitionSubsystem
 		}
 		if (bDispatchUpdate)
 		{
-			UpdateState.UpdateElapsed = bHasOverrideSample || Transition.UpdateInterval <= 0.0f ? 0.0f : FMath::Fmod(UpdateState.UpdateElapsed, Transition.UpdateInterval);
+			UpdateState.UpdateElapsed = bHasOverrideSample || Transition.EventInterval <= 0.0f ? 0.0f : FMath::Fmod(UpdateState.UpdateElapsed, Transition.EventInterval);
 			const FOnWidgetTransitionUpdate Updated = UpdateState.OnUpdated;
 			FWidgetTransitionValue Value = MoveTemp(OverrideValue);
 			if (!bHasOverrideSample)

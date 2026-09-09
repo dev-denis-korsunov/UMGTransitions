@@ -434,7 +434,7 @@ void UWidgetTransitionFunctionLibrary::AddWidgetTransitionArray(const UObject* W
 	}
 }
 
-FWidgetTransition UWidgetTransitionFunctionLibrary::CreateWidgetTransition(UWidget* Widget, FName WidgetProperty, FWidgetTransitionValue ToValue, float Time, float Delay, int32 RepeatCount, bool bYoYo, bool bApplyFromAfterDelay, bool bIgnoreDelayOnRepeat, float CallbackUpdateInterval, EWidgetTransitionColorInterpolation ColorInterpolation, bool bRemoveFromParent)
+FWidgetTransition UWidgetTransitionFunctionLibrary::CreateWidgetTransition(UWidget* Widget, FName WidgetProperty, FWidgetTransitionValue ToValue, float Time, float Delay, bool bYoYo, int32 RepeatCount, bool bRepeatDelay, EWidgetTransitionColorMix ColorMix, bool bRemoveFromParent, float EventInterval)
 {
 	FWidgetTransition Transition;
 	Transition.Widget = Widget;
@@ -444,18 +444,18 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::CreateWidgetTransition(UWidg
 	Transition.Time = FMath::Max(0.0f, Time);
 	Transition.RepeatCount = FMath::Max(-1, RepeatCount);
 	Transition.bYoYo = bYoYo;
-	Transition.bApplyFromAfterDelay = bApplyFromAfterDelay;
-	Transition.bIgnoreDelayOnRepeat = bIgnoreDelayOnRepeat;
-	Transition.UpdateInterval = FMath::Max(0.0f, CallbackUpdateInterval);
-	Transition.ColorInterpolation = ColorInterpolation;
+	Transition.bRepeatDelay = bRepeatDelay;
+	Transition.EventInterval = FMath::Max(0.0f, EventInterval);
+	Transition.ColorMix = ColorMix;
 	Transition.bRemoveFromParent = bRemoveFromParent;
 	return Transition;
 }
 
-FWidgetTransition UWidgetTransitionFunctionLibrary::From(FWidgetTransition Transition, bool bUseFrom, FWidgetTransitionValue FromValue)
+FWidgetTransition UWidgetTransitionFunctionLibrary::From(FWidgetTransition Transition, bool bUseFrom, FWidgetTransitionValue FromValue, bool bIgnoreDelay)
 {
 	Transition.FromValue = MoveTemp(FromValue);
 	Transition.bUseFrom = bUseFrom;
+	Transition.bIgnoreDelay = bIgnoreDelay;
 	return Transition;
 }
 

@@ -12,11 +12,11 @@ class UMaterialInstanceDynamic;
 struct FRealCurve;
 
 UENUM(BlueprintType)
-enum class EWidgetTransitionColorInterpolation : uint8
+enum class EWidgetTransitionColorMix : uint8
 {
-	RGB,
-	HSV,
-	OKLCH
+	RGB UMETA(ToolTip = "Interpolates red, green, blue, and alpha channels directly."),
+	HSV UMETA(ToolTip = "Interpolates hue, saturation, value, and alpha."),
+	OKLCH UMETA(ToolTip = "Interpolates perceptual OKLCH color channels and alpha."),
 };
 
 UENUM()
@@ -117,15 +117,15 @@ struct UMGTRANSITIONS_API FWidgetTransition
 	float SpringDamping = 0.45f;
 	float SpringMaxSpeed = 0.0f;
 	int32 RepeatCount = 0;
-	/** Seconds between Updated callbacks and FieldNotify broadcasts; zero preserves per-tick updates. */
-	float UpdateInterval = 0.033f;
-	/** Color space used when interpolating color transition values. */
-	EWidgetTransitionColorInterpolation ColorInterpolation = EWidgetTransitionColorInterpolation::RGB;
+	/** Seconds between async-node Update callbacks and FieldNotify broadcasts; zero preserves per-tick events. */
+	float EventInterval = 0.033f;
+	/** Color mixing method used when interpolating color transition values. */
+	EWidgetTransitionColorMix ColorMix = EWidgetTransitionColorMix::RGB;
 	uint16 bUseFrom : 1 = false;
-	/** Defers applying From Value until the transition starts after its delay. */
-	uint16 bApplyFromAfterDelay : 1 = false;
-	/** Skips Delay after the initial cycle when the transition repeats. */
-	uint16 bIgnoreDelayOnRepeat : 1 = false;
+	/** Applies From Value immediately, before the initial delay. */
+	uint16 bIgnoreDelay : 1 = false;
+	/** Applies Delay again at the start of every repeated cycle. */
+	uint16 bRepeatDelay : 1 = false;
 	uint16 bYoYo : 1 = false;
 	uint16 bRemoveFromParent : 1 = false;
 	uint16 bUseSpring : 1 = false;
@@ -149,10 +149,10 @@ class UMGTRANSITIONS_API UWidgetTransitionFunctionLibrary final : public UBluepr
 
 public:
 	/** Creates a transition bound to a widget property or a Material.Parameter entry. */
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Create Widget Transition", DefaultToSelf = "Widget", UMGTransitionsBinding = "Combined", ReturnDisplayName = "Transition", AdvancedDisplay = "RepeatCount,bYoYo,bApplyFromAfterDelay,bIgnoreDelayOnRepeat,CallbackUpdateInterval,ColorInterpolation,bRemoveFromParent"))
-	static FWidgetTransition CreateWidgetTransition(UWidget* Widget, UPARAM(meta = (UMGTransitionsRole = "WidgetProperty")) FName WidgetProperty, FWidgetTransitionValue ToValue, float Time = 0.2f, float Delay = 0.0f, UPARAM(meta = (ClampMin = "-1", ToolTip = "Number of additional cycles. Minus one repeats indefinitely.")) int32 RepeatCount = 0, bool bYoYo = false, UPARAM(meta = (ToolTip = "Applies From Value when Delay finishes instead of when the transition is added.")) bool bApplyFromAfterDelay = false, UPARAM(meta = (ToolTip = "Skips Delay after the initial cycle when the transition repeats.")) bool bIgnoreDelayOnRepeat = false, UPARAM(meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", ToolTip = "Seconds between Updated callbacks and FieldNotify broadcasts. Zero updates every tick.")) float CallbackUpdateInterval = 0.033f, EWidgetTransitionColorInterpolation ColorInterpolation = EWidgetTransitionColorInterpolation::RGB, UPARAM(meta = (ToolTip = "Removes the target widget from its parent after the transition finishes.")) bool bRemoveFromParent = false);
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Create Widget Transition", DefaultToSelf = "Widget", UMGTransitionsBinding = "Combined", ReturnDisplayName = "Transition", AdvancedDisplay = "bYoYo,RepeatCount,bRepeatDelay,ColorMix,bRemoveFromParent,EventInterval"))
+	static FWidgetTransition CreateWidgetTransition(UWidget* Widget, UPARAM(meta = (UMGTransitionsRole = "WidgetProperty")) FName WidgetProperty, FWidgetTransitionValue ToValue, float Time = 0.2f, float Delay = 0.0f, bool bYoYo = false, UPARAM(meta = (ClampMin = "-1", ToolTip = "Number of additional cycles. Minus one repeats indefinitely.")) int32 RepeatCount = 0, UPARAM(meta = (ToolTip = "Applies Delay again at the start of every repeated cycle.")) bool bRepeatDelay = false, UPARAM(meta = (DisplayName = "ColorMix", UMGTransitionsSegmentedControl, ToolTip = "Color interpolation method: RGB, HSV, or OKLCH.")) EWidgetTransitionColorMix ColorMix = EWidgetTransitionColorMix::RGB, UPARAM(meta = (ToolTip = "Removes the target widget from its parent after the transition finishes.")) bool bRemoveFromParent = false, UPARAM(meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", ToolTip = "Seconds between async-node Update callbacks and FieldNotify broadcasts. Zero dispatches events every tick.")) float EventInterval = 0.033f);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (CPP_Default_bUseFrom = "true", ReturnDisplayName = "Transition"))
-	static FWidgetTransition From(FWidgetTransition Transition, bool bUseFrom, FWidgetTransitionValue FromValue);
+	static FWidgetTransition From(FWidgetTransition Transition, bool bUseFrom, FWidgetTransitionValue FromValue, UPARAM(meta = (ToolTip = "Applies From Value immediately, before the transition delay.")) bool bIgnoreDelay = false);
 
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DataTablePin = "CurveTable", ReturnDisplayName = "Transition"))
 	static FWidgetTransition Easing(FWidgetTransition Transition, UCurveTable* CurveTable, FName RowName);

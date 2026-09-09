@@ -38,13 +38,13 @@ public:
 	FWidgetTransitionBuilder& SpringDamping(float Value);
 	FWidgetTransitionBuilder& SpringMaxSpeed(float Value);
 	FWidgetTransitionBuilder& FitSimulationToTime(bool bEnabled = true);
-	FWidgetTransitionBuilder& ApplyFromAfterDelay(bool bEnabled = true);
-	FWidgetTransitionBuilder& IgnoreDelayOnRepeat(bool bEnabled = true);
+	FWidgetTransitionBuilder& IgnoreDelay(bool bEnabled = true);
+	FWidgetTransitionBuilder& RepeatDelay(bool bEnabled = true);
 	FWidgetTransitionBuilder& Repeat(int32 Count);
 	FWidgetTransitionBuilder& YoYo(bool bEnabled = true);
 	FWidgetTransitionBuilder& RemoveFromParent(bool bEnabled = true);
-	FWidgetTransitionBuilder& CallbackUpdateInterval(float Seconds);
-	FWidgetTransitionBuilder& ColorInterpolation(EWidgetTransitionColorInterpolation Value);
+	FWidgetTransitionBuilder& EventInterval(float Seconds);
+	FWidgetTransitionBuilder& ColorMix(EWidgetTransitionColorMix Value);
 	FWidgetTransitionBuilder& Easing(UCurveTable* CurveTable, FName RowName);
 
 	FWidgetTransitionBuilder& BindStart(FOnWidgetTransitionUpdate Callback);

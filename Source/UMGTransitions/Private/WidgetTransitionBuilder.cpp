@@ -120,15 +120,15 @@ FWidgetTransitionBuilder& FWidgetTransitionBuilder::FitSimulationToTime(bool bEn
 	return *this;
 }
 
-FWidgetTransitionBuilder& FWidgetTransitionBuilder::ApplyFromAfterDelay(bool bEnabled)
+FWidgetTransitionBuilder& FWidgetTransitionBuilder::IgnoreDelay(bool bEnabled)
 {
-	Transition.bApplyFromAfterDelay = bEnabled;
+	Transition.bIgnoreDelay = bEnabled;
 	return *this;
 }
 
-FWidgetTransitionBuilder& FWidgetTransitionBuilder::IgnoreDelayOnRepeat(bool bEnabled)
+FWidgetTransitionBuilder& FWidgetTransitionBuilder::RepeatDelay(bool bEnabled)
 {
-	Transition.bIgnoreDelayOnRepeat = bEnabled;
+	Transition.bRepeatDelay = bEnabled;
 	return *this;
 }
 
@@ -150,15 +150,15 @@ FWidgetTransitionBuilder& FWidgetTransitionBuilder::RemoveFromParent(bool bEnabl
 	return *this;
 }
 
-FWidgetTransitionBuilder& FWidgetTransitionBuilder::CallbackUpdateInterval(float Seconds)
+FWidgetTransitionBuilder& FWidgetTransitionBuilder::EventInterval(float Seconds)
 {
-	Transition.UpdateInterval = FMath::Max(0.0f, Seconds);
+	Transition.EventInterval = FMath::Max(0.0f, Seconds);
 	return *this;
 }
 
-FWidgetTransitionBuilder& FWidgetTransitionBuilder::ColorInterpolation(EWidgetTransitionColorInterpolation Value)
+FWidgetTransitionBuilder& FWidgetTransitionBuilder::ColorMix(EWidgetTransitionColorMix Value)
 {
-	Transition.ColorInterpolation = Value;
+	Transition.ColorMix = Value;
 	return *this;
 }
 
