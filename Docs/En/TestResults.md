@@ -5,6 +5,15 @@ All 13 `UMGTransitions.WidgetTransition.Runtime` tests passed, including
 `NativeBuilder`, `CallbackCancellation`, `RepeatCallbackDelay` and `CallbackReentrancy`.
 Log: `/tmp/UMGTransitionsCallbackReview.log`. No new performance measurements.
 
+2026-09-09 — UE 5.7 / Mac arm64 Development: `Performance.PipeHandoff` passed.
+It times only active completion → removal → queued successor startup (200 samples per case).
+Linear successors at 1/20/100/500 concurrent properties: `0.748 / 15.346 / 172.105 /
+3324.742 μs` per completion tick, or `0.748 / 0.767 / 1.721 / 6.649 μs` per handoff.
+Spring successors: `0.756 / 15.217 / 167.746 / 3338.487 μs` per tick, or
+`0.756 / 0.761 / 1.677 / 6.677 μs` per handoff. The 100→500 increase is queue/array
+work; lazy spring-state creation is within measurement noise of the linear path.
+Log: `/tmp/UMGTransitionsPipeHandoff.log`.
+
 This file records completed runs. Test descriptions are in [Testing.md](Testing.md), benchmark methodology in [PerformanceTests.md](Testing/PerformanceTests.md), and architectural decisions in [OptimizationHistory.md](Testing/OptimizationHistory.md).
 
 The current accepted baseline is described in the latest entries of the Russian history and is reproduced in the English optimization documents. Performance values must be compared only between runs with the same machine, editor session, build configuration, and warm-up state.

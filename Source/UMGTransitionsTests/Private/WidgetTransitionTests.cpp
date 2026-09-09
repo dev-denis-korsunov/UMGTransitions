@@ -970,6 +970,55 @@ bool FWidgetTransitionConcurrentTickPerformanceTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionPipeHandoffPerformanceTest, "UMGTransitions.WidgetTransition.Performance.PipeHandoff", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
+bool FWidgetTransitionPipeHandoffPerformanceTest::RunTest(const FString&)
+{
+	constexpr int32 SampleCount = 200;
+	constexpr int32 TransitionCounts[] = { 1, 20, 100, 500 };
+	constexpr float CompletionDeltaTime = 1.0f / 20.0f;
+
+	for (const bool bSpringSuccessor : { false, true })
+	{
+		for (const int32 TransitionCount : TransitionCounts)
+		{
+			double ElapsedSeconds = 0.0;
+			for (int32 SampleIndex = 0; SampleIndex < SampleCount; ++SampleIndex)
+			{
+				UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+				TArray<UImage*> Widgets;
+				Widgets.Reserve(TransitionCount);
+				for (int32 TransitionIndex = 0; TransitionIndex < TransitionCount; ++TransitionIndex)
+				{
+					UImage* Widget = NewObject<UImage>(GetTransientPackage());
+					Widgets.Add(Widget);
+					FWidgetTransition Active = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderOpacity"), UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(1.0f), 0.01f);
+					FWidgetTransition Queued = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderOpacity"), UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.0f), 1.0f);
+					Queued.AddMode = EWidgetTransitionAddMode::Pipe;
+					if (bSpringSuccessor)
+					{
+						Queued = UWidgetTransitionFunctionLibrary::Spring(MoveTemp(Queued));
+						Queued.AddMode = EWidgetTransitionAddMode::Pipe;
+					}
+					TestTrue(FString::Printf(TEXT("Pipe predecessor %d starts"), TransitionIndex), Subsystem->StartTransition(MoveTemp(Active)));
+					TestTrue(FString::Printf(TEXT("Pipe successor %d queues"), TransitionIndex), Subsystem->StartTransition(MoveTemp(Queued)));
+				}
+
+				const double StartTime = FPlatformTime::Seconds();
+				Subsystem->TickTransitionsForTesting(CompletionDeltaTime);
+				ElapsedSeconds += FPlatformTime::Seconds() - StartTime;
+
+				TestEqual(TEXT("All queued pipe successors start in the completion tick"), Subsystem->Transitions.Num(), TransitionCount);
+				TestEqual(TEXT("No pipe successor remains queued after the completion tick"), Subsystem->QueuedTransitions.Num(), 0);
+				TestEqual(TEXT("Only spring pipe successors allocate simulation state"), Subsystem->Springs.Num(), bSpringSuccessor ? TransitionCount : 0);
+			}
+
+			const TCHAR* SuccessorMode = bSpringSuccessor ? TEXT("spring") : TEXT("linear");
+			AddInfo(FString::Printf(TEXT("Pipe handoff, %d %s successors: %s / completion tick, %s / handoff (%d samples)"), TransitionCount, SuccessorMode, *FormatMicroseconds(ElapsedSeconds / SampleCount), *FormatMicroseconds(ElapsedSeconds / (SampleCount * TransitionCount)), SampleCount));
+		}
+	}
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionCallbacksPerformanceTest, "UMGTransitions.WidgetTransition.Performance.Callbacks", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
 bool FWidgetTransitionCallbacksPerformanceTest::RunTest(const FString&)
 {

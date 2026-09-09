@@ -5,6 +5,15 @@ All 13 `UMGTransitions.WidgetTransition.Runtime` tests passed, including
 `NativeBuilder`, `CallbackCancellation`, `RepeatCallbackDelay` and `CallbackReentrancy`.
 Log: `/tmp/UMGTransitionsCallbackReview.log`. No new performance measurements.
 
+2026-09-09 — UE 5.7 / Mac arm64 Development: `Performance.PipeHandoff` passed.
+The timed boundary is active completion → removal → queued `Pipe` successor start.
+Linear (1/20/100/500): `0.748 / 15.346 / 172.105 / 3324.742 μs` per completion tick
+(`0.748 / 0.767 / 1.721 / 6.649 μs` per handoff). Spring successor:
+`0.756 / 15.217 / 167.746 / 3338.487 μs` per tick
+(`0.756 / 0.761 / 1.677 / 6.677 μs` per handoff). 200 samples per case.
+Log: `/tmp/UMGTransitionsPipeHandoff.log`. The sharp 100→500 increase is queue/array work;
+lazy spring creation is within noise of the linear case.
+
 [English summary](../En/TestResults.md)
 
 Здесь записываются только завершённые прогоны. Описание покрытия находится в [Testing.md](Testing.md), методика perf-тестов — в [PerformanceTests.md](Testing/PerformanceTests.md), причины архитектурных решений — в [OptimizationHistory.md](Testing/OptimizationHistory.md).
@@ -59,6 +68,7 @@ Log: `/tmp/UMGTransitionsCallbackReview.log`. No new performance measurements.
 | 2026-08-31 | UE 5.7 / Mac arm64 Development | Value-only lazy callback | Passed, accepted | `Updated` возвращает только value. 100 no-callback 6.248/7.539, lifecycle 6.107/7.457, `Updated` 83.256/84.086 μs/frame. Async text 80.535 против 83.403 у предыдущего API. Все callback runtime-тесты прошли. |
 | 2026-08-31 | UE 5.7 / Mac arm64 Development | Value-only lazy callback, Run 12 | Passed | 100 no-callback 6.477/7.482, lifecycle 6.122/7.268, `Updated` 83.812/86.959 μs/frame. Async text 79.750; runtime-тесты повторно прошли. |
 | 2026-09-01 | UE 5.7.4 / Mac arm64 Development | Полный `UMGTransitions.WidgetTransition` suite | Passed, 23/23 | Exit code 0. Value-only lifecycle проверяет From Value в Started, To Value в Finished и callback reentrancy. Layout: transition 256 B, links 8 B, lifecycle 72 B, update state 80 B, временный lifecycle event 80 B, async action 432 B. Perf-значения cold full-suite не приняты как baseline из-за параллельной работы Asset Registry/editor startup. |
+| 2026-09-09 | UE 5.7 / Mac arm64 Development | `Performance.PipeHandoff` | Passed | Completion → queued successor start, 200 samples. Linear 1/20/100/500: 0.748/15.346/172.105/3324.742 μs/tick, 0.748/0.767/1.721/6.649 μs/handoff. Spring: 0.756/15.217/167.746/3338.487 μs/tick, 0.756/0.761/1.677/6.677 μs/handoff. |
 
 ## Актуальный baseline
 

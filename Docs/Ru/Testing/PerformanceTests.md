@@ -14,9 +14,21 @@
 | `Performance.FieldNotifyTextBinding` | 100 FieldNotify `CounterValue` property обновляются transition, после записи subsystem broadcast-ит field change; native watcher обновляет `UTextBlock` с `UpdateInterval = 0.033` s. | Проверяет push-модель UMG/MVVM без polling text getter и с ограниченной частотой text update. |
 | `Performance.AsyncTextCounter` | Измеряет 100 async transition без `Widget Property`: output `Updated` интерполирует float `0→100`, а receiver записывает целое значение в `UTextBlock`. | Показывает цену пользовательского обновления счётчика без property binding плагина. |
 | `Performance.ModeMatrix` | 300 кадров для Linear, CurveTable easing и Spring, с binding и без него, при 100 и 500 transition. CurveTable содержит `(0,0)`, `(0.5,0.2)`, `(1,1)`. | Главный сравнительный тест алгоритмов. Вариант без binding выделяет математику; с binding показывает цену типичного использования. |
+| `Performance.PipeHandoff` | В одном completion-кадре завершает active `Pipe` transition и запускает его queued successor: linear и spring, для 1, 20, 100 и 500 свойств. | Изолирует границу между двумя transition в очереди, не смешивая её с ценой создания и постановки в очередь. |
 | `Performance.FastBindings` | 500 linear transition для каждого direct adapter: opacity, translation, scale, shear, angle, pivot. | Не даёт fast paths незаметно деградировать до reflective fallback. |
 
 `FRealCurve` резолвится при добавлении transition в subsystem. Уже запущенный transition не подхватывает изменения CurveTable: его надо создать заново. Для сравнения spring-вариантов используйте строку **without binding** — запись свойства добавляет шум, не относящийся к симуляции.
+
+## Граница Pipe
+
+`Performance.PipeHandoff` замеряет именно кадр, в котором active transition завершился, был удалён, а ожидающий `Pipe` successor для того же widget property начал работу. Создание transition и постановка successor в очередь выполняются до запуска таймера. Для каждого случая тест делает 200 независимых выборок с 1, 20, 100 и 500 свойствами.
+
+Есть два варианта successor:
+
+- Linear: удаление, передача финального значения, резолв binding и активация следующего transition.
+- Spring: тот же путь плюс ленивая инициализация `FWidgetTransitionSpring`. До завершения predecessor spring state у queued transition отсутствует.
+
+В отчёте приведены цена всего completion-tick и цена одного handoff. В замер намеренно входят удаление из плотного массива и извлечение из очереди: это и есть наблюдаемая пользователем граница между двумя piped transition. Создание пар и сами вызовы `StartTransition` для постановки в очередь в замер не входят.
 
 ## Callback baseline
 
