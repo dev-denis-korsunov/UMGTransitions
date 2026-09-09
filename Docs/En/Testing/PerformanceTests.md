@@ -26,3 +26,16 @@ The test covers two meaningful successors:
 - Spring: the same path plus lazy creation of the spring simulation state. A queued spring must not allocate `FWidgetTransitionSpring` before its predecessor completes.
 
 The reported total is per completion tick; the per-handoff figure divides it by the number of properties. This benchmark intentionally includes array removal and queue consumption, because both are part of the user-visible boundary between two piped transitions. It excludes construction and `StartTransition` calls used to prepare the active and queued pairs.
+
+### Accepted keyed-FIFO baseline
+
+Run 2026-09-09, UE 5.7 / Mac arm64 Development, 200 samples. Queues are independent by `(Widget, Widget Property)` and use a head index; the successor-start pass snapshots active keys. This avoids both global-array tail shifts and repeated linear active-transition scans.
+
+| Successor | 1 | 20 | 100 | 500 |
+| --- | ---: | ---: | ---: | ---: |
+| Linear, μs/tick | 0.870 | 13.036 | 71.567 | 380.379 |
+| Linear, μs/handoff | 0.870 | 0.652 | 0.716 | 0.761 |
+| Spring, μs/tick | 0.954 | 14.007 | 70.268 | 381.599 |
+| Spring, μs/handoff | 0.954 | 0.700 | 0.703 | 0.763 |
+
+The 500-handoff burst fell from ~3.38 ms to ~0.38 ms (−88.8%). Lazy spring-state creation remains in the same order of magnitude as a linear successor.

@@ -146,6 +146,30 @@ namespace
 	}
 }
 
+FQueuedWidgetTransition FWidgetTransitionQueue::Dequeue()
+{
+	check(!IsEmpty());
+	FQueuedWidgetTransition Result = MoveTemp(Entries[Head]);
+	++Head;
+	Compact();
+	return Result;
+}
+
+void FWidgetTransitionQueue::Compact()
+{
+	if (Head == Entries.Num())
+	{
+		Entries.Reset();
+		Head = 0;
+		return;
+	}
+	if (Head >= 32 && Head * 2 >= Entries.Num())
+	{
+		Entries.RemoveAt(0, Head, EAllowShrinking::No);
+		Head = 0;
+	}
+}
+
 void UWidgetTransitionSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
@@ -172,10 +196,7 @@ bool UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 	if (!bStartingQueuedTransition && !Transition.WidgetProperty.IsNone())
 	{
 		const bool bHasActiveTransition = HasActiveTransition(TargetWidget, Transition.WidgetProperty);
-		const bool bHasQueuedTransition = QueuedTransitions.ContainsByPredicate([TargetWidget, WidgetProperty = Transition.WidgetProperty](const FQueuedWidgetTransition& QueuedTransition)
-		{
-			return QueuedTransition.Transition.Widget == TargetWidget && QueuedTransition.Transition.WidgetProperty == WidgetProperty;
-		});
+		const bool bHasQueuedTransition = HasQueuedTransition(TargetWidget, Transition.WidgetProperty);
 		if (Transition.AddMode == EWidgetTransitionAddMode::Skip && (bHasActiveTransition || bHasQueuedTransition))
 		{
 			UE_LOG(LogTemp, Verbose, TEXT("Widget Transition: skipping transition for '%s' on widget '%s' because the property is busy."), *Transition.WidgetProperty.ToString(), *GetNameSafe(TargetWidget));
@@ -183,7 +204,7 @@ bool UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 		}
 		if (Transition.AddMode == EWidgetTransitionAddMode::Pipe && (bHasActiveTransition || bHasQueuedTransition))
 		{
-			QueuedTransitions.Add({ MoveTemp(Transition), MoveTemp(Callbacks) });
+			QueuedTransitions.FindOrAdd(FWidgetTransitionQueueKey(TargetWidget, Transition.WidgetProperty)).Enqueue(MoveTemp(Transition), MoveTemp(Callbacks));
 			return true;
 		}
 		if (Transition.AddMode != EWidgetTransitionAddMode::Pipe)
@@ -200,7 +221,7 @@ bool UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 	FVector4f HandoffVelocity = FVector4f::Zero();
 	bool bHasHandoff = false;
 	bool bHasSpringHandoff = false;
-	if (Transition.bBound)
+	if (Transition.bBound && !bStartingQueuedTransition)
 	{
 		for (const FWidgetTransition& ExistingTransition : Transitions)
 		{
@@ -270,7 +291,7 @@ bool UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 	{
 		Transition.bUseSpring = false;
 	}
-	for (int32 TransitionIndex = 0; Transition.bBound && TransitionIndex < Transitions.Num();)
+	for (int32 TransitionIndex = 0; Transition.bBound && !bStartingQueuedTransition && TransitionIndex < Transitions.Num();)
 	{
 		const FWidgetTransition& ExistingTransition = Transitions[TransitionIndex];
 		if (ExistingTransition.Widget == TargetWidget && ExistingTransition.WidgetProperty == Transition.WidgetProperty)
@@ -315,84 +336,114 @@ bool UWidgetTransitionSubsystem::HasActiveTransition(UWidget* Widget, FName Widg
 	});
 }
 
+bool UWidgetTransitionSubsystem::HasQueuedTransition(UWidget* Widget, FName WidgetProperty) const
+{
+	const FWidgetTransitionQueue* Queue = QueuedTransitions.Find(FWidgetTransitionQueueKey(Widget, WidgetProperty));
+	return Queue && !Queue->IsEmpty();
+}
+
 void UWidgetTransitionSubsystem::CancelQueuedTransitions(UWidget* Widget, FName WidgetProperty)
 {
-	for (int32 QueueIndex = QueuedTransitions.Num() - 1; QueueIndex >= 0; --QueueIndex)
+	const FWidgetTransitionQueueKey Key(Widget, WidgetProperty);
+	FWidgetTransitionQueue* Queue = QueuedTransitions.Find(Key);
+	if (!Queue)
 	{
-		FQueuedWidgetTransition& QueuedTransition = QueuedTransitions[QueueIndex];
-		if (QueuedTransition.Transition.Widget != Widget || QueuedTransition.Transition.WidgetProperty != WidgetProperty)
-		{
-			continue;
-		}
-		if (UBlueprintAsyncActionBase* Owner = QueuedTransition.Callbacks.AsyncOwner.Get())
+		return;
+	}
+	for (int32 QueueIndex = Queue->Head; QueueIndex < Queue->Entries.Num(); ++QueueIndex)
+	{
+		if (UBlueprintAsyncActionBase* Owner = Queue->Entries[QueueIndex].Callbacks.AsyncOwner.Get())
 		{
 			Owner->SetReadyToDestroy();
 		}
-		QueuedTransitions.RemoveAtSwap(QueueIndex);
 	}
+	QueuedTransitions.Remove(Key);
 }
 
 void UWidgetTransitionSubsystem::CancelQueuedTransitions(UWidget* Widget)
 {
-	for (int32 QueueIndex = QueuedTransitions.Num() - 1; QueueIndex >= 0; --QueueIndex)
+	const FObjectKey WidgetKey(Widget);
+	for (auto QueueIt = QueuedTransitions.CreateIterator(); QueueIt; ++QueueIt)
 	{
-		FQueuedWidgetTransition& QueuedTransition = QueuedTransitions[QueueIndex];
-		if (QueuedTransition.Transition.Widget != Widget)
+		if (QueueIt.Key().Widget != WidgetKey)
 		{
 			continue;
 		}
-		if (UBlueprintAsyncActionBase* Owner = QueuedTransition.Callbacks.AsyncOwner.Get())
+		FWidgetTransitionQueue& Queue = QueueIt.Value();
+		for (int32 QueueIndex = Queue.Head; QueueIndex < Queue.Entries.Num(); ++QueueIndex)
 		{
-			Owner->SetReadyToDestroy();
+			if (UBlueprintAsyncActionBase* Owner = Queue.Entries[QueueIndex].Callbacks.AsyncOwner.Get())
+			{
+				Owner->SetReadyToDestroy();
+			}
 		}
-		QueuedTransitions.RemoveAtSwap(QueueIndex);
+		QueueIt.RemoveCurrent();
 	}
 }
 
 bool UWidgetTransitionSubsystem::StartQueuedTransitions()
 {
 	bool bQueuedStartedEvent = false;
-	for (int32 QueueIndex = 0; QueueIndex < QueuedTransitions.Num();)
+	TSet<FWidgetTransitionQueueKey> ActiveQueueKeys;
+	ActiveQueueKeys.Reserve(Transitions.Num());
+	for (const FWidgetTransition& ActiveTransition : Transitions)
 	{
-		FQueuedWidgetTransition& QueuedTransition = QueuedTransitions[QueueIndex];
-		UWidget* Widget = QueuedTransition.Transition.Widget.Get();
-		if (!IsValid(Widget))
+		if (UWidget* Widget = ActiveTransition.Widget.Get(); IsValid(Widget) && !ActiveTransition.WidgetProperty.IsNone())
 		{
-			if (UBlueprintAsyncActionBase* Owner = QueuedTransition.Callbacks.AsyncOwner.Get())
-			{
-				Owner->SetReadyToDestroy();
-			}
-			QueuedTransitions.RemoveAtSwap(QueueIndex);
-			continue;
+			ActiveQueueKeys.Add(FWidgetTransitionQueueKey(Widget, ActiveTransition.WidgetProperty));
 		}
-		if (HasActiveTransition(Widget, QueuedTransition.Transition.WidgetProperty))
+	}
+	for (auto QueueIt = QueuedTransitions.CreateIterator(); QueueIt; ++QueueIt)
+	{
+		FWidgetTransitionQueue& Queue = QueueIt.Value();
+		while (!Queue.IsEmpty())
 		{
-			++QueueIndex;
-			continue;
-		}
-		FWidgetTransition Transition = MoveTemp(QueuedTransition.Transition);
-		FWidgetTransitionCallbacks Callbacks = MoveTemp(QueuedTransition.Callbacks);
-		QueuedTransitions.RemoveAt(QueueIndex);
-		bStartingQueuedTransition = true;
-		const bool bStarted = StartTransition(MoveTemp(Transition), MoveTemp(Callbacks));
-		bStartingQueuedTransition = false;
-		if (bStarted && Transitions.IsValidIndex(Transitions.Num() - 1))
-		{
-			const int32 TransitionIndex = Transitions.Num() - 1;
-			FWidgetTransition& StartedTransition = Transitions[TransitionIndex];
-			if (StartedTransition.Delay <= 0.0f)
+			FQueuedWidgetTransition& QueuedTransition = Queue.Entries[Queue.Head];
+			UWidget* Widget = QueuedTransition.Transition.Widget.Get();
+			if (!IsValid(Widget))
 			{
-				StartedTransition.bStarted = true;
-				CallbackStore.QueueStarted(*this, TransitionIndex);
-				bQueuedStartedEvent = true;
+				if (UBlueprintAsyncActionBase* Owner = QueuedTransition.Callbacks.AsyncOwner.Get())
+				{
+					Owner->SetReadyToDestroy();
+				}
+				Queue.Dequeue();
+				continue;
 			}
-		}
-		if (!bStarted)
-		{
-			if (UBlueprintAsyncActionBase* Owner = Callbacks.AsyncOwner.Get())
+			const FWidgetTransitionQueueKey Key(Widget, QueuedTransition.Transition.WidgetProperty);
+			if (ActiveQueueKeys.Contains(Key))
 			{
-				Owner->SetReadyToDestroy();
+				break;
 			}
+			FQueuedWidgetTransition StartedQueuedTransition = Queue.Dequeue();
+			FWidgetTransition Transition = MoveTemp(StartedQueuedTransition.Transition);
+			FWidgetTransitionCallbacks Callbacks = MoveTemp(StartedQueuedTransition.Callbacks);
+			bStartingQueuedTransition = true;
+			const bool bStarted = StartTransition(MoveTemp(Transition), MoveTemp(Callbacks));
+			bStartingQueuedTransition = false;
+			if (bStarted && Transitions.IsValidIndex(Transitions.Num() - 1))
+			{
+				ActiveQueueKeys.Add(Key);
+				const int32 TransitionIndex = Transitions.Num() - 1;
+				FWidgetTransition& StartedTransition = Transitions[TransitionIndex];
+				if (StartedTransition.Delay <= 0.0f)
+				{
+					StartedTransition.bStarted = true;
+					CallbackStore.QueueStarted(*this, TransitionIndex);
+					bQueuedStartedEvent = true;
+				}
+			}
+			if (!bStarted)
+			{
+				if (UBlueprintAsyncActionBase* Owner = Callbacks.AsyncOwner.Get())
+				{
+					Owner->SetReadyToDestroy();
+				}
+			}
+			break;
+		}
+		if (Queue.IsEmpty())
+		{
+			QueueIt.RemoveCurrent();
 		}
 	}
 	return bQueuedStartedEvent;

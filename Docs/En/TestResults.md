@@ -14,6 +14,14 @@ Spring successors: `0.756 / 15.217 / 167.746 / 3338.487 μs` per tick, or
 work; lazy spring-state creation is within measurement noise of the linear path.
 Log: `/tmp/UMGTransitionsPipeHandoff.log`.
 
+2026-09-09 — UE 5.7 / Mac arm64 Development: keyed Pipe FIFO optimisation accepted.
+The global queue is now independent `(Widget, Widget Property)` queues with a head index; the startup pass
+snapshots active keys instead of repeatedly scanning the active transition array. Runtime is 15/15,
+including `PipeOrder`, which preserves `A→B→C→D` while another property's queue is replaced.
+`PipeHandoff`, 200 samples: linear 1/20/100/500 = `0.870 / 13.036 / 71.567 / 380.379 μs` per tick;
+spring = `0.954 / 14.007 / 70.268 / 381.599 μs`. At 500 this is 0.761/0.763 μs per handoff,
+down from 6.754/6.826 μs. Log: `/tmp/UMGTransitionsPipeQueuePerformanceOptimized.log`.
+
 This file records completed runs. Test descriptions are in [Testing.md](Testing.md), benchmark methodology in [PerformanceTests.md](Testing/PerformanceTests.md), and architectural decisions in [OptimizationHistory.md](Testing/OptimizationHistory.md).
 
 The current accepted baseline is described in the latest entries of the Russian history and is reproduced in the English optimization documents. Performance values must be compared only between runs with the same machine, editor session, build configuration, and warm-up state.

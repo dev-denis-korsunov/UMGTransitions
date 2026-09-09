@@ -439,8 +439,8 @@ bool FWidgetTransitionAddModeTest::RunTest(const FString&)
 {
 	UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
 	UImage* Widget = NewObject<UImage>(GetTransientPackage());
-	FWidgetTransition First = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderOpacity"), UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.8f), 0.05f);
-	FWidgetTransition Queued = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderOpacity"), UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.2f), 0.05f);
+	FWidgetTransition First = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderOpacity"), UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.8f), 0.04f);
+	FWidgetTransition Queued = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderOpacity"), UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.2f), 0.04f);
 	Queued.AddMode = EWidgetTransitionAddMode::Pipe;
 
 	TestTrue(TEXT("Initial transition starts"), Subsystem->StartTransition(MoveTemp(First)));
@@ -455,7 +455,8 @@ bool FWidgetTransitionAddModeTest::RunTest(const FString&)
 
 	Subsystem->TickTransitionsForTesting(0.05f);
 	TestEqual(TEXT("Queued transition completes normally"), Subsystem->Transitions.Num(), 0);
-	TestTrue(TEXT("Queued transition applies its own target value"), FMath::IsNearlyEqual(Widget->GetRenderOpacity(), 0.2f));
+	const float QueuedTargetValue = Widget->GetRenderOpacity();
+	TestTrue(FString::Printf(TEXT("Queued transition applies its own target value (actual %.3f)"), QueuedTargetValue), FMath::IsNearlyEqual(QueuedTargetValue, 0.2f, Tolerance));
 
 	UWidgetTransitionSubsystem* SpringPipeSubsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
 	UImage* SpringPipeWidget = NewObject<UImage>(GetTransientPackage());
@@ -475,6 +476,46 @@ bool FWidgetTransitionAddModeTest::RunTest(const FString&)
 	TestTrue(TEXT("Active transition starts"), Subsystem->StartTransition(MoveTemp(Active)));
 	TestFalse(TEXT("Skip transition is rejected while the property is busy"), Subsystem->StartTransition(MoveTemp(Skipped)));
 	TestEqual(TEXT("Active transition remains unchanged"), Subsystem->Transitions.Num(), 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionPipeOrderTest, "UMGTransitions.WidgetTransition.Runtime.PipeOrder", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetTransitionPipeOrderTest::RunTest(const FString&)
+{
+	UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+	UImage* MainWidget = NewObject<UImage>(GetTransientPackage());
+	UImage* OtherWidget = NewObject<UImage>(GetTransientPackage());
+	const auto MakeTransition = [](UImage* Widget, float Target, float Time)
+	{
+		return UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderOpacity"), UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(Target), Time);
+	};
+	const auto QueueTransition = [&MakeTransition, Subsystem](UImage* Widget, float Target)
+	{
+		FWidgetTransition Transition = MakeTransition(Widget, Target, 0.04f);
+		Transition.AddMode = EWidgetTransitionAddMode::Pipe;
+		return Subsystem->StartTransition(MoveTemp(Transition));
+	};
+
+	TestTrue(TEXT("Main predecessor starts"), Subsystem->StartTransition(MakeTransition(MainWidget, 0.1f, 0.04f)));
+	TestTrue(TEXT("Main Pipe B queues"), QueueTransition(MainWidget, 0.2f));
+	TestTrue(TEXT("Other predecessor starts"), Subsystem->StartTransition(MakeTransition(OtherWidget, 0.1f, 1.0f)));
+	TestTrue(TEXT("Other Pipe B queues"), QueueTransition(OtherWidget, 0.2f));
+	TestTrue(TEXT("Main Pipe C queues"), QueueTransition(MainWidget, 0.3f));
+	TestTrue(TEXT("Other Pipe C queues"), QueueTransition(OtherWidget, 0.3f));
+	TestTrue(TEXT("Main Pipe D queues"), QueueTransition(MainWidget, 0.4f));
+
+	TestTrue(TEXT("Replace starts for the other property"), Subsystem->StartTransition(MakeTransition(OtherWidget, 0.9f, 1.0f)));
+	TestEqual(TEXT("Only the main Pipe queue remains after replacing the other property"), Subsystem->QueuedTransitions.Num(), 1);
+
+	Subsystem->TickTransitionsForTesting(0.05f);
+	TestTrue(TEXT("Main Pipe B finishes first"), FMath::IsNearlyEqual(MainWidget->GetRenderOpacity(), 0.1f, Tolerance));
+	Subsystem->TickTransitionsForTesting(0.05f);
+	TestTrue(TEXT("Main Pipe C remains second after another queue is cancelled"), FMath::IsNearlyEqual(MainWidget->GetRenderOpacity(), 0.2f, Tolerance));
+	Subsystem->TickTransitionsForTesting(0.05f);
+	TestTrue(TEXT("Main Pipe D remains third after another queue is cancelled"), FMath::IsNearlyEqual(MainWidget->GetRenderOpacity(), 0.3f, Tolerance));
+	Subsystem->TickTransitionsForTesting(0.05f);
+	TestTrue(TEXT("Main Pipe D reaches its target"), FMath::IsNearlyEqual(MainWidget->GetRenderOpacity(), 0.4f, Tolerance));
+	TestEqual(TEXT("All Pipe queues are consumed"), Subsystem->QueuedTransitions.Num(), 0);
 	return true;
 }
 
@@ -558,6 +599,7 @@ bool FWidgetTransitionExplicitFromTest::RunTest(const FString&)
 	TestTrue(TEXT("Explicit From transition is added through the builder"), FWidgetTransitionBuilder::Make(Subsystem)
 		.Target(Widget, TEXT("RenderOpacity"))
 		.From(0.0f)
+		.IgnoreDelay()
 		.To(1.0f)
 		.Time(0.2f)
 		.Add());

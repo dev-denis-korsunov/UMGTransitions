@@ -14,6 +14,14 @@ Linear (1/20/100/500): `0.748 / 15.346 / 172.105 / 3324.742 μs` per completion 
 Log: `/tmp/UMGTransitionsPipeHandoff.log`. The sharp 100→500 increase is queue/array work;
 lazy spring creation is within noise of the linear case.
 
+2026-09-09 — UE 5.7 / Mac arm64 Development: Pipe FIFO optimisation accepted.
+Global queue was replaced with independent `(Widget, Widget Property)` FIFO queues with a head index;
+the queue-start pass now snapshots active keys and avoids repeated dense-array scans. `Runtime` is 15/15,
+including `PipeOrder`: `A→B→C→D` stays FIFO when another property's queued transitions are replaced.
+`PipeHandoff`, 200 samples: linear 1/20/100/500 = `0.870 / 13.036 / 71.567 / 380.379 μs` per tick;
+spring = `0.954 / 14.007 / 70.268 / 381.599 μs`. At 500 this is 0.761/0.763 μs per handoff,
+versus the earlier 6.754/6.826 μs. Log: `/tmp/UMGTransitionsPipeQueuePerformanceOptimized.log`.
+
 [English summary](../En/TestResults.md)
 
 Здесь записываются только завершённые прогоны. Описание покрытия находится в [Testing.md](Testing.md), методика perf-тестов — в [PerformanceTests.md](Testing/PerformanceTests.md), причины архитектурных решений — в [OptimizationHistory.md](Testing/OptimizationHistory.md).
@@ -69,6 +77,7 @@ lazy spring creation is within noise of the linear case.
 | 2026-08-31 | UE 5.7 / Mac arm64 Development | Value-only lazy callback, Run 12 | Passed | 100 no-callback 6.477/7.482, lifecycle 6.122/7.268, `Updated` 83.812/86.959 μs/frame. Async text 79.750; runtime-тесты повторно прошли. |
 | 2026-09-01 | UE 5.7.4 / Mac arm64 Development | Полный `UMGTransitions.WidgetTransition` suite | Passed, 23/23 | Exit code 0. Value-only lifecycle проверяет From Value в Started, To Value в Finished и callback reentrancy. Layout: transition 256 B, links 8 B, lifecycle 72 B, update state 80 B, временный lifecycle event 80 B, async action 432 B. Perf-значения cold full-suite не приняты как baseline из-за параллельной работы Asset Registry/editor startup. |
 | 2026-09-09 | UE 5.7 / Mac arm64 Development | `Performance.PipeHandoff` | Passed | Completion → queued successor start, 200 samples. Linear 1/20/100/500: 0.748/15.346/172.105/3324.742 μs/tick, 0.748/0.767/1.721/6.649 μs/handoff. Spring: 0.756/15.217/167.746/3338.487 μs/tick, 0.756/0.761/1.677/6.677 μs/handoff. |
+| 2026-09-09 | UE 5.7 / Mac arm64 Development | `Runtime.PipeOrder`, `Performance.PipeHandoff` | Passed | Keyed FIFO queues + active-key snapshot. Runtime 15/15. Linear 1/20/100/500: 0.870/13.036/71.567/380.379 μs/tick, 0.870/0.652/0.716/0.761 μs/handoff. Spring: 0.954/14.007/70.268/381.599, 0.954/0.700/0.703/0.763. 500 burst −88.8%. |
 
 ## Актуальный baseline
 
