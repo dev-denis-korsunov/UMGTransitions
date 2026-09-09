@@ -188,34 +188,45 @@ namespace UMGTransitionsEditor
 		{
 			SGraphPin::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
 
-			const FString SourceSignature = GetWidgetSourceSignature();
+			const UEdGraphPin* SourcePin = GetWidgetSource(GraphPinObj);
+			const bool bUsesDefaultSelf = UsesDefaultSelfWidget(GraphPinObj);
 			if (!bWidgetSourceInitialized)
 			{
-				WidgetSourceSignature = SourceSignature;
+				WidgetSourcePin = SourcePin;
+				bWidgetUsesDefaultSelf = bUsesDefaultSelf;
 				bWidgetSourceInitialized = true;
 				return;
 			}
-			if (WidgetSourceSignature != SourceSignature)
+			if (WidgetSourcePin != SourcePin || bWidgetUsesDefaultSelf != bUsesDefaultSelf)
 			{
-				WidgetSourceSignature = SourceSignature;
-				ResetWidgetProperty();
+				WidgetSourcePin = SourcePin;
+				bWidgetUsesDefaultSelf = bUsesDefaultSelf;
+				RefreshOptions();
+				if (!IsCurrentPropertyAvailable())
+				{
+					ResetWidgetProperty();
+				}
+				if (ComboBox.IsValid())
+				{
+					ComboBox->RefreshOptions();
+				}
 			}
 		}
 		virtual TSharedRef<SWidget> GetDefaultValueWidget() override
 		{
 			RefreshOptions();
-			return SNew(SComboBox<TSharedPtr<FPropertyOption>>).OptionsSource(&Options).OnComboBoxOpening(this, &SWidgetPropertyPathPin::RefreshOptions)
+			return SAssignNew(ComboBox, SComboBox<TSharedPtr<FPropertyOption>>).Visibility(this, &SGraphPin::GetDefaultValueVisibility).IsEnabled(this, &SGraphPin::GetDefaultValueIsEditable).OptionsSource(&Options).OnComboBoxOpening(this, &SWidgetPropertyPathPin::RefreshOptions)
 				.OnGenerateWidget(this, &SWidgetPropertyPathPin::MakeOption).OnSelectionChanged(this, &SWidgetPropertyPathPin::SelectOption)
 				.Content()[SNew(STextBlock).Text(this, &SWidgetPropertyPathPin::GetCurrentValue).Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))];
 		}
 	private:
-		FString GetWidgetSourceSignature() const
+		bool IsCurrentPropertyAvailable() const
 		{
-			if (const UEdGraphPin* Source = GetWidgetSource(GraphPinObj))
+			const FString CurrentProperty = GraphPinObj->GetDefaultAsString();
+			return CurrentProperty.IsEmpty() || CurrentProperty == TEXT("None") || Options.ContainsByPredicate([&CurrentProperty](const TSharedPtr<FPropertyOption>& Option)
 			{
-				return Source->GetOwningNode()->NodeGuid.ToString(EGuidFormats::DigitsWithHyphens) + TEXT(":") + Source->PinName.ToString();
-			}
-			return UsesDefaultSelfWidget(GraphPinObj) ? TEXT("DefaultToSelf") : TEXT("None");
+				return Option.IsValid() && !Option->bHeader && Option->Path == CurrentProperty;
+			});
 		}
 		void ResetWidgetProperty()
 		{
@@ -294,9 +305,11 @@ namespace UMGTransitionsEditor
 		}
 		FText GetCurrentValue() const { const FString Value = GraphPinObj->GetDefaultAsString(); return Value.IsEmpty() || Value == TEXT("None") ? NSLOCTEXT("UMGTransitions", "NoBinding", "None") : FText::FromString(Value); }
 		TArray<TSharedPtr<FPropertyOption>> Options;
+		TSharedPtr<SComboBox<TSharedPtr<FPropertyOption>>> ComboBox;
 		bool bIncludeMaterialParameters = false;
 		bool bWidgetSourceInitialized = false;
-		FString WidgetSourceSignature;
+		const UEdGraphPin* WidgetSourcePin = nullptr;
+		bool bWidgetUsesDefaultSelf = false;
 	};
 
 	static bool IsTransitionValuePin(const UEdGraphPin* Pin)
