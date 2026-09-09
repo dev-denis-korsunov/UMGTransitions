@@ -120,9 +120,9 @@ FWidgetTransitionBuilder& FWidgetTransitionBuilder::FitSimulationToTime(bool bEn
 	return *this;
 }
 
-FWidgetTransitionBuilder& FWidgetTransitionBuilder::DeferValue(bool bEnabled)
+FWidgetTransitionBuilder& FWidgetTransitionBuilder::ApplyFromAfterDelay(bool bEnabled)
 {
-	Transition.bDeferFromValue = bEnabled;
+	Transition.bApplyFromAfterDelay = bEnabled;
 	return *this;
 }
 
@@ -156,15 +156,9 @@ FWidgetTransitionBuilder& FWidgetTransitionBuilder::CallbackUpdateInterval(float
 	return *this;
 }
 
-FWidgetTransitionBuilder& FWidgetTransitionBuilder::InterpolateColorInHSV(bool bEnabled)
+FWidgetTransitionBuilder& FWidgetTransitionBuilder::ColorInterpolation(EWidgetTransitionColorInterpolation Value)
 {
-	Transition.bInterpolateColorInHSV = bEnabled;
-	return *this;
-}
-
-FWidgetTransitionBuilder& FWidgetTransitionBuilder::InterpolateColorInOKLCH(bool bEnabled)
-{
-	Transition.bInterpolateColorInOKLCH = bEnabled;
+	Transition.ColorInterpolation = Value;
 	return *this;
 }
 

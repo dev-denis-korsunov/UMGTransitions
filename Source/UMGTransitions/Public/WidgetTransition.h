@@ -11,6 +11,14 @@ class UWidget;
 class UMaterialInstanceDynamic;
 struct FRealCurve;
 
+UENUM(BlueprintType)
+enum class EWidgetTransitionColorInterpolation : uint8
+{
+	RGB,
+	HSV,
+	OKLCH
+};
+
 enum class EWidgetTransitionValueType : uint8
 {
 	Float,
@@ -109,9 +117,11 @@ struct UMGTRANSITIONS_API FWidgetTransition
 	int32 RepeatCount = 0;
 	/** Seconds between Updated callbacks and FieldNotify broadcasts; zero preserves per-tick updates. */
 	float UpdateInterval = 0.033f;
+	/** Color space used when interpolating color transition values. */
+	EWidgetTransitionColorInterpolation ColorInterpolation = EWidgetTransitionColorInterpolation::RGB;
 	uint16 bUseFrom : 1 = false;
 	/** Defers applying From Value until the transition starts after its delay. */
-	uint16 bDeferFromValue : 1 = false;
+	uint16 bApplyFromAfterDelay : 1 = false;
 	/** Skips Delay after the initial cycle when the transition repeats. */
 	uint16 bIgnoreDelayOnRepeat : 1 = false;
 	uint16 bYoYo : 1 = false;
@@ -124,10 +134,6 @@ struct UMGTRANSITIONS_API FWidgetTransition
 	uint16 bFitSpringToTime : 1 = false;
 	/** Whether this transition writes its sampled value to a widget property. */
 	uint16 bBound : 1 = false;
-	/** Interpolates linear-color properties through HSV instead of RGB. */
-	uint16 bInterpolateColorInHSV : 1 = false;
-	/** Interpolates linear-color properties through OKLCH instead of RGB. */
-	uint16 bInterpolateColorInOKLCH : 1 = false;
 	/** Index into UWidgetTransitionSubsystem::Springs when bUseSpring is enabled. */
 	int32 SpringIndex = INDEX_NONE;
 	/** Resolved once when the transition is added, avoiding a CurveTable lookup every tick. */
@@ -141,24 +147,15 @@ class UMGTRANSITIONS_API UWidgetTransitionFunctionLibrary final : public UBluepr
 
 public:
 	/** Creates a transition bound to a widget property or a Material.Parameter entry. */
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Create Widget Transition", DefaultToSelf = "Widget", UMGTransitionsBinding = "Combined", ReturnDisplayName = "Transition"))
-	static FWidgetTransition CreateWidgetTransition(UWidget* Widget, UPARAM(meta = (UMGTransitionsRole = "WidgetProperty")) FName WidgetProperty, FWidgetTransitionValue ToValue, float Time = 0.2f, float Delay = 0.0f);
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Create Widget Transition", DefaultToSelf = "Widget", UMGTransitionsBinding = "Combined", ReturnDisplayName = "Transition", AdvancedDisplay = "RepeatCount,bYoYo,bApplyFromAfterDelay,bIgnoreDelayOnRepeat,CallbackUpdateInterval,ColorInterpolation,bRemoveFromParent"))
+	static FWidgetTransition CreateWidgetTransition(UWidget* Widget, UPARAM(meta = (UMGTransitionsRole = "WidgetProperty")) FName WidgetProperty, FWidgetTransitionValue ToValue, float Time = 0.2f, float Delay = 0.0f, UPARAM(meta = (ClampMin = "-1", ToolTip = "Number of additional cycles. Minus one repeats indefinitely.")) int32 RepeatCount = 0, bool bYoYo = false, UPARAM(meta = (ToolTip = "Applies From Value when Delay finishes instead of when the transition is added.")) bool bApplyFromAfterDelay = false, UPARAM(meta = (ToolTip = "Skips Delay after the initial cycle when the transition repeats.")) bool bIgnoreDelayOnRepeat = false, UPARAM(meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", ToolTip = "Seconds between Updated callbacks and FieldNotify broadcasts. Zero updates every tick.")) float CallbackUpdateInterval = 0.033f, EWidgetTransitionColorInterpolation ColorInterpolation = EWidgetTransitionColorInterpolation::RGB, UPARAM(meta = (ToolTip = "Removes the target widget from its parent after the transition finishes.")) bool bRemoveFromParent = false);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (CPP_Default_bUseFrom = "true", ReturnDisplayName = "Transition"))
 	static FWidgetTransition From(FWidgetTransition Transition, bool bUseFrom, FWidgetTransitionValue FromValue);
-	/** Configures optional transition behavior and notification frequency. */
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
-	static FWidgetTransition Options(FWidgetTransition Transition, UPARAM(meta = (ToolTip = "Defers applying From Value until the transition starts after Delay.")) bool bDeferFromValue = false, bool bIgnoreDelayOnRepeat = false, UPARAM(meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", ToolTip = "Seconds between Updated callbacks and FieldNotify broadcasts. Zero updates every tick.")) float CallbackUpdateInterval = 0.033f, UPARAM(meta = (ToolTip = "Interpolates color properties through HSV instead of RGB.")) bool bInterpolateColorInHSV = false, UPARAM(meta = (ToolTip = "Interpolates color properties through OKLCH instead of RGB.")) bool bInterpolateColorInOKLCH = false);
 
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DataTablePin = "CurveTable", ReturnDisplayName = "Transition"))
 	static FWidgetTransition Easing(FWidgetTransition Transition, UCurveTable* CurveTable, FName RowName);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
-	static FWidgetTransition Repeat(FWidgetTransition Transition, int32 RepeatCount);
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Yo Yo", ReturnDisplayName = "Transition"))
-	static FWidgetTransition YoYo(FWidgetTransition Transition, bool bYoYo = true);
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
 	static FWidgetTransition Spring(FWidgetTransition Transition, float SpringForce = 0.65f, float SpringDamping = 0.45f, float SpringMaxSpeed = 0.0f, bool bFitSimulationToTime = false);
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
-	static FWidgetTransition RemoveFromParent(FWidgetTransition Transition, bool bRemoveFromParent = true);
 	/** Makes a scalar transition endpoint. */
 	UFUNCTION(BlueprintPure, Category = "Widget Transition|Transition Value", meta = (DisplayName = "Make Float Transition Value", ReturnDisplayName = "Transition Value"))
 	static FWidgetTransitionValue MakeFloatTransitionValue(float Value);

@@ -21,7 +21,7 @@ Build a transition with pure nodes, then start it with **Add Widget Transition**
 
 1. Create a `Transition Value` with **Make Float Transition Value**, **Make Vector2D Transition Value**, or **Make Color Transition Value**.
 2. Use **Create Widget Transition** to choose a target `Widget` and `Widget Property`.
-3. Optionally compose **From**, **Options**, **Easing**, **Repeat**, **Yo Yo**, **Spring**, and **Remove From Parent**.
+3. Expand **Create Widget Transition** for optional repeat, Yo Yo, delay, callback, color-interpolation, and removal settings; compose **From**, **Easing**, and **Spring** only when needed.
 4. Start the result with **Add Widget Transition**.
 
 The Widget Property picker exposes supported numeric widget properties, slot properties, and material parameters for supported Image and Border widgets. Frequently used UMG fields (`RenderOpacity`, transform translation/scale/shear/angle, and pivot) use direct runtime adapters; other compatible float, `Vector2D`, and `LinearColor` properties use the property-path fallback.

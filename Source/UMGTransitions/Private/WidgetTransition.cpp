@@ -434,7 +434,7 @@ void UWidgetTransitionFunctionLibrary::AddWidgetTransitionArray(const UObject* W
 	}
 }
 
-FWidgetTransition UWidgetTransitionFunctionLibrary::CreateWidgetTransition(UWidget* Widget, FName WidgetProperty, FWidgetTransitionValue ToValue, float Time, float Delay)
+FWidgetTransition UWidgetTransitionFunctionLibrary::CreateWidgetTransition(UWidget* Widget, FName WidgetProperty, FWidgetTransitionValue ToValue, float Time, float Delay, int32 RepeatCount, bool bYoYo, bool bApplyFromAfterDelay, bool bIgnoreDelayOnRepeat, float CallbackUpdateInterval, EWidgetTransitionColorInterpolation ColorInterpolation, bool bRemoveFromParent)
 {
 	FWidgetTransition Transition;
 	Transition.Widget = Widget;
@@ -442,6 +442,13 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::CreateWidgetTransition(UWidg
 	Transition.ToValue = MoveTemp(ToValue);
 	Transition.Delay = FMath::Max(0.0f, Delay);
 	Transition.Time = FMath::Max(0.0f, Time);
+	Transition.RepeatCount = FMath::Max(-1, RepeatCount);
+	Transition.bYoYo = bYoYo;
+	Transition.bApplyFromAfterDelay = bApplyFromAfterDelay;
+	Transition.bIgnoreDelayOnRepeat = bIgnoreDelayOnRepeat;
+	Transition.UpdateInterval = FMath::Max(0.0f, CallbackUpdateInterval);
+	Transition.ColorInterpolation = ColorInterpolation;
+	Transition.bRemoveFromParent = bRemoveFromParent;
 	return Transition;
 }
 
@@ -449,16 +456,6 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::From(FWidgetTransition Trans
 {
 	Transition.FromValue = MoveTemp(FromValue);
 	Transition.bUseFrom = bUseFrom;
-	return Transition;
-}
-
-FWidgetTransition UWidgetTransitionFunctionLibrary::Options(FWidgetTransition Transition, bool bDeferFromValue, bool bIgnoreDelayOnRepeat, float CallbackUpdateInterval, bool bInterpolateColorInHSV, bool bInterpolateColorInOKLCH)
-{
-	Transition.bDeferFromValue = bDeferFromValue;
-	Transition.bIgnoreDelayOnRepeat = bIgnoreDelayOnRepeat;
-	Transition.bInterpolateColorInHSV = bInterpolateColorInHSV;
-	Transition.bInterpolateColorInOKLCH = bInterpolateColorInOKLCH;
-	Transition.UpdateInterval = FMath::Max(0.0f, CallbackUpdateInterval);
 	return Transition;
 }
 
@@ -494,17 +491,6 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::Easing(FWidgetTransition Tra
 	Transition.bUseSpring = false;
 	return Transition;
 }
-FWidgetTransition UWidgetTransitionFunctionLibrary::Repeat(FWidgetTransition Transition, int32 RepeatCount)
-{
-	Transition.RepeatCount = FMath::Max(-1, RepeatCount);
-	return Transition;
-}
-FWidgetTransition UWidgetTransitionFunctionLibrary::YoYo(FWidgetTransition Transition, bool bYoYo)
-{
-	Transition.bYoYo = bYoYo;
-	Transition.bYoYoReverse = false;
-	return Transition;
-}
 FWidgetTransition UWidgetTransitionFunctionLibrary::Spring(FWidgetTransition Transition, float SpringForce, float SpringDamping, float SpringMaxSpeed, bool bFitSimulationToTime)
 {
 	Transition.bUseSpring = true;
@@ -514,12 +500,6 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::Spring(FWidgetTransition Tra
 	Transition.bFitSpringToTime = bFitSimulationToTime;
 	return Transition;
 }
-FWidgetTransition UWidgetTransitionFunctionLibrary::RemoveFromParent(FWidgetTransition Transition, bool bRemoveFromParent)
-{
-	Transition.bRemoveFromParent = bRemoveFromParent;
-	return Transition;
-}
-
 void UWidgetTransitionFunctionLibrary::ClearAllWidgetTransitions(const UObject* WorldContextObject, UWidget* Widget)
 {
 	const UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);

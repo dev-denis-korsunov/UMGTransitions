@@ -358,17 +358,16 @@ bool FWidgetTransitionBuilderTest::RunTest(const FString&)
 	UImage* Widget = NewObject<UImage>(GetTransientPackage());
 	FWidgetTransitionValue ToValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.8f);
 	FWidgetTransitionValue FromValue = UWidgetTransitionFunctionLibrary::MakeVectorTransitionValue(FVector2D(0.2f, 0.4f));
-	FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderTransform.Scale"), ToValue, 0.25f, 0.4f);
+	FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderTransform.Scale"), ToValue, 0.25f, 0.4f, 2, true, true, true, 0.05f, EWidgetTransitionColorInterpolation::HSV, true);
 	Transition = UWidgetTransitionFunctionLibrary::From(MoveTemp(Transition), true, FromValue);
-	Transition = UWidgetTransitionFunctionLibrary::Options(MoveTemp(Transition), true, true, 0.05f);
-	Transition = UWidgetTransitionFunctionLibrary::Repeat(MoveTemp(Transition), 2);
-	Transition = UWidgetTransitionFunctionLibrary::YoYo(MoveTemp(Transition));
 	Transition = UWidgetTransitionFunctionLibrary::Spring(MoveTemp(Transition), 0.8f, 0.25f, 0.0f, true);
 	TestEqual(TEXT("Target retains semantic Float type"), Transition.ToValue.Type, EWidgetTransitionValueType::Float);
 	TestEqual(TEXT("From retains independent Vector2D type"), Transition.FromValue.Type, EWidgetTransitionValueType::Vector2D);
 	TestTrue(TEXT("From modifier is enabled"), Transition.bUseFrom);
-	TestTrue(TEXT("Options modifiers are retained"), Transition.bDeferFromValue && Transition.bIgnoreDelayOnRepeat);
-	TestTrue(TEXT("Options retains the callback update interval"), FMath::IsNearlyEqual(Transition.UpdateInterval, 0.05f));
+	TestTrue(TEXT("Advanced create options are retained"), Transition.bApplyFromAfterDelay && Transition.bIgnoreDelayOnRepeat);
+	TestTrue(TEXT("Create retains the callback update interval"), FMath::IsNearlyEqual(Transition.UpdateInterval, 0.05f));
+	TestEqual(TEXT("Create retains the color interpolation mode"), Transition.ColorInterpolation, EWidgetTransitionColorInterpolation::HSV);
+	TestTrue(TEXT("Create retains Remove From Parent"), Transition.bRemoveFromParent);
 	TestTrue(TEXT("Binding is retained"), Transition.Widget == Widget && Transition.WidgetProperty == TEXT("RenderTransform.Scale"));
 	TestTrue(TEXT("Repeat and spring modifiers are retained"), Transition.RepeatCount == 2 && Transition.bYoYo && Transition.bUseSpring && Transition.bFitSpringToTime);
 	Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("Material.Progress"), ToValue, 0.25f, 0.4f);
@@ -447,14 +446,14 @@ bool FWidgetTransitionNativeBuilderTest::RunTest(const FString&)
 		.To(0.0f)
 		.Time(0.5f)
 		.SpringForce(1.0f)
-		.DeferValue(true)
+		.ApplyFromAfterDelay(true)
 		.BindFinish(Finished);
 	TestFalse(TEXT("Native builder rejects a context without a world"), Builder.Add());
 	const FWidgetTransition Transition = Builder.GetTransition();
 
 	TestTrue(TEXT("Native builder keeps its target widget and property"), Transition.Widget == Widget && Transition.WidgetProperty == TEXT("RenderTransform.Translation"));
 	TestTrue(TEXT("Native builder enables explicit From"), Transition.bUseFrom && Transition.FromValue.Type == EWidgetTransitionValueType::Vector2D);
-	TestTrue(TEXT("Native builder configures To, time, spring and defer options"), Transition.ToValue.Type == EWidgetTransitionValueType::Float && FMath::IsNearlyEqual(Transition.Time, 0.5f) && Transition.bUseSpring && Transition.bDeferFromValue);
+	TestTrue(TEXT("Native builder configures To, time, spring and delayed From options"), Transition.ToValue.Type == EWidgetTransitionValueType::Float && FMath::IsNearlyEqual(Transition.Time, 0.5f) && Transition.bUseSpring && Transition.bApplyFromAfterDelay);
 	TestTrue(TEXT("Native builder accepts a dynamic completion callback"), Builder.GetTransition().Widget == Widget);
 	TestEqual(TEXT("Builder test callback remains untouched until Start"), Receiver->FinishedCount, 0);
 
@@ -827,6 +826,8 @@ bool FWidgetTransitionMetadataTest::RunTest(const FString&)
 		return false;
 	}
 	TestEqual(TEXT("Create function opts into the combined custom property pin"), Create->GetMetaData(TEXT("UMGTransitionsBinding")), FString(TEXT("Combined")));
+	const FString AdvancedDisplay = Create->GetMetaData(TEXT("AdvancedDisplay"));
+	TestTrue(TEXT("Create keeps optional behavior in advanced pins"), AdvancedDisplay.Contains(TEXT("RepeatCount")) && AdvancedDisplay.Contains(TEXT("bYoYo")) && AdvancedDisplay.Contains(TEXT("ColorInterpolation")) && AdvancedDisplay.Contains(TEXT("bRemoveFromParent")));
 	const FProperty* WidgetProperty = Create->FindPropertyByName(TEXT("WidgetProperty"));
 	TestTrue(TEXT("Widget Property parameter exists"), WidgetProperty != nullptr);
 	if (WidgetProperty)
@@ -872,11 +873,8 @@ bool FWidgetTransitionConstructionPerformanceTest::RunTest(const FString&)
 	});
 	Measure(TEXT("Full pure pipeline"), [&Widget, &FromValue, &ToValue]()
 	{
-		FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderOpacity"), ToValue, 0.2f, 0.1f);
+		FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderOpacity"), ToValue, 0.2f, 0.1f, 3, true, true, true);
 		Transition = UWidgetTransitionFunctionLibrary::From(MoveTemp(Transition), true, FromValue);
-		Transition = UWidgetTransitionFunctionLibrary::Options(MoveTemp(Transition), true, true);
-		Transition = UWidgetTransitionFunctionLibrary::Repeat(MoveTemp(Transition), 3);
-		Transition = UWidgetTransitionFunctionLibrary::YoYo(MoveTemp(Transition));
 		return UWidgetTransitionFunctionLibrary::Spring(MoveTemp(Transition), 0.65f, 0.45f, 0.0f, true);
 	});
 

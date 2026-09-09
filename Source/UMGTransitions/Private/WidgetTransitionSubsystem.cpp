@@ -201,7 +201,7 @@ bool UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 		{
 			return false;
 		}
-		if (Transition.bUseFrom && !Transition.bDeferFromValue)
+		if (Transition.bUseFrom && !Transition.bApplyFromAfterDelay)
 		{
 			Transition.PropertyBinding.Apply(TargetWidget, Transition.FromValue.Channels);
 		}
@@ -264,11 +264,31 @@ FWidgetTransitionSample UWidgetTransitionSubsystem::SampleTransition(const FWidg
 	Sample.bCompleted = !Transition.bUseSpring && (Transition.Time <= 0.0f || Transition.CurrentTime >= Transition.Delay + Transition.Time);
 	const float NormalizedProgress = Transition.Time <= 0.0f ? 1.0f : FMath::Clamp((Transition.CurrentTime - Transition.Delay) / Transition.Time, 0.0f, 1.0f);
 	const float EasedProgress = Transition.EasingCurve ? Transition.EasingCurve->Eval(NormalizedProgress) : NormalizedProgress;
-	Sample.Value = Transition.bInterpolateColorInOKLCH
-		? InterpolateColorOKLCH(Transition.FromValue.Channels, Transition.ToValue.Channels, EasedProgress)
-		: Transition.bInterpolateColorInHSV
-		? InterpolateColorHSV(Transition.FromValue.Channels, Transition.ToValue.Channels, EasedProgress)
-		: FMath::Lerp(Transition.FromValue.Channels, Transition.ToValue.Channels, EasedProgress);
+	if (Transition.ToValue.Type != EWidgetTransitionValueType::LinearColor)
+	{
+		Sample.Value = FMath::Lerp(Transition.FromValue.Channels, Transition.ToValue.Channels, EasedProgress);
+	}
+	else
+	{
+		switch (Transition.ColorInterpolation)
+		{
+		case EWidgetTransitionColorInterpolation::HSV:
+		{
+			Sample.Value = InterpolateColorHSV(Transition.FromValue.Channels, Transition.ToValue.Channels, EasedProgress);
+			break;
+		}
+		case EWidgetTransitionColorInterpolation::OKLCH:
+		{
+			Sample.Value = InterpolateColorOKLCH(Transition.FromValue.Channels, Transition.ToValue.Channels, EasedProgress);
+			break;
+		}
+		default:
+		{
+			Sample.Value = FMath::Lerp(Transition.FromValue.Channels, Transition.ToValue.Channels, EasedProgress);
+			break;
+		}
+		}
+	}
 	const bool bReachedSpringDeadline = Transition.bUseSpring && Transition.bFitSpringToTime && Transition.CurrentTime >= Transition.Delay + Transition.Time;
 	if (Transition.bUseSpring && Springs.IsValidIndex(Transition.SpringIndex) && !bReachedSpringDeadline)
 	{
