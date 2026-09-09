@@ -159,13 +159,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
 	static FWidgetTransition Spring(FWidgetTransition Transition, float SpringForce = 0.65f, float SpringDamping = 0.45f, float SpringMaxSpeed = 0.0f, bool bFitSimulationToTime = false);
 	/** Makes a scalar transition endpoint. */
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Make Float Transition Value", ReturnDisplayName = "Transition Value"))
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (BlueprintAutocast, DisplayName = "Make Float Transition Value", ReturnDisplayName = "Transition Value"))
 	static FWidgetTransitionValue MakeFloatTransitionValue(float Value);
 	/** Makes a two-dimensional transition endpoint. */
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Make Vector2D Transition Value", ReturnDisplayName = "Transition Value"))
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (BlueprintAutocast, DisplayName = "Make Vector2D Transition Value", ReturnDisplayName = "Transition Value"))
 	static FWidgetTransitionValue MakeVectorTransitionValue(FVector2D Value);
 	/** Makes a color transition endpoint. */
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Make Color Transition Value", ReturnDisplayName = "Transition Value"))
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (BlueprintAutocast, DisplayName = "Make Color Transition Value", ReturnDisplayName = "Transition Value"))
 	static FWidgetTransitionValue MakeColorTransitionValue(FLinearColor Value);
 	/** Returns the first channel of a transition endpoint. */
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "As Float"))
