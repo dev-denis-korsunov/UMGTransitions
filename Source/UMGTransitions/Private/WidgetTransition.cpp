@@ -491,13 +491,13 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::Easing(FWidgetTransition Tra
 	Transition.bUseSpring = false;
 	return Transition;
 }
-FWidgetTransition UWidgetTransitionFunctionLibrary::Spring(FWidgetTransition Transition, float SpringForce, float SpringDamping, float SpringMaxSpeed, bool bFitSimulationToTime)
+FWidgetTransition UWidgetTransitionFunctionLibrary::Spring(FWidgetTransition Transition, float SpringForce, float SpringDamping, float SpringMaxSpeed, bool bFitToTime)
 {
 	Transition.bUseSpring = true;
 	Transition.SpringForce = FMath::Max(1.0f, SpringForce);
 	Transition.SpringDamping = FMath::Clamp(SpringDamping, 0.0f, 1.0f);
 	Transition.SpringMaxSpeed = FMath::Max(0.0f, SpringMaxSpeed);
-	Transition.bFitSpringToTime = bFitSimulationToTime;
+	Transition.bFitToTime = bFitToTime;
 	return Transition;
 }
 void UWidgetTransitionFunctionLibrary::ClearAllWidgetTransitions(const UObject* WorldContextObject, UWidget* Widget)

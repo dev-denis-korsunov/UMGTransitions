@@ -26,7 +26,7 @@ void FWidgetTransitionSpring::Start(FVector4f InStartValue, FVector4f InTargetVa
 	Velocity = InInitialVelocity;
 	Delay = FMath::Max(0.0f, InDelay);
 	CurrentDelay = 0.0f;
-	CompletionThresholdSquared = FMath::Max(0.00000001f, LengthSquared(TargetValue - CurrentValue) * 0.000001f);
+	UpdateCompletionThreshold();
 	bStarted = true;
 	bCompleted = false;
 }
@@ -38,8 +38,13 @@ void FWidgetTransitionSpring::SetTarget(FVector4f InTargetValue)
 		return;
 	}
 	TargetValue = InTargetValue;
-	CompletionThresholdSquared = FMath::Max(0.00000001f, LengthSquared(TargetValue - CurrentValue) * 0.000001f);
+	UpdateCompletionThreshold();
 	bCompleted = false;
+}
+
+void FWidgetTransitionSpring::UpdateCompletionThreshold()
+{
+	CompletionThresholdSquared = FMath::Max(0.00000001f, LengthSquared(TargetValue - CurrentValue) * WidgetTransitionSpring::EndTolerance * WidgetTransitionSpring::EndTolerance);
 }
 
 void FWidgetTransitionSpring::Tick(float DeltaTime)

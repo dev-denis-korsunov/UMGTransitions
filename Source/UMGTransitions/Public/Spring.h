@@ -2,6 +2,12 @@
 
 #include "CoreMinimal.h"
 
+namespace WidgetTransitionSpring
+{
+	/** Relative remaining displacement at which every spring settles. */
+	inline constexpr float EndTolerance = 0.001f;
+}
+
 /** Four-channel spring state stored in the subsystem's dense spring array. */
 struct UMGTRANSITIONS_API FWidgetTransitionSpring
 {
@@ -30,4 +36,5 @@ private:
 	float CompletionThresholdSquared = 0.0f;
 	uint8 bStarted : 1;
 	uint8 bCompleted : 1;
+	void UpdateCompletionThreshold();
 };

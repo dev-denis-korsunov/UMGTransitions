@@ -37,7 +37,7 @@ public:
 	FWidgetTransitionBuilder& SpringForce(float Value);
 	FWidgetTransitionBuilder& SpringDamping(float Value);
 	FWidgetTransitionBuilder& SpringMaxSpeed(float Value);
-	FWidgetTransitionBuilder& FitSimulationToTime(bool bEnabled = true);
+	FWidgetTransitionBuilder& FitToTime(bool bEnabled = true);
 	FWidgetTransitionBuilder& IgnoreDelay(bool bEnabled = true);
 	FWidgetTransitionBuilder& RepeatDelay(bool bEnabled = true);
 	FWidgetTransitionBuilder& Repeat(int32 Count);

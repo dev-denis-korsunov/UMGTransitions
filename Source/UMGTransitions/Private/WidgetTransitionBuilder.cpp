@@ -113,10 +113,10 @@ FWidgetTransitionBuilder& FWidgetTransitionBuilder::SpringMaxSpeed(float Value)
 	return *this;
 }
 
-FWidgetTransitionBuilder& FWidgetTransitionBuilder::FitSimulationToTime(bool bEnabled)
+FWidgetTransitionBuilder& FWidgetTransitionBuilder::FitToTime(bool bEnabled)
 {
 	Transition.bUseSpring = true;
-	Transition.bFitSpringToTime = bEnabled;
+	Transition.bFitToTime = bEnabled;
 	return *this;
 }
 

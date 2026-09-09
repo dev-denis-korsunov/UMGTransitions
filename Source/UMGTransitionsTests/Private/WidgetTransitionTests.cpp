@@ -368,7 +368,7 @@ bool FWidgetTransitionBuilderTest::RunTest(const FString&)
 	TestTrue(TEXT("Create retains the event interval"), FMath::IsNearlyEqual(Transition.EventInterval, 0.05f));
 	TestEqual(TEXT("Create retains the color mix mode"), Transition.ColorMix, EWidgetTransitionColorMix::HSV);
 	TestTrue(TEXT("Binding is retained"), Transition.Widget == Widget && Transition.WidgetProperty == TEXT("RenderTransform.Scale"));
-	TestTrue(TEXT("Repeat and spring modifiers are retained"), Transition.RepeatCount == 2 && Transition.bYoYo && Transition.bUseSpring && Transition.bFitSpringToTime);
+	TestTrue(TEXT("Repeat and spring modifiers are retained"), Transition.RepeatCount == 2 && Transition.bYoYo && Transition.bUseSpring && Transition.bFitToTime);
 	Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("Material.Progress"), ToValue, 0.25f, 0.4f);
 	TestEqual(TEXT("Material binding retains its virtual channel"), Transition.WidgetProperty, FName(TEXT("Material.Progress")));
 	return true;
@@ -623,6 +623,25 @@ bool FWidgetTransitionSpringTest::RunTest(const FString&)
 	}
 	TestTrue(TEXT("Four-channel spring completes"), Spring.IsCompleted());
 	TestTrue(TEXT("Four-channel spring settles at target"), Spring.GetValue().Equals(FVector4f(100.0f, -50.0f, 25.0f, 1.0f), Tolerance));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionSpringFitToTimeTest, "UMGTransitions.WidgetTransition.Runtime.Spring.FitToTime", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetTransitionSpringFitToTimeTest::RunTest(const FString&)
+{
+	constexpr float Duration = 0.2f;
+	constexpr float EndTolerance = WidgetTransitionSpring::EndTolerance;
+	constexpr float DampingRatio = 0.5325f;
+	const float Frequency = -FMath::Loge(EndTolerance * 0.25f) / (DampingRatio * Duration);
+	FWidgetTransitionSpring FitSpring(Frequency * Frequency, 2.0f * DampingRatio * Frequency);
+	FitSpring.Start(FVector4f::Zero(), FVector4f(1.0f, 0.0f, 0.0f, 0.0f));
+	for (int32 Step = 0; Step < 4; ++Step)
+	{
+		FitSpring.Tick(Duration / 4.0f);
+	}
+	TestTrue(TEXT("Fit To Time spring settles within the requested duration"), FitSpring.IsCompleted());
+	TestTrue(TEXT("Fit To Time spring snaps to its target after settling"), FitSpring.GetValue().Equals(FVector4f(1.0f, 0.0f, 0.0f, 0.0f), Tolerance));
+
 	return true;
 }
 

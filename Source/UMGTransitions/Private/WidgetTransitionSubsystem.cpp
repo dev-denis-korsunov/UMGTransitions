@@ -480,7 +480,7 @@ FWidgetTransitionSample UWidgetTransitionSubsystem::SampleTransition(const FWidg
 		}
 		}
 	}
-	const bool bReachedSpringDeadline = Transition.bUseSpring && Transition.bFitSpringToTime && Transition.CurrentTime >= Transition.Delay + Transition.Time;
+	const bool bReachedSpringDeadline = Transition.bUseSpring && Transition.bFitToTime && Transition.CurrentTime >= Transition.Delay + Transition.Time;
 	if (Transition.bUseSpring && Springs.IsValidIndex(Transition.SpringIndex) && !bReachedSpringDeadline)
 	{
 		const FWidgetTransitionSpring& Spring = Springs[Transition.SpringIndex];
@@ -566,10 +566,11 @@ void UWidgetTransitionSubsystem::StartSpring(int32 TransitionIndex, FWidgetTrans
 	constexpr float DefaultSpringForce = 160.0f;
 	const float DampingRatio = FMath::Lerp(0.15f, 1.0f, FMath::Clamp(Transition.SpringDamping, 0.0f, 1.0f));
 	const float SpringForce = FMath::Max(1.0f, Transition.SpringForce);
+	const float FitTolerance = WidgetTransitionSpring::EndTolerance * 0.25f;
 	// e^(-zeta * omega * Time) <= 0.001: choose omega so the envelope
 	// reaches the same relative tolerance used by FWidgetTransitionSpring completion tests.
-	const float Frequency = Transition.bFitSpringToTime && Transition.Time > UE_SMALL_NUMBER
-								? (-FMath::Loge(0.001f) / (DampingRatio * Transition.Time)) * FMath::Sqrt(SpringForce / DefaultSpringForce)
+	const float Frequency = Transition.bFitToTime && Transition.Time > UE_SMALL_NUMBER
+								? (-FMath::Loge(FitTolerance) / (DampingRatio * Transition.Time)) * FMath::Sqrt(SpringForce / DefaultSpringForce)
 								: FMath::Sqrt(SpringForce);
 	const float SpringFactor = Frequency * Frequency;
 	const float DampingFactor = 2.0f * DampingRatio * Frequency;

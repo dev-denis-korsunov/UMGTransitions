@@ -143,7 +143,7 @@ struct UMGTRANSITIONS_API FWidgetTransition
 	uint16 bYoYoReverse : 1 = false;
 	uint16 bStarted : 1 = false;
 	/** Derives spring frequency from Time so the simulation settles within its requested duration. */
-	uint16 bFitSpringToTime : 1 = false;
+	uint16 bFitToTime : 1 = false;
 	/** Whether this transition writes its sampled value to a widget property. */
 	uint16 bBound : 1 = false;
 	/** Index into UWidgetTransitionSubsystem::Springs when bUseSpring is enabled. */
@@ -167,7 +167,7 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DataTablePin = "CurveTable", ReturnDisplayName = "Transition"))
 	static FWidgetTransition Easing(FWidgetTransition Transition, UCurveTable* CurveTable, FName RowName);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
-	static FWidgetTransition Spring(FWidgetTransition Transition, UPARAM(meta = (ClampMin = "1.0", ToolTip = "Spring stiffness coefficient. 160 matches the default response; larger values make the spring faster.")) float SpringForce = 160.0f, float SpringDamping = 0.45f, float SpringMaxSpeed = 0.0f, bool bFitSimulationToTime = false);
+	static FWidgetTransition Spring(FWidgetTransition Transition, UPARAM(meta = (ClampMin = "1.0", ToolTip = "Spring stiffness coefficient. 160 matches the default response; larger values make the spring faster.")) float SpringForce = 160.0f, float SpringDamping = 0.45f, UPARAM(meta = (AdvancedDisplay, ClampMin = "0.0")) float SpringMaxSpeed = 0.0f, UPARAM(meta = (AdvancedDisplay)) bool bFitToTime = false);
 	/** Makes a scalar transition endpoint. */
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (BlueprintAutocast, DisplayName = "Make Float Transition Value", ReturnDisplayName = "Transition Value"))
 	static FWidgetTransitionValue MakeFloatTransitionValue(float Value);
