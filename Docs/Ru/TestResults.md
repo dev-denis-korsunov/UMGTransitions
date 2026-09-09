@@ -23,6 +23,18 @@ warm-up. На 500 spring baseline: `10.518 / 10.358` microseconds/frame без b
 `/tmp/UMGTransitionsABBaselineModeMatrix2.log`, `/tmp/UMGTransitionsABCandidateModeMatrix1.log`,
 `/tmp/UMGTransitionsABCandidateModeMatrix2.log`.
 
+2026-09-09 — полный system A/B `70e79cc` → `25387c9`, UE 5.7 / Mac arm64 Development.
+Обе версии прошли все 11 `UMGTransitions.WidgetTransition.Performance` тестов. На 500 transition:
+ConcurrentTick `20.308 → 20.367` microseconds/frame (`+0.3%`); ModeMatrix Linear
+`5.658/20.225 → 5.705/21.046`, Spring `10.970/25.410 → 10.534/24.997`
+(без/с binding); spring target updates `27.126 → 25.805` microseconds/frame.
+100 Updated callbacks без/с binding: `26.475/29.617 → 26.658/29.530` microseconds/frame.
+Pipe 500 handoff: linear `0.817 → 0.761`, spring `0.856 → 0.761` microseconds/handoff.
+Разнонаправленные изменения до ~11% относятся к шуму одиночных perf-run: между ревизиями меняется
+только вычисление frequency при создании Fit To Time spring, а не один из измеряемых hot paths.
+Регрессий не обнаружено. Logs: `/tmp/UMGTransitionsABSystemBaselinePerformance.log`,
+`/tmp/UMGTransitionsABSystemCurrentPerformance.log`.
+
 2026-09-09 — UE 5.7 / Mac Development: callback review regression run.
 All 13 `UMGTransitions.WidgetTransition.Runtime` tests passed, including
 `NativeBuilder`, `CallbackCancellation`, `RepeatCallbackDelay` and `CallbackReentrancy`.

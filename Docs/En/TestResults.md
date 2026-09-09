@@ -22,6 +22,18 @@ change has no measurable tick regression. Logs: `/tmp/UMGTransitionsABBaselineMo
 `/tmp/UMGTransitionsABBaselineModeMatrix2.log`, `/tmp/UMGTransitionsABCandidateModeMatrix1.log`,
 `/tmp/UMGTransitionsABCandidateModeMatrix2.log`.
 
+2026-09-09 — full system A/B `70e79cc` → `25387c9`, UE 5.7 / Mac arm64 Development.
+Both revisions passed all 11 `UMGTransitions.WidgetTransition.Performance` tests. At 500 transitions:
+ConcurrentTick was `20.308 → 20.367` microseconds/frame (`+0.3%`); ModeMatrix Linear was
+`5.658/20.225 → 5.705/21.046`, Spring was `10.970/25.410 → 10.534/24.997`
+(without/with binding); spring target updates were `27.126 → 25.805` microseconds/frame.
+100 Updated callbacks without/with binding: `26.475/29.617 → 26.658/29.530` microseconds/frame.
+Pipe at 500 handoffs: linear `0.817 → 0.761`, spring `0.856 → 0.761` microseconds/handoff.
+Bidirectional changes up to ~11% are single-run noise: the revisions change only frequency derivation
+at Fit To Time spring startup, not any measured hot path. No regression was detected. Logs:
+`/tmp/UMGTransitionsABSystemBaselinePerformance.log`,
+`/tmp/UMGTransitionsABSystemCurrentPerformance.log`.
+
 2026-09-09 — UE 5.7 / Mac Development: callback review regression run.
 All 13 `UMGTransitions.WidgetTransition.Runtime` tests passed, including
 `NativeBuilder`, `CallbackCancellation`, `RepeatCallbackDelay` and `CallbackReentrancy`.
