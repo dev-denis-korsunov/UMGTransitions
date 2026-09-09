@@ -216,3 +216,8 @@ void FWidgetTransitionCallbackStore::TickAndDispatch(UWidgetTransitionSubsystem&
 	DispatchFinalUpdatedCallbacks();
 	DispatchLifecycleEvents(FinishedEvents);
 }
+
+void FWidgetTransitionCallbackStore::DispatchStartedEvents()
+{
+	DispatchLifecycleEvents(StartedEvents);
+}

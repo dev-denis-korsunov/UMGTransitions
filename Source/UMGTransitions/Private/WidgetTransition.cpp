@@ -434,7 +434,7 @@ void UWidgetTransitionFunctionLibrary::AddWidgetTransitionArray(const UObject* W
 	}
 }
 
-FWidgetTransition UWidgetTransitionFunctionLibrary::CreateWidgetTransition(UWidget* Widget, FName WidgetProperty, FWidgetTransitionValue ToValue, float Time, float Delay, bool bYoYo, int32 RepeatCount, bool bRepeatDelay, EWidgetTransitionColorMix ColorMix, bool bRemoveFromParent, float EventInterval)
+FWidgetTransition UWidgetTransitionFunctionLibrary::CreateWidgetTransition(UWidget* Widget, FName WidgetProperty, FWidgetTransitionValue ToValue, float Time, float Delay, bool bYoYo, int32 RepeatCount, bool bRepeatDelay, EWidgetTransitionAddMode AddMode, EWidgetTransitionColorMix ColorMix, bool bRemoveFromParent, float EventInterval)
 {
 	FWidgetTransition Transition;
 	Transition.Widget = Widget;
@@ -448,6 +448,7 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::CreateWidgetTransition(UWidg
 	Transition.EventInterval = FMath::Max(0.0f, EventInterval);
 	Transition.ColorMix = ColorMix;
 	Transition.bRemoveFromParent = bRemoveFromParent;
+	Transition.AddMode = AddMode;
 	return Transition;
 }
 
@@ -494,7 +495,7 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::Easing(FWidgetTransition Tra
 FWidgetTransition UWidgetTransitionFunctionLibrary::Spring(FWidgetTransition Transition, float SpringForce, float SpringDamping, float SpringMaxSpeed, bool bFitSimulationToTime)
 {
 	Transition.bUseSpring = true;
-	Transition.SpringForce = FMath::Clamp(SpringForce, 0.0f, 1.0f);
+	Transition.SpringForce = FMath::Max(1.0f, SpringForce);
 	Transition.SpringDamping = FMath::Clamp(SpringDamping, 0.0f, 1.0f);
 	Transition.SpringMaxSpeed = FMath::Max(0.0f, SpringMaxSpeed);
 	Transition.bFitSpringToTime = bFitSimulationToTime;

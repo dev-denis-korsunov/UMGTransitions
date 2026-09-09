@@ -358,7 +358,7 @@ bool FWidgetTransitionBuilderTest::RunTest(const FString&)
 	UImage* Widget = NewObject<UImage>(GetTransientPackage());
 	FWidgetTransitionValue ToValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.8f);
 	FWidgetTransitionValue FromValue = UWidgetTransitionFunctionLibrary::MakeVectorTransitionValue(FVector2D(0.2f, 0.4f));
-	FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderTransform.Scale"), ToValue, 0.25f, 0.4f, true, 2, true, EWidgetTransitionColorMix::HSV, true, 0.05f);
+	FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderTransform.Scale"), ToValue, 0.25f, 0.4f, true, 2, true, EWidgetTransitionAddMode::Replace, EWidgetTransitionColorMix::HSV, true, 0.05f);
 	Transition = UWidgetTransitionFunctionLibrary::From(MoveTemp(Transition), true, FromValue, true);
 	Transition = UWidgetTransitionFunctionLibrary::Spring(MoveTemp(Transition), 0.8f, 0.25f, 0.0f, true);
 	TestEqual(TEXT("Target retains semantic Float type"), Transition.ToValue.Type, EWidgetTransitionValueType::Float);
@@ -434,6 +434,50 @@ bool FWidgetTransitionRepeatCallbackTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionAddModeTest, "UMGTransitions.WidgetTransition.Runtime.AddMode", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetTransitionAddModeTest::RunTest(const FString&)
+{
+	UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+	UImage* Widget = NewObject<UImage>(GetTransientPackage());
+	FWidgetTransition First = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderOpacity"), UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.8f), 0.05f);
+	FWidgetTransition Queued = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderOpacity"), UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.2f), 0.05f);
+	Queued.AddMode = EWidgetTransitionAddMode::Pipe;
+
+	TestTrue(TEXT("Initial transition starts"), Subsystem->StartTransition(MoveTemp(First)));
+	TestTrue(TEXT("Piped transition is queued"), Subsystem->StartTransition(MoveTemp(Queued)));
+	TestEqual(TEXT("Only the active transition ticks"), Subsystem->Transitions.Num(), 1);
+	TestEqual(TEXT("Piped transition waits in the property queue"), Subsystem->QueuedTransitions.Num(), 1);
+
+	Subsystem->TickTransitionsForTesting(0.05f);
+	TestEqual(TEXT("Completed transition is replaced by its queued successor"), Subsystem->Transitions.Num(), 1);
+	TestEqual(TEXT("Queued successor is consumed"), Subsystem->QueuedTransitions.Num(), 0);
+	TestTrue(TEXT("Queued transition captures the completed property value"), FMath::IsNearlyEqual(Subsystem->Transitions[0].FromValue.Channels.X, 0.8f));
+
+	Subsystem->TickTransitionsForTesting(0.05f);
+	TestEqual(TEXT("Queued transition completes normally"), Subsystem->Transitions.Num(), 0);
+	TestTrue(TEXT("Queued transition applies its own target value"), FMath::IsNearlyEqual(Widget->GetRenderOpacity(), 0.2f));
+
+	UWidgetTransitionSubsystem* SpringPipeSubsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+	UImage* SpringPipeWidget = NewObject<UImage>(GetTransientPackage());
+	FWidgetTransition SpringPipeActive = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(SpringPipeWidget, TEXT("RenderOpacity"), UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.8f), 0.05f);
+	FWidgetTransition SpringPipeQueued = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(SpringPipeWidget, TEXT("RenderOpacity"), UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.2f), 0.2f);
+	SpringPipeQueued = UWidgetTransitionFunctionLibrary::Spring(MoveTemp(SpringPipeQueued));
+	SpringPipeQueued.AddMode = EWidgetTransitionAddMode::Pipe;
+	TestTrue(TEXT("Spring pipe predecessor starts"), SpringPipeSubsystem->StartTransition(MoveTemp(SpringPipeActive)));
+	TestTrue(TEXT("Spring pipe transition is queued"), SpringPipeSubsystem->StartTransition(MoveTemp(SpringPipeQueued)));
+	TestEqual(TEXT("Queued spring does not allocate simulation state"), SpringPipeSubsystem->Springs.Num(), 0);
+	SpringPipeSubsystem->TickTransitionsForTesting(0.05f);
+	TestEqual(TEXT("Queued spring allocates simulation state when it starts"), SpringPipeSubsystem->Springs.Num(), 1);
+
+	FWidgetTransition Active = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderOpacity"), UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.6f), 1.0f);
+	FWidgetTransition Skipped = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderOpacity"), UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.4f), 1.0f);
+	Skipped.AddMode = EWidgetTransitionAddMode::Skip;
+	TestTrue(TEXT("Active transition starts"), Subsystem->StartTransition(MoveTemp(Active)));
+	TestFalse(TEXT("Skip transition is rejected while the property is busy"), Subsystem->StartTransition(MoveTemp(Skipped)));
+	TestEqual(TEXT("Active transition remains unchanged"), Subsystem->Transitions.Num(), 1);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionNativeBuilderTest, "UMGTransitions.WidgetTransition.Runtime.NativeBuilder", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionNativeBuilderTest::RunTest(const FString&)
 {
@@ -446,7 +490,7 @@ bool FWidgetTransitionNativeBuilderTest::RunTest(const FString&)
 		.From(FVector2D(10.0f, 20.0f))
 		.To(0.0f)
 		.Time(0.5f)
-		.SpringForce(1.0f)
+		.SpringForce(240.0f)
 		.IgnoreDelay(false)
 		.BindFinish(Finished);
 	TestFalse(TEXT("Native builder rejects a context without a world"), Builder.Add());
@@ -455,6 +499,7 @@ bool FWidgetTransitionNativeBuilderTest::RunTest(const FString&)
 	TestTrue(TEXT("Native builder keeps its target widget and property"), Transition.Widget == Widget && Transition.WidgetProperty == TEXT("RenderTransform.Translation"));
 	TestTrue(TEXT("Native builder enables explicit From"), Transition.bUseFrom && Transition.FromValue.Type == EWidgetTransitionValueType::Vector2D);
 	TestTrue(TEXT("Native builder configures To, time, spring and delayed From options"), Transition.ToValue.Type == EWidgetTransitionValueType::Float && FMath::IsNearlyEqual(Transition.Time, 0.5f) && Transition.bUseSpring && !Transition.bIgnoreDelay);
+	TestTrue(TEXT("Native builder preserves an unnormalized spring force"), FMath::IsNearlyEqual(Transition.SpringForce, 240.0f));
 	TestTrue(TEXT("Native builder accepts a dynamic completion callback"), Builder.GetTransition().Widget == Widget);
 	TestEqual(TEXT("Builder test callback remains untouched until Start"), Receiver->FinishedCount, 0);
 

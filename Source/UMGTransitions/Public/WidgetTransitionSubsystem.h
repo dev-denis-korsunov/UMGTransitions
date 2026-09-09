@@ -14,6 +14,13 @@ struct FWidgetTransitionSample
 	bool bCompleted = false;
 };
 
+/** Transition and callbacks retained until an active transition for the same property finishes. */
+struct FQueuedWidgetTransition
+{
+	FWidgetTransition Transition;
+	FWidgetTransitionCallbacks Callbacks;
+};
+
 /** Owns and ticks all active widget transitions for one world. */
 UCLASS()
 class UMGTRANSITIONS_API UWidgetTransitionSubsystem final : public UTickableWorldSubsystem
@@ -21,6 +28,7 @@ class UMGTRANSITIONS_API UWidgetTransitionSubsystem final : public UTickableWorl
 	GENERATED_BODY()
 
 public:
+	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual ETickableTickType GetTickableTickType() const override;
 	virtual void Tick(float DeltaTime) override;
 	virtual TStatId GetStatId() const override
@@ -49,8 +57,12 @@ public:
 	FWidgetTransitionCallbackStore CallbackStore;
 	/** Transition indices requested for removal during callback dispatch. */
 	TArray<int32> PendingRemovalIndices;
+	/** FIFO transitions waiting for the active transition of the same widget property. */
+	TArray<FQueuedWidgetTransition> QueuedTransitions;
 	/** Defers structural mutation while transition and callback passes are active. */
 	bool bDeferringTransitionRemovals = false;
+	/** Prevents an admitted queued transition from re-queuing or clearing its siblings. */
+	bool bStartingQueuedTransition = false;
 
 #if WITH_DEV_AUTOMATION_TESTS
 	/** Adds a transition and its callback package without requiring an initialized UWorld. */
@@ -66,6 +78,10 @@ private:
 	void RemoveTransition(int32 TransitionIndex);
 	void RequestTransitionRemoval(int32 TransitionIndex);
 	void FlushPendingRemovals();
+	bool HasActiveTransition(UWidget* Widget, FName WidgetProperty) const;
+	void CancelQueuedTransitions(UWidget* Widget, FName WidgetProperty);
+	void CancelQueuedTransitions(UWidget* Widget);
+	bool StartQueuedTransitions();
 	void StartSpring(int32 TransitionIndex, FWidgetTransition& Transition, FVector4f InitialVelocity = FVector4f::Zero());
 	bool RestartTransition(int32 TransitionIndex, FWidgetTransition& Transition);
 	void TickTransitions(float DeltaTime);

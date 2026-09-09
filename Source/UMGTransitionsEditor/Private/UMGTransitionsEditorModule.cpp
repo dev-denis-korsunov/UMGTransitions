@@ -195,6 +195,15 @@ namespace UMGTransitionsEditor
 				WidgetSourcePin = SourcePin;
 				bWidgetUsesDefaultSelf = bUsesDefaultSelf;
 				bWidgetSourceInitialized = true;
+				RefreshOptions();
+				if (!IsCurrentPropertyAvailable())
+				{
+					ResetWidgetProperty();
+				}
+				if (ComboBox.IsValid())
+				{
+					ComboBox->RefreshOptions();
+				}
 				return;
 			}
 			if (WidgetSourcePin != SourcePin || bWidgetUsesDefaultSelf != bUsesDefaultSelf)

@@ -2,6 +2,7 @@
 
 #include "Components/Widget.h"
 #include "Curves/RealCurve.h"
+#include "Kismet/BlueprintAsyncActionBase.h"
 
 namespace
 {
@@ -145,6 +146,11 @@ namespace
 	}
 }
 
+void UWidgetTransitionSubsystem::Initialize(FSubsystemCollectionBase& Collection)
+{
+	Super::Initialize(Collection);
+}
+
 ETickableTickType UWidgetTransitionSubsystem::GetTickableTickType() const
 {
 	return IsTemplate() ? ETickableTickType::Never : ETickableTickType::Always;
@@ -163,11 +169,56 @@ bool UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 	{
 		return false;
 	}
+	if (!bStartingQueuedTransition && !Transition.WidgetProperty.IsNone())
+	{
+		const bool bHasActiveTransition = HasActiveTransition(TargetWidget, Transition.WidgetProperty);
+		const bool bHasQueuedTransition = QueuedTransitions.ContainsByPredicate([TargetWidget, WidgetProperty = Transition.WidgetProperty](const FQueuedWidgetTransition& QueuedTransition)
+		{
+			return QueuedTransition.Transition.Widget == TargetWidget && QueuedTransition.Transition.WidgetProperty == WidgetProperty;
+		});
+		if (Transition.AddMode == EWidgetTransitionAddMode::Skip && (bHasActiveTransition || bHasQueuedTransition))
+		{
+			UE_LOG(LogTemp, Verbose, TEXT("Widget Transition: skipping transition for '%s' on widget '%s' because the property is busy."), *Transition.WidgetProperty.ToString(), *GetNameSafe(TargetWidget));
+			return false;
+		}
+		if (Transition.AddMode == EWidgetTransitionAddMode::Pipe && (bHasActiveTransition || bHasQueuedTransition))
+		{
+			QueuedTransitions.Add({ MoveTemp(Transition), MoveTemp(Callbacks) });
+			return true;
+		}
+		if (Transition.AddMode != EWidgetTransitionAddMode::Pipe)
+		{
+			CancelQueuedTransitions(TargetWidget, Transition.WidgetProperty);
+		}
+	}
 	Transition.Time = FMath::Max(0.0f, Transition.Time);
 	Transition.Delay = FMath::Max(0.0f, Transition.Delay);
 	Transition.RepeatCount = FMath::Max(-1, Transition.RepeatCount);
 	Transition.EventInterval = FMath::Max(0.0f, Transition.EventInterval);
 	Transition.bBound = !Transition.WidgetProperty.IsNone();
+	FWidgetTransitionSample HandoffSample;
+	FVector4f HandoffVelocity = FVector4f::Zero();
+	bool bHasHandoff = false;
+	bool bHasSpringHandoff = false;
+	if (Transition.bBound)
+	{
+		for (const FWidgetTransition& ExistingTransition : Transitions)
+		{
+			if (ExistingTransition.Widget != TargetWidget || ExistingTransition.WidgetProperty != Transition.WidgetProperty)
+			{
+				continue;
+			}
+
+			HandoffSample = SampleTransition(ExistingTransition);
+			bHasHandoff = true;
+			if (ExistingTransition.SpringIndex != INDEX_NONE && Springs.IsValidIndex(ExistingTransition.SpringIndex))
+			{
+				HandoffVelocity = Springs[ExistingTransition.SpringIndex].GetVelocity();
+				bHasSpringHandoff = true;
+			}
+			break;
+		}
+	}
 	Transition.EasingCurve = Transition.Easing.IsNull() ? nullptr : Transition.Easing.GetCurve(TEXT("Widget Transition"), false);
 	if (!Transition.Easing.IsNull() && !Transition.EasingCurve)
 	{
@@ -197,6 +248,10 @@ bool UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 				return false;
 			}
 		}
+		else if (bHasHandoff)
+		{
+			Transition.FromValue.Channels = HandoffSample.Value;
+		}
 		else if (!Transition.PropertyBinding.Read(TargetWidget, Transition.FromValue.Channels))
 		{
 			return false;
@@ -215,18 +270,11 @@ bool UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 	{
 		Transition.bUseSpring = false;
 	}
-	FVector4f HandoffVelocity = FVector4f::Zero();
-	bool bHasHandoffVelocity = false;
 	for (int32 TransitionIndex = 0; Transition.bBound && TransitionIndex < Transitions.Num();)
 	{
 		const FWidgetTransition& ExistingTransition = Transitions[TransitionIndex];
 		if (ExistingTransition.Widget == TargetWidget && ExistingTransition.WidgetProperty == Transition.WidgetProperty)
 		{
-			if (ExistingTransition.SpringIndex != INDEX_NONE && Springs.IsValidIndex(ExistingTransition.SpringIndex))
-			{
-				HandoffVelocity = Springs[ExistingTransition.SpringIndex].GetVelocity();
-				bHasHandoffVelocity = true;
-			}
 			UE_LOG(LogTemp, Verbose, TEXT("Widget Transition: replacing existing transition for '%s' on widget '%s'."), *Transition.WidgetProperty.ToString(), *GetNameSafe(TargetWidget));
 			RequestTransitionRemoval(TransitionIndex);
 			if (!bDeferringTransitionRemovals)
@@ -238,12 +286,13 @@ bool UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 	}
 	const int32 TransitionIndex = Transitions.Emplace(MoveTemp(Transition));
 	CallbackStore.Register(*this, TransitionIndex, MoveTemp(Callbacks));
-	StartSpring(TransitionIndex, Transitions[TransitionIndex], bHasHandoffVelocity ? HandoffVelocity : FVector4f::Zero());
+	StartSpring(TransitionIndex, Transitions[TransitionIndex], bHasSpringHandoff ? HandoffVelocity : FVector4f::Zero());
 	return true;
 }
 
 void UWidgetTransitionSubsystem::ClearTransitions(UWidget* Widget)
 {
+	CancelQueuedTransitions(Widget);
 	for (int32 TransitionIndex = 0; TransitionIndex < Transitions.Num();)
 	{
 		if (Transitions[TransitionIndex].Widget == Widget)
@@ -256,6 +305,97 @@ void UWidgetTransitionSubsystem::ClearTransitions(UWidget* Widget)
 		}
 		++TransitionIndex;
 	}
+}
+
+bool UWidgetTransitionSubsystem::HasActiveTransition(UWidget* Widget, FName WidgetProperty) const
+{
+	return Transitions.ContainsByPredicate([Widget, WidgetProperty](const FWidgetTransition& Transition)
+	{
+		return Transition.Widget == Widget && Transition.WidgetProperty == WidgetProperty;
+	});
+}
+
+void UWidgetTransitionSubsystem::CancelQueuedTransitions(UWidget* Widget, FName WidgetProperty)
+{
+	for (int32 QueueIndex = QueuedTransitions.Num() - 1; QueueIndex >= 0; --QueueIndex)
+	{
+		FQueuedWidgetTransition& QueuedTransition = QueuedTransitions[QueueIndex];
+		if (QueuedTransition.Transition.Widget != Widget || QueuedTransition.Transition.WidgetProperty != WidgetProperty)
+		{
+			continue;
+		}
+		if (UBlueprintAsyncActionBase* Owner = QueuedTransition.Callbacks.AsyncOwner.Get())
+		{
+			Owner->SetReadyToDestroy();
+		}
+		QueuedTransitions.RemoveAtSwap(QueueIndex);
+	}
+}
+
+void UWidgetTransitionSubsystem::CancelQueuedTransitions(UWidget* Widget)
+{
+	for (int32 QueueIndex = QueuedTransitions.Num() - 1; QueueIndex >= 0; --QueueIndex)
+	{
+		FQueuedWidgetTransition& QueuedTransition = QueuedTransitions[QueueIndex];
+		if (QueuedTransition.Transition.Widget != Widget)
+		{
+			continue;
+		}
+		if (UBlueprintAsyncActionBase* Owner = QueuedTransition.Callbacks.AsyncOwner.Get())
+		{
+			Owner->SetReadyToDestroy();
+		}
+		QueuedTransitions.RemoveAtSwap(QueueIndex);
+	}
+}
+
+bool UWidgetTransitionSubsystem::StartQueuedTransitions()
+{
+	bool bQueuedStartedEvent = false;
+	for (int32 QueueIndex = 0; QueueIndex < QueuedTransitions.Num();)
+	{
+		FQueuedWidgetTransition& QueuedTransition = QueuedTransitions[QueueIndex];
+		UWidget* Widget = QueuedTransition.Transition.Widget.Get();
+		if (!IsValid(Widget))
+		{
+			if (UBlueprintAsyncActionBase* Owner = QueuedTransition.Callbacks.AsyncOwner.Get())
+			{
+				Owner->SetReadyToDestroy();
+			}
+			QueuedTransitions.RemoveAtSwap(QueueIndex);
+			continue;
+		}
+		if (HasActiveTransition(Widget, QueuedTransition.Transition.WidgetProperty))
+		{
+			++QueueIndex;
+			continue;
+		}
+		FWidgetTransition Transition = MoveTemp(QueuedTransition.Transition);
+		FWidgetTransitionCallbacks Callbacks = MoveTemp(QueuedTransition.Callbacks);
+		QueuedTransitions.RemoveAt(QueueIndex);
+		bStartingQueuedTransition = true;
+		const bool bStarted = StartTransition(MoveTemp(Transition), MoveTemp(Callbacks));
+		bStartingQueuedTransition = false;
+		if (bStarted && Transitions.IsValidIndex(Transitions.Num() - 1))
+		{
+			const int32 TransitionIndex = Transitions.Num() - 1;
+			FWidgetTransition& StartedTransition = Transitions[TransitionIndex];
+			if (StartedTransition.Delay <= 0.0f)
+			{
+				StartedTransition.bStarted = true;
+				CallbackStore.QueueStarted(*this, TransitionIndex);
+				bQueuedStartedEvent = true;
+			}
+		}
+		if (!bStarted)
+		{
+			if (UBlueprintAsyncActionBase* Owner = Callbacks.AsyncOwner.Get())
+			{
+				Owner->SetReadyToDestroy();
+			}
+		}
+	}
+	return bQueuedStartedEvent;
 }
 
 FWidgetTransitionSample UWidgetTransitionSubsystem::SampleTransition(const FWidgetTransition& Transition) const
@@ -372,12 +512,14 @@ void UWidgetTransitionSubsystem::StartSpring(int32 TransitionIndex, FWidgetTrans
 	{
 		return;
 	}
+	constexpr float DefaultSpringForce = 160.0f;
 	const float DampingRatio = FMath::Lerp(0.15f, 1.0f, FMath::Clamp(Transition.SpringDamping, 0.0f, 1.0f));
+	const float SpringForce = FMath::Max(1.0f, Transition.SpringForce);
 	// e^(-zeta * omega * Time) <= 0.001: choose omega so the envelope
 	// reaches the same relative tolerance used by FWidgetTransitionSpring completion tests.
 	const float Frequency = Transition.bFitSpringToTime && Transition.Time > UE_SMALL_NUMBER
-								? (-FMath::Loge(0.001f) / (DampingRatio * Transition.Time)) * FMath::Lerp(1.0f, 3.0f, FMath::Clamp(Transition.SpringForce, 0.0f, 1.0f))
-								: 4.0f * FMath::Pow(6.0f, FMath::Clamp(Transition.SpringForce, 0.0f, 1.0f));
+								? (-FMath::Loge(0.001f) / (DampingRatio * Transition.Time)) * FMath::Sqrt(SpringForce / DefaultSpringForce)
+								: FMath::Sqrt(SpringForce);
 	const float SpringFactor = Frequency * Frequency;
 	const float DampingFactor = 2.0f * DampingRatio * Frequency;
 	if (Transition.SpringIndex == INDEX_NONE)
@@ -485,6 +627,10 @@ void UWidgetTransitionSubsystem::TickTransitions(float DeltaTime)
 	CallbackStore.TickAndDispatch(*this, EffectiveDeltaTime);
 	bDeferringTransitionRemovals = false;
 	FlushPendingRemovals();
+	if (StartQueuedTransitions())
+	{
+		CallbackStore.DispatchStartedEvents();
+	}
 }
 
 #if WITH_DEV_AUTOMATION_TESTS

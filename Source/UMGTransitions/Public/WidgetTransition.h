@@ -19,6 +19,14 @@ enum class EWidgetTransitionColorMix : uint8
 	OKLCH UMETA(ToolTip = "Interpolates perceptual OKLCH color channels and alpha."),
 };
 
+UENUM(BlueprintType)
+enum class EWidgetTransitionAddMode : uint8
+{
+	Replace UMETA(ToolTip = "Replaces the active transition for this Widget Property."),
+	Skip UMETA(ToolTip = "Does not add this transition if the Widget Property already has an active or queued transition."),
+	Pipe UMETA(ToolTip = "Queues this transition until the active transition for this Widget Property finishes."),
+};
+
 UENUM()
 enum class EWidgetTransitionValueType : uint8
 {
@@ -113,7 +121,8 @@ struct UMGTRANSITIONS_API FWidgetTransition
 	float Time = 0.2f;
 	float Delay = 0.0f;
 	float CurrentTime = 0.0f;
-	float SpringForce = 0.65f;
+	/** Spring stiffness coefficient. 160 preserves the default spring response; larger values make it faster. */
+	float SpringForce = 160.0f;
 	float SpringDamping = 0.45f;
 	float SpringMaxSpeed = 0.0f;
 	int32 RepeatCount = 0;
@@ -121,6 +130,8 @@ struct UMGTRANSITIONS_API FWidgetTransition
 	float EventInterval = 0.033f;
 	/** Color mixing method used when interpolating color transition values. */
 	EWidgetTransitionColorMix ColorMix = EWidgetTransitionColorMix::RGB;
+	/** Determines whether a transition replaces, skips, or queues behind an active property transition. */
+	EWidgetTransitionAddMode AddMode = EWidgetTransitionAddMode::Replace;
 	uint16 bUseFrom : 1 = false;
 	/** Applies From Value immediately, before the initial delay. */
 	uint16 bIgnoreDelay : 1 = false;
@@ -149,15 +160,15 @@ class UMGTRANSITIONS_API UWidgetTransitionFunctionLibrary final : public UBluepr
 
 public:
 	/** Creates a transition bound to a widget property or a Material.Parameter entry. */
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Create Widget Transition", DefaultToSelf = "Widget", UMGTransitionsBinding = "Combined", ReturnDisplayName = "Transition", AdvancedDisplay = "bYoYo,RepeatCount,bRepeatDelay,ColorMix,bRemoveFromParent,EventInterval"))
-	static FWidgetTransition CreateWidgetTransition(UWidget* Widget, UPARAM(meta = (UMGTransitionsRole = "WidgetProperty")) FName WidgetProperty, FWidgetTransitionValue ToValue, float Time = 0.2f, float Delay = 0.0f, bool bYoYo = false, UPARAM(meta = (ClampMin = "-1", ToolTip = "Number of additional cycles. Minus one repeats indefinitely.")) int32 RepeatCount = 0, UPARAM(meta = (ToolTip = "Applies Delay again at the start of every repeated cycle.")) bool bRepeatDelay = false, UPARAM(meta = (DisplayName = "ColorMix", UMGTransitionsSegmentedControl, ToolTip = "Color interpolation method: RGB, HSV, or OKLCH.")) EWidgetTransitionColorMix ColorMix = EWidgetTransitionColorMix::RGB, UPARAM(meta = (ToolTip = "Removes the target widget from its parent after the transition finishes.")) bool bRemoveFromParent = false, UPARAM(meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", ToolTip = "Seconds between async-node Update callbacks and FieldNotify broadcasts. Zero dispatches events every tick.")) float EventInterval = 0.033f);
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Create Widget Transition", DefaultToSelf = "Widget", UMGTransitionsBinding = "Combined", ReturnDisplayName = "Transition", AdvancedDisplay = "bYoYo,RepeatCount,bRepeatDelay,AddMode,ColorMix,bRemoveFromParent,EventInterval"))
+	static FWidgetTransition CreateWidgetTransition(UWidget* Widget, UPARAM(meta = (UMGTransitionsRole = "WidgetProperty")) FName WidgetProperty, FWidgetTransitionValue ToValue, float Time = 0.2f, float Delay = 0.0f, bool bYoYo = false, UPARAM(meta = (ClampMin = "-1", ToolTip = "Number of additional cycles. Minus one repeats indefinitely.")) int32 RepeatCount = 0, UPARAM(meta = (ToolTip = "Applies Delay again at the start of every repeated cycle.")) bool bRepeatDelay = false, UPARAM(meta = (UMGTransitionsSegmentedControl, ToolTip = "Replace replaces, Skip ignores this transition when the property is busy, and Pipe queues behind the active transition.")) EWidgetTransitionAddMode AddMode = EWidgetTransitionAddMode::Replace, UPARAM(meta = (DisplayName = "ColorMix", UMGTransitionsSegmentedControl, ToolTip = "Color interpolation method: RGB, HSV, or OKLCH.")) EWidgetTransitionColorMix ColorMix = EWidgetTransitionColorMix::RGB, UPARAM(meta = (ToolTip = "Removes the target widget from its parent after the transition finishes.")) bool bRemoveFromParent = false, UPARAM(meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", ToolTip = "Seconds between async-node Update callbacks and FieldNotify broadcasts. Zero dispatches events every tick.")) float EventInterval = 0.033f);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (CPP_Default_bUseFrom = "true", ReturnDisplayName = "Transition"))
 	static FWidgetTransition From(FWidgetTransition Transition, bool bUseFrom, FWidgetTransitionValue FromValue, UPARAM(meta = (ToolTip = "Applies From Value immediately, before the transition delay.")) bool bIgnoreDelay = false);
 
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DataTablePin = "CurveTable", ReturnDisplayName = "Transition"))
 	static FWidgetTransition Easing(FWidgetTransition Transition, UCurveTable* CurveTable, FName RowName);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
-	static FWidgetTransition Spring(FWidgetTransition Transition, float SpringForce = 0.65f, float SpringDamping = 0.45f, float SpringMaxSpeed = 0.0f, bool bFitSimulationToTime = false);
+	static FWidgetTransition Spring(FWidgetTransition Transition, UPARAM(meta = (ClampMin = "1.0", ToolTip = "Spring stiffness coefficient. 160 matches the default response; larger values make the spring faster.")) float SpringForce = 160.0f, float SpringDamping = 0.45f, float SpringMaxSpeed = 0.0f, bool bFitSimulationToTime = false);
 	/** Makes a scalar transition endpoint. */
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (BlueprintAutocast, DisplayName = "Make Float Transition Value", ReturnDisplayName = "Transition Value"))
 	static FWidgetTransitionValue MakeFloatTransitionValue(float Value);

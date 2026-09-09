@@ -95,7 +95,7 @@ FWidgetTransitionBuilder& FWidgetTransitionBuilder::Delay(float Seconds)
 FWidgetTransitionBuilder& FWidgetTransitionBuilder::SpringForce(float Value)
 {
 	Transition.bUseSpring = true;
-	Transition.SpringForce = FMath::Clamp(Value, 0.0f, 1.0f);
+	Transition.SpringForce = FMath::Max(1.0f, Value);
 	return *this;
 }
 

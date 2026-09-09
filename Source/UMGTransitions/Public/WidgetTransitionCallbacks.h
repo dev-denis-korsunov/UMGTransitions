@@ -74,6 +74,8 @@ struct FWidgetTransitionCallbackStore
 	void StoreOverrideValue(UWidgetTransitionSubsystem& Subsystem, int32 TransitionIndex, FWidgetTransitionValue Value);
 	void QueueCompleted(UWidgetTransitionSubsystem& Subsystem, int32 TransitionIndex, FWidgetTransitionValue Value);
 	void TickAndDispatch(UWidgetTransitionSubsystem& Subsystem, float DeltaTime);
+	/** Dispatches starts queued after a transition handoff without advancing update timers. */
+	void DispatchStartedEvents();
 
 	TArray<FWidgetTransitionLifecycleCallbacks> LifecycleCallbacks;
 	TArray<FWidgetTransitionUpdateState> UpdateStates;
