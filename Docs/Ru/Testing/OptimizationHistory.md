@@ -2,6 +2,23 @@
 
 Этот документ связывает измерения с принятыми решениями. Полные строки запусков хранятся в [TestResults.md](../TestResults.md).
 
+## Контролируемый A/B: Fit To Time
+
+Изменение `Fit To Time` перестало учитывать `Spring Force` при выводе frequency: в этом режиме duration и damping полностью определяют траекторию, а Force остаётся параметром обычного physical режима. Расчёт происходит только при создании spring state в `StartSpring`, не во время tick.
+
+Сравнение `70e79cc` и `25387c9` проведено в одном проекте и одинаковой конфигурации UE 5.7 / Mac arm64 Development. Обе ревизии прошли все 11 `Performance` automation-тестов. Отдельный двухпрогонный Mode Matrix подтвердил, что цена 500 spring остаётся в пределах шума: `10.438 → 10.443 μs/frame` без binding и `25.549 → 25.796 μs/frame` с binding.
+
+| Hot path, 500 transition | Baseline, μs/frame | Current, μs/frame | Вывод |
+| --- | ---: | ---: | --- |
+| Concurrent linear tick | 20.308 | 20.367 | +0.3%, шум. |
+| Mode Matrix spring, без binding | 10.970 | 10.534 | Нет регрессии. |
+| Mode Matrix spring, с binding | 25.410 | 24.997 | Нет регрессии. |
+| Spring с per-tick target update | 27.126 | 25.805 | Нет регрессии. |
+| 100 Updated callbacks, без/с binding | 26.475 / 29.617 | 26.658 / 29.530 | В пределах шума. |
+| Pipe spring, 500 successor | 0.856 μs/handoff | 0.761 μs/handoff | В пределах шума одиночного прогона. |
+
+Решение принято: семантика `Fit To Time` исправлена без измеримой цены всей runtime-системы. Детали spring API и следующие приоритеты приведены в [Spring.md](../../Ru/Spring.md).
+
 ## CurveTable easing
 
 Раньше `FCurveTableRowHandle::Eval` искал row каждый tick. Теперь `FRealCurve*` резолвится при добавлении transition и затем вызывается напрямую.

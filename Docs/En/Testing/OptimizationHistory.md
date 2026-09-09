@@ -1,5 +1,22 @@
 # Runtime optimization history
 
+## Controlled Fit To Time A/B
+
+Fit To Time no longer incorporates `Spring Force` when deriving frequency: duration and damping fully define its trajectory, while Force remains a physical-mode parameter. The calculation happens only while creating spring state in `StartSpring`, not during ticking.
+
+`70e79cc` and `25387c9` were compared in the same UE 5.7 / Mac arm64 Development project configuration. Both revisions passed all 11 `Performance` automation tests. A separate two-run Mode Matrix comparison confirmed that 500-spring cost stayed within noise: `10.438 → 10.443 μs/frame` without binding and `25.549 → 25.796 μs/frame` with binding.
+
+| Hot path, 500 transitions | Baseline, μs/frame | Current, μs/frame | Conclusion |
+| --- | ---: | ---: | --- |
+| Concurrent linear tick | 20.308 | 20.367 | +0.3%, noise. |
+| Mode Matrix spring, without binding | 10.970 | 10.534 | No regression. |
+| Mode Matrix spring, with binding | 25.410 | 24.997 | No regression. |
+| Spring with per-tick target update | 27.126 | 25.805 | No regression. |
+| 100 Updated callbacks, without/with binding | 26.475 / 29.617 | 26.658 / 29.530 | Within noise. |
+| Pipe spring, 500 successors | 0.856 μs/handoff | 0.761 μs/handoff | Within single-run noise. |
+
+Decision: Fit To Time semantics are corrected with no measurable runtime-system cost. Spring API details and next priorities are documented in [Spring.md](../../Ru/Spring.md).
+
 ## CurveTable easing
 
 CurveTable rows are resolved when a transition is added. The cached `FRealCurve*` is evaluated directly during ticking, removing row lookup from the hot path.
