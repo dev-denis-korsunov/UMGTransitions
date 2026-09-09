@@ -215,9 +215,19 @@ namespace UMGTransitionsEditor
 		virtual TSharedRef<SWidget> GetDefaultValueWidget() override
 		{
 			RefreshOptions();
-			return SAssignNew(ComboBox, SComboBox<TSharedPtr<FPropertyOption>>).Visibility(this, &SGraphPin::GetDefaultValueVisibility).IsEnabled(this, &SGraphPin::GetDefaultValueIsEditable).OptionsSource(&Options).OnComboBoxOpening(this, &SWidgetPropertyPathPin::RefreshOptions)
-				.OnGenerateWidget(this, &SWidgetPropertyPathPin::MakeOption).OnSelectionChanged(this, &SWidgetPropertyPathPin::SelectOption)
-				.Content()[SNew(STextBlock).Text(this, &SWidgetPropertyPathPin::GetCurrentValue).Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))];
+			return SAssignNew(ComboBox, SComboBox<TSharedPtr<FPropertyOption>>)
+				.Visibility(this, &SGraphPin::GetDefaultValueVisibility)
+				.IsEnabled(this, &SGraphPin::GetDefaultValueIsEditable)
+				.OptionsSource(&Options)
+				.OnComboBoxOpening(this, &SWidgetPropertyPathPin::RefreshOptions)
+				.OnGenerateWidget(this, &SWidgetPropertyPathPin::MakeOption)
+				.OnSelectionChanged(this, &SWidgetPropertyPathPin::SelectOption)
+				.Content()
+				[
+					SNew(STextBlock)
+					.Text(this, &SWidgetPropertyPathPin::GetCurrentValue)
+					.Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+				];
 		}
 	private:
 		bool IsCurrentPropertyAvailable() const
@@ -288,11 +298,29 @@ namespace UMGTransitionsEditor
 		{
 			if (!Option.IsValid() || Option->bHeader)
 			{
-				return SNew(SBox).IsEnabled(false)[SNew(STextBlock).Text(FText::FromString(Option.IsValid() ? Option->Label : FString())).Font(FAppStyle::GetFontStyle("PropertyWindow.BoldFont"))];
+				return SNew(SBox)
+					.IsEnabled(false)
+					[
+						SNew(STextBlock)
+						.Text(FText::FromString(Option.IsValid() ? Option->Label : FString()))
+						.Font(FAppStyle::GetFontStyle("PropertyWindow.BoldFont"))
+					];
 			}
 			return SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f)[SNew(STextBlock).Text(FText::FromString(Option->Label))]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(8.0f, 0.0f, 2.0f, 0.0f)[SNew(SImage).Image(FAppStyle::GetBrush("Kismet.VariableList.TypeIcon")).ColorAndOpacity(Option->TypeColor)];
+				+ SHorizontalBox::Slot()
+				.FillWidth(1.0f)
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(Option->Label))
+				]
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(8.0f, 0.0f, 2.0f, 0.0f)
+				[
+					SNew(SImage)
+					.Image(FAppStyle::GetBrush("Kismet.VariableList.TypeIcon"))
+					.ColorAndOpacity(Option->TypeColor)
+				];
 		}
 		void SelectOption(TSharedPtr<FPropertyOption> Option, ESelectInfo::Type)
 		{
@@ -324,7 +352,8 @@ namespace UMGTransitionsEditor
 	}
 	static bool IsSegmentedEnumPin(const UEdGraphPin* Pin)
 	{
-		return Pin && Pin->Direction == EGPD_Input && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Byte && Cast<UEnum>(Pin->PinType.PinSubCategoryObject.Get()) && GetFunctionParameter(Pin) && GetFunctionParameter(Pin)->HasMetaData(TEXT("UMGTransitionsSegmentedControl"));
+		const FProperty* Parameter = GetFunctionParameter(Pin);
+		return Pin && Pin->Direction == EGPD_Input && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Byte && Cast<UEnum>(Pin->PinType.PinSubCategoryObject.Get()) && Parameter && Parameter->HasMetaData(TEXT("UMGTransitionsSegmentedControl"));
 	}
 
 	/** Generic compact enum editor enabled by UMGTransitionsSegmentedControl parameter metadata. */
@@ -362,7 +391,8 @@ namespace UMGTransitionsEditor
 					SegmentedControl->AddSlot(Value)
 					.ToolTip(ToolTip)
 					[
-						SNew(STextBlock).Text(Enum->GetDisplayNameTextByIndex(Index))
+						SNew(STextBlock)
+						.Text(Enum->GetDisplayNameTextByIndex(Index))
 					];
 				}
 			}
@@ -408,23 +438,57 @@ namespace UMGTransitionsEditor
 		virtual TSharedRef<SWidget> GetDefaultValueWidget() override
 		{
 			return SNew(SBox)
-			.Visibility(this, &SGraphPin::GetDefaultValueVisibility)
-			.IsEnabled(this, &SGraphPin::GetDefaultValueIsEditable)
+				.Visibility(this, &SGraphPin::GetDefaultValueVisibility)
+				.IsEnabled(this, &SGraphPin::GetDefaultValueIsEditable)
 			[
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[MakeFloatEditor()]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[MakeVectorEditor()]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f, 0.0f, 0.0f).VAlign(VAlign_Center)[MakeColorEditor()]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f, 0.0f, 0.0f).VAlign(VAlign_Center)
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				[
+					MakeFloatEditor()
+				]
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				[
+					MakeVectorEditor()
+				]
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(4.0f, 0.0f, 0.0f, 0.0f)
+				.VAlign(VAlign_Center)
+				[
+					MakeColorEditor()
+				]
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(4.0f, 0.0f, 0.0f, 0.0f)
+				.VAlign(VAlign_Center)
 				[
 					SNew(SSegmentedControl<EWidgetTransitionValueType>)
-					.Visibility(this, &SGraphPin::GetDefaultValueVisibility)
-					.IsEnabled(this, &SGraphPin::GetDefaultValueIsEditable)
-					.Value(this, &STransitionValuePin::GetValueType)
-					.OnValueChanged(this, &STransitionValuePin::SetValueType)
-					+ SSegmentedControl<EWidgetTransitionValueType>::Slot(EWidgetTransitionValueType::Float)[SNew(STextBlock).Text(FText::FromString(TEXT("Float"))).ToolTipText(FText::FromString(TEXT("Float")))]
-					+ SSegmentedControl<EWidgetTransitionValueType>::Slot(EWidgetTransitionValueType::Vector2D)[SNew(STextBlock).Text(FText::FromString(TEXT("Vec"))).ToolTipText(FText::FromString(TEXT("Vector 2D")))]
-					+ SSegmentedControl<EWidgetTransitionValueType>::Slot(EWidgetTransitionValueType::LinearColor)[SNew(STextBlock).Text(FText::FromString(TEXT("Color"))).ToolTipText(FText::FromString(TEXT("Linear Color")))]
+						.Visibility(this, &SGraphPin::GetDefaultValueVisibility)
+						.IsEnabled(this, &SGraphPin::GetDefaultValueIsEditable)
+						.Value(this, &STransitionValuePin::GetValueType)
+						.OnValueChanged(this, &STransitionValuePin::SetValueType)
+						+ SSegmentedControl<EWidgetTransitionValueType>::Slot(EWidgetTransitionValueType::Float)
+						[
+							SNew(STextBlock)
+							.Text(FText::FromString(TEXT("F")))
+							.ToolTipText(FText::FromString(TEXT("Float")))
+						]
+						+ SSegmentedControl<EWidgetTransitionValueType>::Slot(EWidgetTransitionValueType::Vector2D)
+						[
+							SNew(STextBlock)
+							.Text(FText::FromString(TEXT("V")))
+							.ToolTipText(FText::FromString(TEXT("Vector 2D")))
+						]
+						+ SSegmentedControl<EWidgetTransitionValueType>::Slot(EWidgetTransitionValueType::LinearColor)
+						[
+							SNew(STextBlock)
+							.Text(FText::FromString(TEXT("C")))
+							.ToolTipText(FText::FromString(TEXT("Linear Color")))
+						]
 				]
 			];
 		}
@@ -457,29 +521,13 @@ namespace UMGTransitionsEditor
 			Value.Type = Type;
 			SetValue(Value);
 		}
-		TOptional<float> GetChannel(int32 Channel) const { return GetValue().Channels[Channel]; }
 		void SetChannel(float NewValue, int32 Channel)
 		{
 			FWidgetTransitionValue Value = GetValue();
 			Value.Channels[Channel] = NewValue;
 			SetValue(Value);
 		}
-		EVisibility GetNumericVisibility(int32 Channel) const
-		{
-			const EWidgetTransitionValueType Type = GetValueType();
-			const int32 Count = Type == EWidgetTransitionValueType::Float ? 1 : Type == EWidgetTransitionValueType::Vector2D ? 2 : 4;
-			return Type != EWidgetTransitionValueType::LinearColor && Channel < Count ? EVisibility::Visible : EVisibility::Collapsed;
-		}
 		EVisibility GetColorVisibility() const { return GetValueType() == EWidgetTransitionValueType::LinearColor ? EVisibility::Visible : EVisibility::Collapsed; }
-		FText GetChannelLabel(int32 Channel) const
-		{
-			if (GetValueType() == EWidgetTransitionValueType::Float)
-			{
-				return FText::GetEmpty();
-			}
-			static const FText Labels[] = { FText::FromString(TEXT("X")), FText::FromString(TEXT("Y")), FText::FromString(TEXT("Z")), FText::FromString(TEXT("W")) };
-			return Labels[FMath::Clamp(Channel, 0, 3)];
-		}
 		FLinearColor GetColor() const
 		{
 			const FVector4f Channels = GetValue().Channels;
@@ -517,29 +565,33 @@ namespace UMGTransitionsEditor
 		TSharedRef<SWidget> MakeFloatEditor()
 		{
 			return SNew(SBox)
-			.Visibility(this, &STransitionValuePin::GetFloatVisibility)
+				.Visibility(this, &STransitionValuePin::GetFloatVisibility)
 			[
 				SNew(SNumericEntryBox<float>)
-				.EditableTextBoxStyle(FAppStyle::Get(), "Graph.EditableTextBox")
-				.BorderForegroundColor(FSlateColor::UseForeground())
-				.Value(this, &STransitionValuePin::GetFloatValue)
-				.OnValueCommitted(this, &STransitionValuePin::CommitFloat)
+					.EditableTextBoxStyle(FAppStyle::Get(), "Graph.EditableTextBox")
+					.BorderForegroundColor(FSlateColor::UseForeground())
+					.Value(this, &STransitionValuePin::GetFloatValue)
+					.OnValueCommitted(this, &STransitionValuePin::CommitFloat)
 			];
 		}
 		TSharedRef<SWidget> MakeVectorEditor()
 		{
 			return SNew(SVector2DTextBox<float>)
-			.Visibility(this, &STransitionValuePin::GetVectorVisibility)
-			.VisibleText_X(this, &STransitionValuePin::GetVectorX)
-			.VisibleText_Y(this, &STransitionValuePin::GetVectorY)
-			.OnNumericCommitted_Box_X(this, &STransitionValuePin::CommitVectorX)
-			.OnNumericCommitted_Box_Y(this, &STransitionValuePin::CommitVectorY);
+				.Visibility(this, &STransitionValuePin::GetVectorVisibility)
+				.VisibleText_X(this, &STransitionValuePin::GetVectorX)
+				.VisibleText_Y(this, &STransitionValuePin::GetVectorY)
+				.OnNumericCommitted_Box_X(this, &STransitionValuePin::CommitVectorX)
+				.OnNumericCommitted_Box_Y(this, &STransitionValuePin::CommitVectorY);
 		}
 		TSharedRef<SWidget> MakeColorEditor()
 		{
-			return SNew(SBox).Visibility(this, &STransitionValuePin::GetColorVisibility)
+			return SNew(SBox)
+				.Visibility(this, &STransitionValuePin::GetColorVisibility)
 			[
-				SNew(SColorBlock).Color(this, &STransitionValuePin::GetColor).ShowBackgroundForAlpha(true).OnMouseButtonDown(this, &STransitionValuePin::OnColorClicked)
+				SNew(SColorBlock)
+					.Color(this, &STransitionValuePin::GetColor)
+					.ShowBackgroundForAlpha(true)
+					.OnMouseButtonDown(this, &STransitionValuePin::OnColorClicked)
 			];
 		}
 	};
