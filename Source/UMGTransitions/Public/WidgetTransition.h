@@ -167,7 +167,7 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DataTablePin = "CurveTable", ReturnDisplayName = "Transition"))
 	static FWidgetTransition Easing(FWidgetTransition Transition, UCurveTable* CurveTable, FName RowName);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
-	static FWidgetTransition Spring(FWidgetTransition Transition, UPARAM(meta = (ClampMin = "1.0", ToolTip = "Spring stiffness coefficient. 160 matches the default response; larger values make the spring faster.")) float SpringForce = 160.0f, float SpringDamping = 0.45f, UPARAM(meta = (AdvancedDisplay, ClampMin = "0.0")) float SpringMaxSpeed = 0.0f, UPARAM(meta = (AdvancedDisplay)) bool bFitToTime = false);
+	static FWidgetTransition Spring(FWidgetTransition Transition, UPARAM(meta = (ClampMin = "1.0", ToolTip = "Spring stiffness coefficient. 160 matches the default response; larger values make the spring faster. It does not affect Fit To Time.")) float SpringForce = 160.0f, float SpringDamping = 0.45f, UPARAM(meta = (AdvancedDisplay, ClampMin = "0.0")) float SpringMaxSpeed = 0.0f, UPARAM(meta = (AdvancedDisplay, ToolTip = "Derives spring frequency from Time and Damping so the transition completes at Time. Spring Force does not affect this mode.")) bool bFitToTime = false);
 	/** Makes a scalar transition endpoint. */
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (BlueprintAutocast, DisplayName = "Make Float Transition Value", ReturnDisplayName = "Transition Value"))
 	static FWidgetTransitionValue MakeFloatTransitionValue(float Value);

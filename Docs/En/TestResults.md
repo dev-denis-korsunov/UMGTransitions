@@ -1,5 +1,17 @@
 # UMGTransitions automation history
 
+2026-09-09 — UE 5.7 / Mac arm64 Development: `Fit To Time` semantics accepted.
+`Spring Force` no longer changes derived frequency when `Fit To Time` is enabled, leaving
+duration, damping, and the internal relative tolerance as its controls. The expanded
+`Spring.FitToTime` regression verifies that forces `1`, `160`, and `10000` have an identical
+pre-deadline sample and reach target at the deadline. Runtime is 16/16. Two isolated
+`Performance.ModeMatrix` runs measured 500 springs at `10.680 / 24.842` and
+`10.554 / 25.224` microseconds/frame without/with binding (about 1.5% spread).
+The change is startup-only because frequency is derived in `StartSpring`; it adds no tick work.
+`SpringTargetUpdate`: 100/500 = `5.117 / 25.514` microseconds/frame. Logs:
+`/tmp/UMGTransitionsFitRuntime.log`, `/tmp/UMGTransitionsFitModeMatrix.log`,
+`/tmp/UMGTransitionsFitModeMatrixRepeat.log`, `/tmp/UMGTransitionsFitSpringTarget.log`.
+
 2026-09-09 — UE 5.7 / Mac Development: callback review regression run.
 All 13 `UMGTransitions.WidgetTransition.Runtime` tests passed, including
 `NativeBuilder`, `CallbackCancellation`, `RepeatCallbackDelay` and `CallbackReentrancy`.

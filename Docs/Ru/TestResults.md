@@ -1,5 +1,18 @@
 # UMGTransitions — журнал automation-тестов
 
+2026-09-09 — UE 5.7 / Mac arm64 Development: `Fit To Time` semantics accepted.
+`Spring Force` no longer changes the derived frequency when `Fit To Time` is enabled;
+the spring is therefore controlled by `Time`, damping and the internal relative tolerance.
+`Runtime` is 16/16, including the expanded `Spring.FitToTime` regression: forces `1`, `160`
+and `10000` have an identical pre-deadline sample and reach target at the deadline.
+Two isolated `Performance.ModeMatrix` runs were stable: 500 spring transitions were
+`10.680 / 24.842` and `10.554 / 25.224` microseconds/frame without/with binding
+(about 1.5% run-to-run spread). This change is startup-only: frequency is calculated in
+`StartSpring`, so it does not add tick work. `SpringTargetUpdate`: 100/500 =
+`5.117 / 25.514` microseconds/frame. Logs: `/tmp/UMGTransitionsFitRuntime.log`,
+`/tmp/UMGTransitionsFitModeMatrix.log`, `/tmp/UMGTransitionsFitModeMatrixRepeat.log`,
+`/tmp/UMGTransitionsFitSpringTarget.log`.
+
 2026-09-09 — UE 5.7 / Mac Development: callback review regression run.
 All 13 `UMGTransitions.WidgetTransition.Runtime` tests passed, including
 `NativeBuilder`, `CallbackCancellation`, `RepeatCallbackDelay` and `CallbackReentrancy`.
@@ -82,6 +95,7 @@ runtime transition state, and lifecycle dispatch records. This eliminates the am
 | 2026-09-01 | UE 5.7.4 / Mac arm64 Development | Полный `UMGTransitions.WidgetTransition` suite | Passed, 23/23 | Exit code 0. Value-only lifecycle проверяет From Value в Started, To Value в Finished и callback reentrancy. Layout: transition 256 B, links 8 B, lifecycle 72 B, update state 80 B, временный lifecycle event 80 B, async action 432 B. Perf-значения cold full-suite не приняты как baseline из-за параллельной работы Asset Registry/editor startup. |
 | 2026-09-09 | UE 5.7 / Mac arm64 Development | `Performance.PipeHandoff` | Passed | Completion → queued successor start, 200 samples. Linear 1/20/100/500: 0.748/15.346/172.105/3324.742 μs/tick, 0.748/0.767/1.721/6.649 μs/handoff. Spring: 0.756/15.217/167.746/3338.487 μs/tick, 0.756/0.761/1.677/6.677 μs/handoff. |
 | 2026-09-09 | UE 5.7 / Mac arm64 Development | `Runtime.PipeOrder`, `Performance.PipeHandoff` | Passed | Keyed FIFO queues + active-key snapshot. Runtime 15/15. Linear 1/20/100/500: 0.870/13.036/71.567/380.379 μs/tick, 0.870/0.652/0.716/0.761 μs/handoff. Spring: 0.954/14.007/70.268/381.599, 0.954/0.700/0.703/0.763. 500 burst −88.8%. |
+| 2026-09-09 | UE 5.7 / Mac arm64 Development | `Runtime.Spring.FitToTime`, `Performance.ModeMatrix`, `Performance.SpringTargetUpdate` | Passed | Fit To Time ignores Force and preserves the deadline. Runtime 16/16. 500 spring: 10.680/24.842 and 10.554/25.224 μs/frame in two runs (без/с binding); target updates 25.514 μs/frame. |
 
 ## Актуальный baseline
 

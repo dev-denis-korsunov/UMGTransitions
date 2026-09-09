@@ -642,6 +642,43 @@ bool FWidgetTransitionSpringFitToTimeTest::RunTest(const FString&)
 	TestTrue(TEXT("Fit To Time spring settles within the requested duration"), FitSpring.IsCompleted());
 	TestTrue(TEXT("Fit To Time spring snaps to its target after settling"), FitSpring.GetValue().Equals(FVector4f(1.0f, 0.0f, 0.0f, 0.0f), Tolerance));
 
+	constexpr float FitDuration = 0.3f;
+	constexpr float SampleDeltaTime = 0.05f;
+	constexpr float Forces[] = { 1.0f, 160.0f, 10000.0f };
+	UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+	TArray<UImage*> Widgets;
+	Widgets.Reserve(UE_ARRAY_COUNT(Forces));
+	for (const float Force : Forces)
+	{
+		UImage* Widget = NewObject<UImage>(GetTransientPackage());
+		Widget->SetRenderOpacity(0.0f);
+		FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(
+			Widget,
+			TEXT("RenderOpacity"),
+			UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(1.0f),
+			FitDuration);
+		Transition = UWidgetTransitionFunctionLibrary::From(MoveTemp(Transition), true, UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.0f), true);
+		Transition = UWidgetTransitionFunctionLibrary::Spring(MoveTemp(Transition), Force, 0.45f, 0.0f, true);
+		TestTrue(FString::Printf(TEXT("Fit To Time transition with force %.0f starts"), Force), Subsystem->StartTransition(Transition));
+		Widgets.Add(Widget);
+	}
+
+	Subsystem->TickTransitionsForTesting(SampleDeltaTime);
+	const float FirstSample = Widgets[0]->GetRenderOpacity();
+	for (int32 Index = 1; Index < Widgets.Num(); ++Index)
+	{
+		TestTrue(FString::Printf(TEXT("Fit To Time ignores Spring Force at sample %d"), Index), FMath::IsNearlyEqual(Widgets[Index]->GetRenderOpacity(), FirstSample, Tolerance));
+	}
+
+	for (int32 Step = 0; Step < 5; ++Step)
+	{
+		Subsystem->TickTransitionsForTesting(SampleDeltaTime);
+	}
+	for (int32 Index = 0; Index < Widgets.Num(); ++Index)
+	{
+		TestTrue(FString::Printf(TEXT("Fit To Time force variant %d reaches target at deadline"), Index), FMath::IsNearlyEqual(Widgets[Index]->GetRenderOpacity(), 1.0f, Tolerance));
+	}
+
 	return true;
 }
 

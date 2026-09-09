@@ -563,14 +563,14 @@ void UWidgetTransitionSubsystem::StartSpring(int32 TransitionIndex, FWidgetTrans
 	{
 		return;
 	}
-	constexpr float DefaultSpringForce = 160.0f;
 	const float DampingRatio = FMath::Lerp(0.15f, 1.0f, FMath::Clamp(Transition.SpringDamping, 0.0f, 1.0f));
 	const float SpringForce = FMath::Max(1.0f, Transition.SpringForce);
 	const float FitTolerance = WidgetTransitionSpring::EndTolerance * 0.25f;
-	// e^(-zeta * omega * Time) <= 0.001: choose omega so the envelope
+	// e^(-zeta * omega * Time) <= FitTolerance: choose omega so the envelope
 	// reaches the same relative tolerance used by FWidgetTransitionSpring completion tests.
+	// Fit To Time owns the duration contract, so SpringForce does not alter this frequency.
 	const float Frequency = Transition.bFitToTime && Transition.Time > UE_SMALL_NUMBER
-								? (-FMath::Loge(FitTolerance) / (DampingRatio * Transition.Time)) * FMath::Sqrt(SpringForce / DefaultSpringForce)
+								? -FMath::Loge(FitTolerance) / (DampingRatio * Transition.Time)
 								: FMath::Sqrt(SpringForce);
 	const float SpringFactor = Frequency * Frequency;
 	const float DampingFactor = 2.0f * DampingRatio * Frequency;
