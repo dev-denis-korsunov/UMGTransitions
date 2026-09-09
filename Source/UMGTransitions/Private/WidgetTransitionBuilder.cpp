@@ -196,6 +196,23 @@ bool FWidgetTransitionBuilder::Add()
 	{
 		return false;
 	}
-	Subsystem->StartTransition(MoveTemp(Transition), MoveTemp(Callbacks));
-	return true;
+	return Subsystem->StartTransition(MoveTemp(Transition), MoveTemp(Callbacks));
+}
+
+FWidgetTransitionBuilder& FWidgetTransitionBuilder::BindStart(FOnWidgetTransitionUpdate Callback)
+{
+	Callbacks.OnStarted = MoveTemp(Callback);
+	return *this;
+}
+
+FWidgetTransitionBuilder& FWidgetTransitionBuilder::BindUpdate(FOnWidgetTransitionUpdate Callback)
+{
+	Callbacks.OnUpdated = MoveTemp(Callback);
+	return *this;
+}
+
+FWidgetTransitionBuilder& FWidgetTransitionBuilder::BindFinish(FOnWidgetTransitionUpdate Callback)
+{
+	Callbacks.OnFinished = MoveTemp(Callback);
+	return *this;
 }

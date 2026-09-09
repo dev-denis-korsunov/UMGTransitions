@@ -376,11 +376,71 @@ bool FWidgetTransitionBuilderTest::RunTest(const FString&)
 	return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionCancellationTest, "UMGTransitions.WidgetTransition.Runtime.CallbackCancellation", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetTransitionCancellationTest::RunTest(const FString&)
+{
+	for (int32 Mode = 0; Mode < 3; ++Mode)
+	{
+		UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>();
+		UImage* Widget = NewObject<UImage>();
+		UWidgetTransitionTestAsyncOwner* Owner = NewObject<UWidgetTransitionTestAsyncOwner>();
+		UWidgetTransitionTestEventReceiver* Receiver = NewObject<UWidgetTransitionTestEventReceiver>();
+		FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(
+			Widget, TEXT("RenderOpacity"), UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(1.0f), 1.0f, 0.0f);
+		FWidgetTransitionCallbacks Callbacks;
+		Callbacks.AsyncOwner = Owner;
+		Callbacks.OnFinished.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleFinished);
+		TestTrue(TEXT("Transition starts"), Subsystem->StartTransition(Transition, MoveTemp(Callbacks)));
+		if (Mode == 0)
+		{
+			Subsystem->ClearTransitions(Widget);
+		}
+		else if (Mode == 1)
+		{
+			Subsystem->StartTransition(Transition);
+		}
+		else
+		{
+			Subsystem->Transitions[0].Widget.Reset();
+			Subsystem->TickTransitionsForTesting(0.01f);
+		}
+		TestTrue(TEXT("Cancellation releases async owner"), Owner->bReleased);
+		TestEqual(TEXT("Cancellation is not successful completion"), Receiver->FinishedCount, 0);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionRepeatCallbackTest, "UMGTransitions.WidgetTransition.Runtime.RepeatCallbackDelay", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetTransitionRepeatCallbackTest::RunTest(const FString&)
+{
+	UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>();
+	UWidgetTransitionTestCounterUserWidget* Widget = NewObject<UWidgetTransitionTestCounterUserWidget>();
+	UWidgetTransitionTestEventReceiver* Receiver = NewObject<UWidgetTransitionTestEventReceiver>();
+	FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(
+		Widget, TEXT("CounterValue"), UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(10.0f), 0.01f, 0.04f);
+	Transition.RepeatCount = 1;
+	Transition.UpdateInterval = 1.0f;
+	FWidgetTransitionCallbacks Callbacks;
+	Callbacks.OnUpdated.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleUpdatedAndCapture);
+	Subsystem->StartTransition(Transition, MoveTemp(Callbacks));
+	Subsystem->TickTransitionsForTesting(0.05f);
+	TestEqual(TEXT("Cycle endpoint bypasses interval and next delay"), Receiver->UpdatedCount, 1);
+	TestTrue(TEXT("FieldNotify property receives cycle endpoint"), FMath::IsNearlyEqual(Widget->CounterValue, 10.0f));
+	Subsystem->TickTransitionsForTesting(0.02f);
+	TestEqual(TEXT("Delay does not dispatch stale endpoint"), Receiver->UpdatedCount, 1);
+	Subsystem->TickTransitionsForTesting(0.03f);
+	TestEqual(TEXT("Final cycle always dispatches endpoint"), Receiver->UpdatedCount, 2);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionNativeBuilderTest, "UMGTransitions.WidgetTransition.Runtime.NativeBuilder", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWidgetTransitionNativeBuilderTest::RunTest(const FString&)
 {
 	UImage* Widget = NewObject<UImage>(GetTransientPackage());
-	int32 CompletionCount = 0;
+	UWidgetTransitionTestEventReceiver* Receiver = NewObject<UWidgetTransitionTestEventReceiver>();
+	FOnWidgetTransitionUpdate Finished;
+	Finished.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleFinished);
 	FWidgetTransitionBuilder Builder = FWidgetTransitionBuilder::Make(GetTransientPackage())
 		.Target(Widget, TEXT("RenderTransform.Translation"))
 		.From(FVector2D(10.0f, 20.0f))
@@ -388,15 +448,29 @@ bool FWidgetTransitionNativeBuilderTest::RunTest(const FString&)
 		.Time(0.5f)
 		.SpringForce(1.0f)
 		.DeferValue(true)
-		.OnComplete([&CompletionCount]() { ++CompletionCount; });
+		.BindFinish(Finished);
 	TestFalse(TEXT("Native builder rejects a context without a world"), Builder.Add());
 	const FWidgetTransition Transition = Builder.GetTransition();
 
 	TestTrue(TEXT("Native builder keeps its target widget and property"), Transition.Widget == Widget && Transition.WidgetProperty == TEXT("RenderTransform.Translation"));
 	TestTrue(TEXT("Native builder enables explicit From"), Transition.bUseFrom && Transition.FromValue.Type == EWidgetTransitionValueType::Vector2D);
 	TestTrue(TEXT("Native builder configures To, time, spring and defer options"), Transition.ToValue.Type == EWidgetTransitionValueType::Float && FMath::IsNearlyEqual(Transition.Time, 0.5f) && Transition.bUseSpring && Transition.bDeferFromValue);
-	TestTrue(TEXT("Native builder accepts a lambda completion callback"), Builder.GetTransition().Widget == Widget);
-	TestEqual(TEXT("Builder test callback remains untouched until Start"), CompletionCount, 0);
+	TestTrue(TEXT("Native builder accepts a dynamic completion callback"), Builder.GetTransition().Widget == Widget);
+	TestEqual(TEXT("Builder test callback remains untouched until Start"), Receiver->FinishedCount, 0);
+
+	UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>();
+	FOnWidgetTransitionUpdate Started;
+	Started.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleStarted);
+	FOnWidgetTransitionUpdate Updated;
+	Updated.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleUpdatedAndCapture);
+	TestTrue(TEXT("Builder starts a transition with all three dynamic callbacks"),
+		FWidgetTransitionBuilder::Make(Subsystem).Target(Widget).From(0.0f).To(10.0f).Time(0.0f)
+		.BindStart(Started).BindUpdate(Updated).BindFinish(Finished).Add());
+	Subsystem->TickTransitionsForTesting(0.01f);
+	TestEqual(TEXT("Builder dispatches Started"), Receiver->StartedCount, 1);
+	TestEqual(TEXT("Builder dispatches final Updated"), Receiver->UpdatedCount, 1);
+	TestEqual(TEXT("Builder dispatches Finished"), Receiver->FinishedCount, 1);
+	TestTrue(TEXT("Builder finishes at target"), FMath::IsNearlyEqual(Receiver->LastTransitionValue.Channels.X, 10.0f));
 	return true;
 }
 

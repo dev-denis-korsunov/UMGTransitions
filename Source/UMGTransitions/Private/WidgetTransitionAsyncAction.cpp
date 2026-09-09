@@ -17,6 +17,7 @@ UWidgetTransitionAsyncAction* UWidgetTransitionAsyncAction::AddWidgetTransition(
 void UWidgetTransitionAsyncAction::Activate()
 {
 	FWidgetTransitionCallbacks Callbacks;
+	Callbacks.AsyncOwner = this;
 	const UObject* Context = WorldContextObject.Get();
 	if (!IsValid(Context))
 	{
@@ -37,8 +38,13 @@ void UWidgetTransitionAsyncAction::Activate()
 	const UWorld* World = GEngine->GetWorldFromContextObject(Context, EGetWorldErrorMode::LogAndReturnNull);
 	if (UWidgetTransitionSubsystem* Subsystem = World ? World->GetSubsystem<UWidgetTransitionSubsystem>() : nullptr)
 	{
-		Subsystem->StartTransition(MoveTemp(PendingTransition), MoveTemp(Callbacks));
+		if (Subsystem->StartTransition(MoveTemp(PendingTransition), MoveTemp(Callbacks)))
+		{
+			return;
+		}
 	}
+	Finished.Broadcast(EventValue);
+	SetReadyToDestroy();
 }
 
 void UWidgetTransitionAsyncAction::HandleStarted(FWidgetTransitionValue Value)

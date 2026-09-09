@@ -33,7 +33,7 @@ public:
 	}
 
 	/** Normalizes and starts a transition in this world. */
-	void StartTransition(FWidgetTransition Transition, FWidgetTransitionCallbacks Callbacks = {});
+	bool StartTransition(FWidgetTransition Transition, FWidgetTransitionCallbacks Callbacks = {});
 	/** Requests removal of every transition owned by Widget. */
 	void ClearTransitions(UWidget* Widget);
 	/** Samples the current interpolated value and completion state. */

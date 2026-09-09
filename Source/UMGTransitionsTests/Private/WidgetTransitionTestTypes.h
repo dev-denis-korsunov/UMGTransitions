@@ -4,11 +4,27 @@
 #include "Blueprint/UserWidget.h"
 #include "Components/Widget.h"
 #include "WidgetTransition.h"
+#include "Kismet/BlueprintAsyncActionBase.h"
 
 #include "WidgetTransitionTestTypes.generated.h"
 
 class UWidgetTransitionSubsystem;
 class UTextBlock;
+
+/** Observes cancellation cleanup without requiring a GameInstance. */
+UCLASS()
+class UWidgetTransitionTestAsyncOwner final : public UBlueprintAsyncActionBase
+{
+	GENERATED_BODY()
+
+public:
+	bool bReleased = false;
+	virtual void SetReadyToDestroy() override
+	{
+		bReleased = true;
+		Super::SetReadyToDestroy();
+	}
+};
 
 UCLASS()
 class UWidgetTransitionTestEventReceiver final : public UObject

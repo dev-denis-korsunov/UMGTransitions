@@ -156,12 +156,12 @@ void UWidgetTransitionSubsystem::Tick(float DeltaTime)
 	TickTransitions(DeltaTime);
 }
 
-void UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, FWidgetTransitionCallbacks Callbacks)
+bool UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, FWidgetTransitionCallbacks Callbacks)
 {
 	UWidget* TargetWidget = Transition.Widget.Get();
 	if (!IsValid(TargetWidget))
 	{
-		return;
+		return false;
 	}
 	Transition.Time = FMath::Max(0.0f, Transition.Time);
 	Transition.Delay = FMath::Max(0.0f, Transition.Delay);
@@ -182,24 +182,24 @@ void UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 		if (!bResolved)
 		{
 			UE_LOG(LogTemp, Warning, TEXT("Widget Transition: could not resolve property '%s' on widget '%s'. For material bindings, the widget must be an Image or Border with a material parameter."), *Transition.WidgetProperty.ToString(), *GetNameSafe(TargetWidget));
-			return;
+			return false;
 		}
 		if (!NormalizeValue(Transition.ToValue, Transition.PropertyBinding.ChannelCount, Transition.ToValue.Channels))
 		{
 			UE_LOG(LogTemp, Warning, TEXT("Widget Transition: target value type is incompatible with '%s'."), *Transition.WidgetProperty.ToString());
-			return;
+			return false;
 		}
 		if (Transition.bUseFrom)
 		{
 			if (!NormalizeValue(Transition.FromValue, Transition.PropertyBinding.ChannelCount, Transition.FromValue.Channels))
 			{
 				UE_LOG(LogTemp, Warning, TEXT("Widget Transition: From value type is incompatible with '%s'."), *Transition.WidgetProperty.ToString());
-				return;
+				return false;
 			}
 		}
 		else if (!Transition.PropertyBinding.Read(TargetWidget, Transition.FromValue.Channels))
 		{
-			return;
+			return false;
 		}
 		if (Transition.bUseFrom && !Transition.bDeferFromValue)
 		{
@@ -239,6 +239,7 @@ void UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 	const int32 TransitionIndex = Transitions.Emplace(MoveTemp(Transition));
 	CallbackStore.Register(*this, TransitionIndex, MoveTemp(Callbacks));
 	StartSpring(TransitionIndex, Transitions[TransitionIndex], bHasHandoffVelocity ? HandoffVelocity : FVector4f::Zero());
+	return true;
 }
 
 void UWidgetTransitionSubsystem::ClearTransitions(UWidget* Widget)

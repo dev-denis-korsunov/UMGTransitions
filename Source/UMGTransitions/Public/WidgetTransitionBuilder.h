@@ -3,7 +3,6 @@
 #include "CoreMinimal.h"
 #include "WidgetTransitionCallbacks.h"
 
-#include <type_traits>
 
 class UWidget;
 class UWidgetTransitionSubsystem;
@@ -12,7 +11,7 @@ class UCurveTable;
 /**
  * Native fluent contract for creating and starting one widget transition.
  *
- * The builder owns the transition specification until Start() is called. Code
+ * The builder owns the transition specification until Add() is called. Code
  * outside the plugin should use this type instead of writing FWidgetTransition
  * fields directly; Blueprint construction remains available through the
  * function library.
@@ -49,26 +48,9 @@ public:
 	FWidgetTransitionBuilder& InterpolateColorInOKLCH(bool bEnabled = true);
 	FWidgetTransitionBuilder& Easing(UCurveTable* CurveTable, FName RowName);
 
-	template <typename CallbackType>
-	FWidgetTransitionBuilder& OnStart(CallbackType&& Callback)
-	{
-		BindCallback(Callbacks.OnStartedNative, Forward<CallbackType>(Callback));
-		return *this;
-	}
-
-	template <typename CallbackType>
-	FWidgetTransitionBuilder& OnUpdate(CallbackType&& Callback)
-	{
-		BindCallback(Callbacks.OnUpdatedNative, Forward<CallbackType>(Callback));
-		return *this;
-	}
-
-	template <typename CallbackType>
-	FWidgetTransitionBuilder& OnComplete(CallbackType&& Callback)
-	{
-		BindCallback(Callbacks.OnFinishedNative, Forward<CallbackType>(Callback));
-		return *this;
-	}
+	FWidgetTransitionBuilder& BindStart(FOnWidgetTransitionUpdate Callback);
+	FWidgetTransitionBuilder& BindUpdate(FOnWidgetTransitionUpdate Callback);
+	FWidgetTransitionBuilder& BindFinish(FOnWidgetTransitionUpdate Callback);
 
 	/** Adds the built transition to the context's world subsystem. Returns false on invalid input. */
 	bool Add();
@@ -77,24 +59,6 @@ public:
 
 private:
 	FWidgetTransitionBuilder(const UObject* InContext, UWidget* InWidget, FName InWidgetProperty);
-
-	template <typename CallbackType>
-	static void BindCallback(FOnWidgetTransitionNativeUpdate& Destination, CallbackType&& Callback)
-	{
-		using FCallback = std::decay_t<CallbackType>;
-		FCallback CapturedCallback = Forward<CallbackType>(Callback);
-		Destination.BindLambda([CapturedCallback = MoveTemp(CapturedCallback)](FWidgetTransitionValue Value) mutable
-		{
-			if constexpr (std::is_invocable_v<FCallback&, FWidgetTransitionValue>)
-			{
-				CapturedCallback(MoveTemp(Value));
-			}
-			else
-			{
-				CapturedCallback();
-			}
-		});
-	}
 
 	const UObject* Context = nullptr;
 	FWidgetTransition Transition;

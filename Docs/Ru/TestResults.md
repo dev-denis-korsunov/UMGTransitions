@@ -1,5 +1,10 @@
 # UMGTransitions — журнал automation-тестов
 
+2026-09-09 — UE 5.7 / Mac Development: callback review regression run.
+All 13 `UMGTransitions.WidgetTransition.Runtime` tests passed, including
+`NativeBuilder`, `CallbackCancellation`, `RepeatCallbackDelay` and `CallbackReentrancy`.
+Log: `/tmp/UMGTransitionsCallbackReview.log`. No new performance measurements.
+
 [English summary](../En/TestResults.md)
 
 Здесь записываются только завершённые прогоны. Описание покрытия находится в [Testing.md](Testing.md), методика perf-тестов — в [PerformanceTests.md](Testing/PerformanceTests.md), причины архитектурных решений — в [OptimizationHistory.md](Testing/OptimizationHistory.md).
