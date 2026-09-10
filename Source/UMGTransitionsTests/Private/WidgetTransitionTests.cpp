@@ -359,12 +359,12 @@ bool FWidgetTransitionBuilderTest::RunTest(const FString&)
 	FWidgetTransitionValue ToValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.8f);
 	FWidgetTransitionValue FromValue = UWidgetTransitionFunctionLibrary::MakeVectorTransitionValue(FVector2D(0.2f, 0.4f));
 	FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(Widget, TEXT("RenderTransform.Scale"), ToValue, 0.25f, 0.4f, true, 2, true, EWidgetTransitionAddMode::Replace, EWidgetTransitionColorMix::HSV, 0.05f);
-	Transition = UWidgetTransitionFunctionLibrary::From(MoveTemp(Transition), true, FromValue, true);
+	Transition = UWidgetTransitionFunctionLibrary::From(MoveTemp(Transition), true, FromValue);
 	Transition = UWidgetTransitionFunctionLibrary::Spring(MoveTemp(Transition), 0.8f, 0.25f, 0.0f, true);
 	TestEqual(TEXT("Target retains semantic Float type"), Transition.ToValue.Type, EWidgetTransitionValueType::Float);
 	TestEqual(TEXT("From retains independent Vector2D type"), Transition.FromValue.Type, EWidgetTransitionValueType::Vector2D);
 	TestTrue(TEXT("From modifier is enabled"), Transition.bUseFrom);
-	TestTrue(TEXT("Create retains repeat delay and From delay options"), Transition.bRepeatDelay && Transition.bIgnoreDelay);
+	TestTrue(TEXT("Create retains repeat delay and default immediate From option"), Transition.bRepeatDelay && Transition.bIgnoreDelay);
 	TestTrue(TEXT("Create retains the event interval"), FMath::IsNearlyEqual(Transition.EventInterval, 0.05f));
 	TestEqual(TEXT("Create retains the color mix mode"), Transition.ColorMix, EWidgetTransitionColorMix::HSV);
 	TestTrue(TEXT("Binding is retained"), Transition.Widget == Widget && Transition.WidgetProperty == TEXT("RenderTransform.Scale"));
