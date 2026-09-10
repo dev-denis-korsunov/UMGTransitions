@@ -15,6 +15,7 @@
 #include "K2Node_VariableGet.h"
 #include "Materials/MaterialInterface.h"
 #include "Misc/OutputDeviceNull.h"
+#include "ScopedTransaction.h"
 #include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
 #include "WidgetBlueprint.h"
@@ -25,6 +26,7 @@
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/SLeafWidget.h"
+#include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Rendering/DrawElementTypes.h"
 
@@ -183,6 +185,68 @@ namespace UMGTransitionsEditor
 	}
 
 	DECLARE_DELEGATE_OneParam(FOnCubicBezierEasingChanged, FWidgetTransitionEasing);
+	DECLARE_DELEGATE(FOnCubicBezierEasingEdit);
+
+	/** A named cubic-Bezier shape that fits the transition easing's two editable control points. */
+	struct FEasingTemplate
+	{
+		FEasingTemplate(const TCHAR* InName, FVector2D FirstControlPoint, FVector2D SecondControlPoint)
+			: Name(InName)
+		{
+			Easing.FirstControlPoint = FirstControlPoint;
+			Easing.SecondControlPoint = SecondControlPoint;
+		}
+
+		FString Name;
+		FWidgetTransitionEasing Easing;
+	};
+
+	static void AddEasingTemplate(TArray<TSharedPtr<FEasingTemplate>>& Templates, const TCHAR* Name, double FirstX, double FirstY, double SecondX, double SecondY)
+	{
+		Templates.Add(MakeShared<FEasingTemplate>(Name, FVector2D(FirstX, FirstY), FVector2D(SecondX, SecondY)));
+	}
+
+	/**
+	 * Common named curves that are expressible by one cubic Bezier segment.
+	 * Bounce and Elastic deliberately do not appear: their multiple oscillations need more than two control points.
+	 */
+	static TArray<TSharedPtr<FEasingTemplate>> MakeEasingTemplates()
+	{
+		TArray<TSharedPtr<FEasingTemplate>> Templates;
+		Templates.Reserve(29);
+
+		AddEasingTemplate(Templates, TEXT("Linear"), 0.0, 0.0, 1.0, 1.0);
+		AddEasingTemplate(Templates, TEXT("Ease"), 0.25, 0.1, 0.25, 1.0);
+		AddEasingTemplate(Templates, TEXT("Ease In"), 0.42, 0.0, 1.0, 1.0);
+		AddEasingTemplate(Templates, TEXT("Ease Out"), 0.0, 0.0, 0.58, 1.0);
+		AddEasingTemplate(Templates, TEXT("Ease In Out"), 0.42, 0.0, 0.58, 1.0);
+
+		AddEasingTemplate(Templates, TEXT("Sine In"), 0.12, 0.0, 0.39, 0.0);
+		AddEasingTemplate(Templates, TEXT("Sine Out"), 0.61, 1.0, 0.88, 1.0);
+		AddEasingTemplate(Templates, TEXT("Sine In Out"), 0.37, 0.0, 0.63, 1.0);
+		AddEasingTemplate(Templates, TEXT("Quad In"), 0.11, 0.0, 0.50, 0.0);
+		AddEasingTemplate(Templates, TEXT("Quad Out"), 0.50, 1.0, 0.89, 1.0);
+		AddEasingTemplate(Templates, TEXT("Quad In Out"), 0.45, 0.0, 0.55, 1.0);
+		AddEasingTemplate(Templates, TEXT("Cubic In"), 0.32, 0.0, 0.67, 0.0);
+		AddEasingTemplate(Templates, TEXT("Cubic Out"), 0.33, 1.0, 0.68, 1.0);
+		AddEasingTemplate(Templates, TEXT("Cubic In Out"), 0.65, 0.0, 0.35, 1.0);
+		AddEasingTemplate(Templates, TEXT("Quart In"), 0.50, 0.0, 0.75, 0.0);
+		AddEasingTemplate(Templates, TEXT("Quart Out"), 0.25, 1.0, 0.50, 1.0);
+		AddEasingTemplate(Templates, TEXT("Quart In Out"), 0.76, 0.0, 0.24, 1.0);
+		AddEasingTemplate(Templates, TEXT("Quint In"), 0.64, 0.0, 0.78, 0.0);
+		AddEasingTemplate(Templates, TEXT("Quint Out"), 0.22, 1.0, 0.36, 1.0);
+		AddEasingTemplate(Templates, TEXT("Quint In Out"), 0.83, 0.0, 0.17, 1.0);
+		AddEasingTemplate(Templates, TEXT("Expo In"), 0.70, 0.0, 0.84, 0.0);
+		AddEasingTemplate(Templates, TEXT("Expo Out"), 0.16, 1.0, 0.30, 1.0);
+		AddEasingTemplate(Templates, TEXT("Expo In Out"), 0.87, 0.0, 0.13, 1.0);
+		AddEasingTemplate(Templates, TEXT("Circ In"), 0.55, 0.0, 1.0, 0.45);
+		AddEasingTemplate(Templates, TEXT("Circ Out"), 0.0, 0.55, 0.45, 1.0);
+		AddEasingTemplate(Templates, TEXT("Circ In Out"), 0.85, 0.0, 0.15, 1.0);
+		AddEasingTemplate(Templates, TEXT("Back In"), 0.36, 0.0, 0.66, -0.5);
+		AddEasingTemplate(Templates, TEXT("Back Out"), 0.34, 1.5, 0.64, 1.0);
+		AddEasingTemplate(Templates, TEXT("Back In Out"), 0.68, -0.5, 0.32, 1.5);
+		return Templates;
+	}
 
 	/** Compact direct-manipulation editor for the two control points of a cubic Bezier easing. */
 	class SCubicBezierEasingEditor final : public SLeafWidget
@@ -191,49 +255,57 @@ namespace UMGTransitionsEditor
 		SLATE_BEGIN_ARGS(SCubicBezierEasingEditor) {}
 			SLATE_ATTRIBUTE(FWidgetTransitionEasing, Value)
 			SLATE_EVENT(FOnCubicBezierEasingChanged, OnValueChanged)
+			SLATE_EVENT(FOnCubicBezierEasingEdit, OnEditStarted)
+			SLATE_EVENT(FOnCubicBezierEasingEdit, OnEditFinished)
 		SLATE_END_ARGS()
 
 		void Construct(const FArguments& InArgs)
 		{
 			ValueAttribute = InArgs._Value;
 			OnValueChanged = InArgs._OnValueChanged;
+			OnEditStarted = InArgs._OnEditStarted;
+			OnEditFinished = InArgs._OnEditFinished;
 		}
 
 		virtual FVector2D ComputeDesiredSize(float) const override
 		{
-			return FVector2D(220.0, 132.0);
+			return FVector2D(VisualCanvasWidth + HandleSize, VisualCanvasHeight + HandleSize);
 		}
 
 		virtual int32 OnPaint(const FPaintArgs&, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle&, bool) const override
 		{
 			const FSlateBrush* WhiteBrush = FCoreStyle::Get().GetBrush("WhiteBrush");
-			FSlateDrawElement::MakeBox(OutDrawElements, LayerId, AllottedGeometry.ToPaintGeometry(), WhiteBrush, ESlateDrawEffect::None, FLinearColor(0.035f, 0.04f, 0.045f, 1.0f));
+			const FSlateRect Canvas = GetCanvasRect(AllottedGeometry);
+			FSlateDrawElement::MakeBox(OutDrawElements, LayerId, AllottedGeometry.ToPaintGeometry(Canvas.GetSize(), FSlateLayoutTransform(FVector2D(Canvas.Left, Canvas.Top))), WhiteBrush, ESlateDrawEffect::None, FLinearColor(0.012f, 0.014f, 0.015f, 1.0f));
 
 			const FSlateRect Plot = GetPlotRect(AllottedGeometry);
 			const FPaintGeometry PaintGeometry = AllottedGeometry.ToPaintGeometry();
-			const FLinearColor GridColor(0.20f, 0.22f, 0.24f, 0.7f);
-			for (int32 Index = 0; Index <= 4; ++Index)
-			{
-				const float Fraction = static_cast<float>(Index) / 4.0f;
-				FSlateDrawElement::MakeLines(OutDrawElements, LayerId + 1, PaintGeometry, { FVector2f(Plot.Left + Plot.GetSize().X * Fraction, Plot.Top), FVector2f(Plot.Left + Plot.GetSize().X * Fraction, Plot.Bottom) }, ESlateDrawEffect::None, GridColor, true, 1.0f);
-				FSlateDrawElement::MakeLines(OutDrawElements, LayerId + 1, PaintGeometry, { FVector2f(Plot.Left, Plot.Top + Plot.GetSize().Y * Fraction), FVector2f(Plot.Right, Plot.Top + Plot.GetSize().Y * Fraction) }, ESlateDrawEffect::None, GridColor, true, 1.0f);
-			}
+			const FLinearColor GridColor(0.048f, 0.053f, 0.056f, 0.9f);
+			DrawAlignedGrid(OutDrawElements, LayerId + 1, PaintGeometry, Canvas, Plot, 2, 2, GridColor);
 
 			const FWidgetTransitionEasing Easing = ValueAttribute.Get();
 			const FVector2D Start = ToScreen(Plot, FVector2D::Zero());
 			const FVector2D End = ToScreen(Plot, FVector2D(1.0, 1.0));
 			const FVector2D MathematicalFirst = ToScreen(Plot, Easing.FirstControlPoint);
 			const FVector2D MathematicalSecond = ToScreen(Plot, Easing.SecondControlPoint);
-			const FVector2D First = GetVisualHandlePosition(Plot, Start, MathematicalFirst, FVector2D(1.0, 0.0));
-			const FVector2D Second = GetVisualHandlePosition(Plot, End, MathematicalSecond, FVector2D(-1.0, 0.0));
+			const FVector2D First = GetVisualHandlePosition(Start, MathematicalFirst);
+			const FVector2D Second = GetVisualHandlePosition(End, MathematicalSecond);
 			const FLinearColor HandleColor(0.48f, 0.55f, 0.62f, 0.9f);
-			FSlateDrawElement::MakeLines(OutDrawElements, LayerId + 2, PaintGeometry, { FVector2f(Start), FVector2f(First) }, ESlateDrawEffect::None, HandleColor, true, 1.0f);
-			FSlateDrawElement::MakeLines(OutDrawElements, LayerId + 2, PaintGeometry, { FVector2f(Second), FVector2f(End) }, ESlateDrawEffect::None, HandleColor, true, 1.0f);
-			const FLinearColor CurveColor = bHovered ? FLinearColor(1.0f, 0.45f, 0.08f, 1.0f) : FLinearColor(0.30f, 0.72f, 1.0f, 1.0f);
-			FSlateDrawElement::MakeCubicBezierSpline(OutDrawElements, LayerId + 3, PaintGeometry, FVector2f(Start), FVector2f(MathematicalFirst), FVector2f(MathematicalSecond), FVector2f(End), bHovered ? 2.5f : 1.5f, ESlateDrawEffect::None, CurveColor);
-			DrawHandle(OutDrawElements, LayerId + 4, AllottedGeometry, First, HandleColor);
-			DrawHandle(OutDrawElements, LayerId + 4, AllottedGeometry, Second, HandleColor);
-			return LayerId + 4;
+			const FLinearColor HoveredHandleColor(0.34f, 0.90f, 0.12f, 1.0f);
+			const FLinearColor FirstHandleColor = HoveredHandle == EHandle::First ? HoveredHandleColor : HandleColor;
+			const FLinearColor SecondHandleColor = HoveredHandle == EHandle::Second ? HoveredHandleColor : HandleColor;
+			FSlateDrawElement::MakeLines(OutDrawElements, LayerId + 2, PaintGeometry, { FVector2f(Start), FVector2f(First) }, ESlateDrawEffect::None, FirstHandleColor, true, 1.0f);
+			FSlateDrawElement::MakeLines(OutDrawElements, LayerId + 2, PaintGeometry, { FVector2f(Second), FVector2f(End) }, ESlateDrawEffect::None, SecondHandleColor, true, 1.0f);
+			const FLinearColor AxisColor(0.16f, 0.17f, 0.18f, 0.95f);
+			FSlateDrawElement::MakeLines(OutDrawElements, LayerId + 2, PaintGeometry, { FVector2f(Plot.Left, Start.Y), FVector2f(Plot.Right, Start.Y) }, ESlateDrawEffect::None, AxisColor, true, 1.0f);
+			FSlateDrawElement::MakeLines(OutDrawElements, LayerId + 2, PaintGeometry, { FVector2f(Plot.Left, End.Y), FVector2f(Plot.Right, End.Y) }, ESlateDrawEffect::None, AxisColor, true, 1.0f);
+			const FLinearColor CurveColor(0.30f, 0.72f, 1.0f, 1.0f);
+			FSlateDrawElement::MakeCubicBezierSpline(OutDrawElements, LayerId + 3, PaintGeometry, FVector2f(Start), FVector2f(MathematicalFirst), FVector2f(MathematicalSecond), FVector2f(End), 2.5f, ESlateDrawEffect::None, CurveColor);
+			DrawAnchorPoint(OutDrawElements, LayerId + 4, AllottedGeometry, Start, CurveColor);
+			DrawAnchorPoint(OutDrawElements, LayerId + 4, AllottedGeometry, End, CurveColor);
+			DrawHandle(OutDrawElements, LayerId + 5, AllottedGeometry, First, FirstHandleColor);
+			DrawHandle(OutDrawElements, LayerId + 5, AllottedGeometry, Second, SecondHandleColor);
+			return LayerId + 5;
 		}
 
 		virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override
@@ -247,8 +319,8 @@ namespace UMGTransitionsEditor
 			const FWidgetTransitionEasing Easing = ValueAttribute.Get();
 			const FVector2D Start = ToScreen(Plot, FVector2D::Zero());
 			const FVector2D End = ToScreen(Plot, FVector2D(1.0, 1.0));
-			const FVector2D FirstHandle = GetVisualHandlePosition(Plot, Start, ToScreen(Plot, Easing.FirstControlPoint), FVector2D(1.0, 0.0));
-			const FVector2D SecondHandle = GetVisualHandlePosition(Plot, End, ToScreen(Plot, Easing.SecondControlPoint), FVector2D(-1.0, 0.0));
+			const FVector2D FirstHandle = GetVisualHandlePosition(Start, ToScreen(Plot, Easing.FirstControlPoint));
+			const FVector2D SecondHandle = GetVisualHandlePosition(End, ToScreen(Plot, Easing.SecondControlPoint));
 			if ((LocalPosition - FirstHandle).SizeSquared() <= HandleHitRadius * HandleHitRadius)
 			{
 				DragMode = EDragMode::FirstHandle;
@@ -263,6 +335,7 @@ namespace UMGTransitionsEditor
 				SculptT = FindClosestCurveT(Plot, Easing, LocalPosition);
 			}
 			LastLocalPosition = LocalPosition;
+			OnEditStarted.ExecuteIfBound();
 			return FReply::Handled().CaptureMouse(AsShared());
 		}
 
@@ -270,6 +343,7 @@ namespace UMGTransitionsEditor
 		{
 			if (!HasMouseCapture())
 			{
+				UpdateHoveredHandle(MyGeometry, MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition()));
 				return FReply::Unhandled();
 			}
 			const FVector2D LocalPosition = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
@@ -281,12 +355,12 @@ namespace UMGTransitionsEditor
 			{
 			case EDragMode::FirstHandle:
 			{
-				Easing.FirstControlPoint += ValueDelta;
+				Easing.FirstControlPoint += GetConstrainedHandleValueDelta(Plot, FVector2D::Zero(), Easing.FirstControlPoint, ScreenDelta);
 				break;
 			}
 			case EDragMode::SecondHandle:
 			{
-				Easing.SecondControlPoint += ValueDelta;
+				Easing.SecondControlPoint += GetConstrainedHandleValueDelta(Plot, FVector2D(1.0, 1.0), Easing.SecondControlPoint, ScreenDelta);
 				break;
 			}
 			case EDragMode::Sculpt:
@@ -311,26 +385,27 @@ namespace UMGTransitionsEditor
 			if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && HasMouseCapture())
 			{
 				DragMode = EDragMode::None;
+				OnEditFinished.ExecuteIfBound();
 				return FReply::Handled().ReleaseMouseCapture();
 			}
 			return FReply::Unhandled();
 		}
 
-		virtual void OnMouseEnter(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override
-		{
-			SLeafWidget::OnMouseEnter(MyGeometry, MouseEvent);
-			bHovered = true;
-			Invalidate(EInvalidateWidgetReason::Paint);
-		}
-
 		virtual void OnMouseLeave(const FPointerEvent& MouseEvent) override
 		{
 			SLeafWidget::OnMouseLeave(MouseEvent);
-			bHovered = false;
+			HoveredHandle = EHandle::None;
 			Invalidate(EInvalidateWidgetReason::Paint);
 		}
 
-	private:
+		private:
+		enum class EHandle : uint8
+		{
+			None,
+			First,
+			Second,
+		};
+
 		enum class EDragMode : uint8
 		{
 			None,
@@ -339,17 +414,34 @@ namespace UMGTransitionsEditor
 			Sculpt,
 		};
 
+		static constexpr float HandleSize = 8.0f;
 		static constexpr float HandleHitRadius = 10.0f;
+		static constexpr double VisualCanvasWidth = 165.0;
+		static constexpr double VisualCanvasHeight = 154.6875;
+		static constexpr double VisualPlotHeight = 82.5;
+		/** Visual handle length relative to the mathematical control vector. */
+		static constexpr double HandleVisualScale = 0.5;
 		/** Brush radius expressed as normalized curve length. */
 		static constexpr double SculptRadius = 1.0 / 3.0;
 		/** The two handles reach their maximum geometric influence near these curve positions. */
 		static constexpr double FirstHandleCurvePosition = 1.0 / 3.0;
 		static constexpr double SecondHandleCurvePosition = 2.0 / 3.0;
 
-		static FSlateRect GetPlotRect(const FGeometry& Geometry)
+		FSlateRect GetPlotRect(const FGeometry& Geometry) const
+		{
+			const FSlateRect Canvas = GetCanvasRect(Geometry);
+			const double WorkAreaHeight = FMath::Min(VisualPlotHeight, Canvas.GetSize().Y);
+			const double VerticalPadding = (Canvas.GetSize().Y - WorkAreaHeight) * 0.5;
+			return FSlateRect(Canvas.Left, Canvas.Top + VerticalPadding, Canvas.Right, Canvas.Top + VerticalPadding + WorkAreaHeight);
+		}
+
+		/** Keeps half a handle of transparent hit area around every side of the visual canvas. */
+		FSlateRect GetCanvasRect(const FGeometry& Geometry) const
 		{
 			const FVector2D Size = Geometry.GetLocalSize();
-			return FSlateRect(12.0f, 10.0f, FMath::Max(12.0, Size.X - 12.0), FMath::Max(10.0, Size.Y - 10.0));
+			const FVector2D CanvasSize(FMath::Min(VisualCanvasWidth, Size.X - HandleSize), FMath::Min(VisualCanvasHeight, Size.Y - HandleSize));
+			const FVector2D Offset = (Size - CanvasSize) * 0.5;
+			return FSlateRect(Offset.X, Offset.Y, Offset.X + CanvasSize.X, Offset.Y + CanvasSize.Y);
 		}
 
 		static FVector2D ToScreen(const FSlateRect& Plot, FVector2D Value)
@@ -370,14 +462,33 @@ namespace UMGTransitionsEditor
 			return (Gaussian - EdgeGaussian) / (1.0 - EdgeGaussian);
 		}
 
-		static FVector2D GetVisualHandlePosition(const FSlateRect& Plot, FVector2D Anchor, FVector2D MathematicalHandle, FVector2D FallbackDirection)
+		static FVector2D GetVisualHandlePosition(FVector2D Anchor, FVector2D MathematicalHandle)
 		{
-			FVector2D Direction = MathematicalHandle - Anchor;
-			if (Direction.IsNearlyZero())
+			return FMath::Lerp(Anchor, MathematicalHandle, HandleVisualScale);
+		}
+
+		static FVector2D GetConstrainedHandleValueDelta(const FSlateRect& Plot, FVector2D AnchorValue, FVector2D MathematicalHandle, FVector2D ScreenDelta)
+		{
+			const FVector2D Anchor = ToScreen(Plot, AnchorValue);
+			const FVector2D VisualHandle = GetVisualHandlePosition(Anchor, ToScreen(Plot, MathematicalHandle));
+			FVector2D ConstrainedHandle = VisualHandle + ScreenDelta;
+			ConstrainedHandle.X = FMath::Clamp(ConstrainedHandle.X, static_cast<double>(Plot.Left), static_cast<double>(Plot.Right));
+			const FVector2D EffectiveScreenDelta = ConstrainedHandle - VisualHandle;
+			return FVector2D(EffectiveScreenDelta.X / Plot.GetSize().X, -EffectiveScreenDelta.Y / Plot.GetSize().Y) / HandleVisualScale;
+		}
+
+		void UpdateHoveredHandle(const FGeometry& Geometry, FVector2D LocalPosition)
+		{
+			const FSlateRect Plot = GetPlotRect(Geometry);
+			const FWidgetTransitionEasing Easing = ValueAttribute.Get();
+			const FVector2D FirstHandle = GetVisualHandlePosition(ToScreen(Plot, FVector2D::Zero()), ToScreen(Plot, Easing.FirstControlPoint));
+			const FVector2D SecondHandle = GetVisualHandlePosition(ToScreen(Plot, FVector2D(1.0, 1.0)), ToScreen(Plot, Easing.SecondControlPoint));
+			const EHandle NewHoveredHandle = (LocalPosition - FirstHandle).SizeSquared() <= HandleHitRadius * HandleHitRadius ? EHandle::First : (LocalPosition - SecondHandle).SizeSquared() <= HandleHitRadius * HandleHitRadius ? EHandle::Second : EHandle::None;
+			if (HoveredHandle != NewHoveredHandle)
 			{
-				Direction = FallbackDirection;
+				HoveredHandle = NewHoveredHandle;
+				Invalidate(EInvalidateWidgetReason::Paint);
 			}
-			return Anchor + Direction.GetSafeNormal() * (FMath::Min(Plot.GetSize().X, Plot.GetSize().Y) / 3.0f);
 		}
 
 		static FVector2D EvaluatePoint(const FWidgetTransitionEasing& Easing, double T)
@@ -404,18 +515,49 @@ namespace UMGTransitionsEditor
 			return BestT;
 		}
 
+		/** Draws a grid whose cells are defined by the working plot and continued through the visual canvas. */
+		static void DrawAlignedGrid(FSlateWindowElementList& OutDrawElements, int32 LayerId, const FPaintGeometry& PaintGeometry, const FSlateRect& Canvas, const FSlateRect& Plot, int32 Columns, int32 Rows, FLinearColor Color)
+		{
+			const FVector2D CellSize(Plot.GetSize().X / Columns, Plot.GetSize().Y / Rows);
+			const int32 FirstColumn = FMath::CeilToInt((Canvas.Left - Plot.Left) / CellSize.X);
+			const int32 LastColumn = FMath::FloorToInt((Canvas.Right - Plot.Left) / CellSize.X);
+			for (int32 Column = FirstColumn; Column <= LastColumn; ++Column)
+			{
+				const float X = static_cast<float>(Plot.Left + Column * CellSize.X);
+				FSlateDrawElement::MakeLines(OutDrawElements, LayerId, PaintGeometry, { FVector2f(X, Canvas.Top), FVector2f(X, Canvas.Bottom) }, ESlateDrawEffect::None, Color, true, 1.0f);
+			}
+
+			const int32 FirstRow = FMath::CeilToInt((Canvas.Top - Plot.Top) / CellSize.Y);
+			const int32 LastRow = FMath::FloorToInt((Canvas.Bottom - Plot.Top) / CellSize.Y);
+			for (int32 Row = FirstRow; Row <= LastRow; ++Row)
+			{
+				const float Y = static_cast<float>(Plot.Top + Row * CellSize.Y);
+				FSlateDrawElement::MakeLines(OutDrawElements, LayerId, PaintGeometry, { FVector2f(Canvas.Left, Y), FVector2f(Canvas.Right, Y) }, ESlateDrawEffect::None, Color, true, 1.0f);
+			}
+
+			FSlateDrawElement::MakeLines(OutDrawElements, LayerId, PaintGeometry, { FVector2f(Canvas.Left, Canvas.Top), FVector2f(Canvas.Right, Canvas.Top), FVector2f(Canvas.Right, Canvas.Bottom), FVector2f(Canvas.Left, Canvas.Bottom), FVector2f(Canvas.Left, Canvas.Top) }, ESlateDrawEffect::None, Color, true, 1.0f);
+		}
+
 		static void DrawHandle(FSlateWindowElementList& OutDrawElements, int32 LayerId, const FGeometry& Geometry, FVector2D Position, FLinearColor Color)
 		{
-			const FVector2D HandleSize(8.0, 8.0);
-			FSlateDrawElement::MakeBox(OutDrawElements, LayerId, Geometry.ToPaintGeometry(HandleSize, FSlateLayoutTransform(Position - HandleSize * 0.5)), FCoreStyle::Get().GetBrush("WhiteBrush"), ESlateDrawEffect::None, Color);
+			const FVector2D HandleVisualSize(HandleSize, HandleSize);
+			FSlateDrawElement::MakeBox(OutDrawElements, LayerId, Geometry.ToPaintGeometry(HandleVisualSize, FSlateLayoutTransform(Position - HandleVisualSize * 0.5)), FCoreStyle::Get().GetBrush("WhiteBrush"), ESlateDrawEffect::None, Color);
+		}
+
+		static void DrawAnchorPoint(FSlateWindowElementList& OutDrawElements, int32 LayerId, const FGeometry& Geometry, FVector2D Position, FLinearColor Color)
+		{
+			const FVector2D PointSize(10.0, 10.0);
+			FSlateDrawElement::MakeBox(OutDrawElements, LayerId, Geometry.ToPaintGeometry(PointSize, FSlateLayoutTransform(Position - PointSize * 0.5)), FAppStyle::Get().GetBrush("Graph.Pin.Connected"), ESlateDrawEffect::None, Color);
 		}
 
 		TAttribute<FWidgetTransitionEasing> ValueAttribute;
 		FOnCubicBezierEasingChanged OnValueChanged;
+		FOnCubicBezierEasingEdit OnEditStarted;
+		FOnCubicBezierEasingEdit OnEditFinished;
 		EDragMode DragMode = EDragMode::None;
 		FVector2D LastLocalPosition = FVector2D::ZeroVector;
 		double SculptT = 0.5;
-		bool bHovered = false;
+		EHandle HoveredHandle = EHandle::None;
 	};
 
 	class SWidgetPropertyPathPin final : public SGraphPin
@@ -577,6 +719,7 @@ namespace UMGTransitionsEditor
 			{
 				return;
 			}
+			const FScopedTransaction Transaction(NSLOCTEXT("UMGTransitions", "ChangeWidgetPropertyPin", "Change Widget Property Pin"));
 			GraphPinObj->Modify();
 			GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, Option->Path);
 		}
@@ -673,7 +816,13 @@ namespace UMGTransitionsEditor
 			const UEnum* Enum = Cast<UEnum>(GraphPinObj->PinType.PinSubCategoryObject.Get());
 			if (Enum)
 			{
-				GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, Enum->GetNameStringByValue(Value));
+				const FString NewValue = Enum->GetNameStringByValue(Value);
+				if (GraphPinObj->GetDefaultAsString() != NewValue)
+				{
+					const FScopedTransaction Transaction(NSLOCTEXT("UMGTransitions", "ChangeSegmentedEnumPin", "Change Segmented Enum Pin"));
+					GraphPinObj->Modify();
+					GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, NewValue);
+				}
 			}
 		}
 	};
@@ -761,6 +910,12 @@ namespace UMGTransitionsEditor
 		{
 			FString Text;
 			FWidgetTransitionValue::StaticStruct()->ExportText(Text, &Value, nullptr, nullptr, PPF_SerializedAsImportText, nullptr);
+			if (GraphPinObj->GetDefaultAsString() == Text)
+			{
+				return;
+			}
+			const FScopedTransaction Transaction(NSLOCTEXT("UMGTransitions", "ChangeTransitionValuePin", "Change Transition Value Pin"));
+			GraphPinObj->Modify();
 			GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, Text);
 		}
 		EWidgetTransitionValueType GetValueType() const { return GetValue().Type; }
@@ -855,6 +1010,7 @@ namespace UMGTransitionsEditor
 		SLATE_BEGIN_ARGS(STransitionEasingPin) {} SLATE_END_ARGS()
 		void Construct(const FArguments&, UEdGraphPin* Pin)
 		{
+			Templates = MakeEasingTemplates();
 			SGraphPin::Construct(SGraphPin::FArguments(), Pin);
 		}
 
@@ -865,13 +1021,47 @@ namespace UMGTransitionsEditor
 				.Visibility(this, &SGraphPin::GetDefaultValueVisibility)
 				.IsEnabled(this, &SGraphPin::GetDefaultValueIsEditable)
 			[
-				SNew(SCubicBezierEasingEditor)
-				.Value(this, &STransitionEasingPin::GetValue)
-				.OnValueChanged(FOnCubicBezierEasingChanged::CreateSP(this, &STransitionEasingPin::SetValue))
+				SNew(SVerticalBox)
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SAssignNew(TemplateComboBox, SComboBox<TSharedPtr<FEasingTemplate>>)
+					.OptionsSource(&Templates)
+					.OnGenerateWidget(this, &STransitionEasingPin::MakeTemplateWidget)
+					.OnSelectionChanged(this, &STransitionEasingPin::SelectTemplate)
+					[
+						SNew(STextBlock)
+						.Text(NSLOCTEXT("UMGTransitions", "EasingTemplate", "Template"))
+					]
+				]
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				[
+					SNew(SCubicBezierEasingEditor)
+					.Value(this, &STransitionEasingPin::GetValue)
+					.OnValueChanged(FOnCubicBezierEasingChanged::CreateSP(this, &STransitionEasingPin::SetValue))
+					.OnEditStarted(FOnCubicBezierEasingEdit::CreateSP(this, &STransitionEasingPin::BeginEasingEdit))
+					.OnEditFinished(FOnCubicBezierEasingEdit::CreateSP(this, &STransitionEasingPin::EndEasingEdit))
+				]
 			];
 		}
 
 	private:
+		TSharedRef<SWidget> MakeTemplateWidget(TSharedPtr<FEasingTemplate> Template) const
+		{
+			return SNew(STextBlock)
+				.Text(Template.IsValid() ? FText::FromString(Template->Name) : FText::GetEmpty());
+		}
+
+		void SelectTemplate(TSharedPtr<FEasingTemplate> Template, ESelectInfo::Type)
+		{
+			if (Template.IsValid())
+			{
+				SetValue(Template->Easing);
+			}
+		}
+
 		FWidgetTransitionEasing GetValue() const
 		{
 			FWidgetTransitionEasing Value;
@@ -887,8 +1077,37 @@ namespace UMGTransitionsEditor
 		{
 			FString Text;
 			FWidgetTransitionEasing::StaticStruct()->ExportText(Text, &Value, nullptr, nullptr, PPF_SerializedAsImportText, nullptr);
+			if (GraphPinObj->GetDefaultAsString() == Text)
+			{
+				return;
+			}
+			if (!ActiveEasingEditTransaction.IsValid())
+			{
+				const FScopedTransaction Transaction(NSLOCTEXT("UMGTransitions", "ChangeEasingPinValue", "Change Easing Pin Value"));
+				GraphPinObj->Modify();
+				GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, Text);
+				return;
+			}
 			GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, Text);
 		}
+
+		void BeginEasingEdit()
+		{
+			if (!ActiveEasingEditTransaction.IsValid())
+			{
+				ActiveEasingEditTransaction = MakeUnique<FScopedTransaction>(NSLOCTEXT("UMGTransitions", "EditEasingCurve", "Edit Easing Curve"));
+				GraphPinObj->Modify();
+			}
+		}
+
+		void EndEasingEdit()
+		{
+			ActiveEasingEditTransaction.Reset();
+		}
+
+		TArray<TSharedPtr<FEasingTemplate>> Templates;
+		TSharedPtr<SComboBox<TSharedPtr<FEasingTemplate>>> TemplateComboBox;
+		TUniquePtr<FScopedTransaction> ActiveEasingEditTransaction;
 	};
 
 	class FTransitionPinFactory final : public FGraphPanelPinFactory

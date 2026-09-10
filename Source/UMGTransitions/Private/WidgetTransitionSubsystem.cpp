@@ -216,6 +216,7 @@ bool UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 	Transition.Delay = FMath::Max(0.0f, Transition.Delay);
 	Transition.RepeatCount = FMath::Max(-1, Transition.RepeatCount);
 	Transition.EventInterval = FMath::Max(0.0f, Transition.EventInterval);
+	Transition.Easing.Clamp();
 	Transition.bBound = !Transition.WidgetProperty.IsNone();
 	FWidgetTransitionSample HandoffSample;
 	FVector4f HandoffVelocity = FVector4f::Zero();
@@ -240,7 +241,6 @@ bool UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 			break;
 		}
 	}
-	Transition.Easing.Clamp();
 	if (Transition.bBound)
 	{
 		const bool bResolved = IsMaterialBinding(Transition.WidgetProperty)

@@ -11,8 +11,8 @@
 
 namespace
 {
-	constexpr float MinimumEasingY = -2.0f;
-	constexpr float MaximumEasingY = 2.0f;
+	constexpr double MinimumEasingY = -0.7;
+	constexpr double MaximumEasingY = 1.7;
 
 	static FWidgetTransitionValue MakeTransitionValue(float Value)
 	{

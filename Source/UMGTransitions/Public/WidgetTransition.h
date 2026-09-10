@@ -60,17 +60,17 @@ struct UMGTRANSITIONS_API FWidgetTransitionEasing
 {
 	GENERATED_BODY()
 
-	/** Handle leaving the start point. Its X coordinate is clamped to the normalized time range. */
+	/** Handle leaving the start point. Its X coordinate is constrained to normalized time. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widget Transition")
 	FVector2D FirstControlPoint = FVector2D(0.25, 0.1);
 
-	/** Handle arriving at the end point. Its X coordinate is clamped to the normalized time range. */
+	/** Handle arriving at the end point. Its X coordinate is constrained to normalized time. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widget Transition")
 	FVector2D SecondControlPoint = FVector2D(0.25, 1.0);
 
 	/** Evaluates the easing at normalized progress. */
 	float Evaluate(float Progress) const;
-	/** Clamps the editable control-point domain while preserving vertical overshoot. */
+	/** Clamps control X to the normalized time interval and Y to the supported overshoot range. */
 	void Clamp();
 };
 
