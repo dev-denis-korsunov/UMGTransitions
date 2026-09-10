@@ -2,14 +2,12 @@
 
 #include "CoreMinimal.h"
 #include "Binding/DynamicPropertyPath.h"
-#include "Engine/CurveTable.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 
 #include "WidgetTransition.generated.h"
 
 class UWidget;
 class UMaterialInstanceDynamic;
-struct FRealCurve;
 
 UENUM(BlueprintType)
 enum class EWidgetTransitionColorMix : uint8
@@ -51,6 +49,29 @@ struct UMGTRANSITIONS_API FWidgetTransitionValue
 	/** Semantic type selected by Make Transition Value. Kept internal so split pins stay compact. */
 	UPROPERTY()
 	EWidgetTransitionValueType Type = EWidgetTransitionValueType::Float;
+};
+
+/**
+ * A normalized cubic Bezier timing function. The curve always begins at (0, 0)
+ * and finishes at (1, 1); only its two control points are editable.
+ */
+USTRUCT(BlueprintType)
+struct UMGTRANSITIONS_API FWidgetTransitionEasing
+{
+	GENERATED_BODY()
+
+	/** Handle leaving the start point. Its X coordinate is clamped to the normalized time range. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widget Transition")
+	FVector2D FirstControlPoint = FVector2D(0.25, 0.1);
+
+	/** Handle arriving at the end point. Its X coordinate is clamped to the normalized time range. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widget Transition")
+	FVector2D SecondControlPoint = FVector2D(0.25, 1.0);
+
+	/** Evaluates the easing at normalized progress. */
+	float Evaluate(float Progress) const;
+	/** Clamps the editable control-point domain while preserving vertical overshoot. */
+	void Clamp();
 };
 
 enum class EWidgetTransitionBindingKind : uint8
@@ -116,7 +137,7 @@ struct UMGTRANSITIONS_API FWidgetTransition
 	FName WidgetProperty;
 	FWidgetTransitionValue FromValue;
 	FWidgetTransitionValue ToValue;
-	FCurveTableRowHandle Easing;
+	FWidgetTransitionEasing Easing;
 	FWidgetTransitionPropertyBinding PropertyBinding;
 	float Time = 0.2f;
 	float Delay = 0.0f;
@@ -133,6 +154,8 @@ struct UMGTRANSITIONS_API FWidgetTransition
 	/** Determines whether a transition replaces, skips, or queues behind an active property transition. */
 	EWidgetTransitionAddMode AddMode = EWidgetTransitionAddMode::Replace;
 	uint16 bUseFrom : 1 = false;
+	/** Whether to evaluate the cubic Bezier easing instead of linear progress. */
+	uint16 bUseEasing : 1 = false;
 	/** Applies From Value immediately, before the initial delay. */
 	uint16 bIgnoreDelay : 1 = true;
 	/** Applies Delay again at the start of every repeated cycle. */
@@ -148,8 +171,6 @@ struct UMGTRANSITIONS_API FWidgetTransition
 	uint16 bBound : 1 = false;
 	/** Index into UWidgetTransitionSubsystem::Springs when bUseSpring is enabled. */
 	int32 SpringIndex = INDEX_NONE;
-	/** Resolved once when the transition is added, avoiding a CurveTable lookup every tick. */
-	const FRealCurve* EasingCurve = nullptr;
 };
 
 UCLASS()
@@ -164,8 +185,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (CPP_Default_bUseFrom = "true", CPP_Default_bIgnoreDelay = "true", ReturnDisplayName = "Transition"))
 	static FWidgetTransition From(FWidgetTransition Transition, bool bUseFrom, FWidgetTransitionValue FromValue, UPARAM(meta = (ToolTip = "Applies From Value immediately, before the transition delay.")) bool bIgnoreDelay = true);
 
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DataTablePin = "CurveTable", ReturnDisplayName = "Transition"))
-	static FWidgetTransition Easing(FWidgetTransition Transition, UCurveTable* CurveTable, FName RowName);
+	/** Applies a normalized cubic Bezier timing function to this transition. */
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
+	static FWidgetTransition Easing(FWidgetTransition Transition, FWidgetTransitionEasing Easing);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
 	static FWidgetTransition Spring(FWidgetTransition Transition, UPARAM(meta = (ClampMin = "1.0", ToolTip = "Spring stiffness coefficient. 160 matches the default response; larger values make the spring faster. It does not affect Fit To Time.")) float SpringForce = 160.0f, float SpringDamping = 0.45f, UPARAM(meta = (AdvancedDisplay, ClampMin = "0.0")) float SpringMaxSpeed = 0.0f, UPARAM(meta = (AdvancedDisplay, ToolTip = "Derives spring frequency from Time and Damping so the transition completes at Time. Spring Force does not affect this mode.")) bool bFitToTime = false);
 	/** Makes a scalar transition endpoint. */

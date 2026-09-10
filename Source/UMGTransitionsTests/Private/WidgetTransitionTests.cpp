@@ -13,7 +13,6 @@
 #include "Components/UniformGridPanel.h"
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetTree.h"
-#include "Curves/RichCurve.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/AutomationTest.h"
 
@@ -75,7 +74,7 @@ namespace
 		Spring,
 	};
 
-	FWidgetTransition MakeBenchmarkTransition(UImage* Widget, bool bBound, EWidgetTransitionBenchmarkMode Mode, UCurveTable* CurveTable, FName CurveRow)
+	FWidgetTransition MakeBenchmarkTransition(UImage* Widget, bool bBound, EWidgetTransitionBenchmarkMode Mode)
 	{
 		FWidgetTransition Transition = MakeRuntimeOpacityTransition(Widget);
 		Transition.bBound = bBound;
@@ -87,8 +86,9 @@ namespace
 		}
 		if (Mode == EWidgetTransitionBenchmarkMode::Easing)
 		{
-			Transition.Easing.CurveTable = CurveTable;
-			Transition.Easing.RowName = CurveRow;
+			Transition.bUseEasing = true;
+			Transition.Easing.FirstControlPoint = FVector2D(0.25, 0.1);
+			Transition.Easing.SecondControlPoint = FVector2D(0.25, 1.0);
 		}
 		else if (Mode == EWidgetTransitionBenchmarkMode::Spring)
 		{
@@ -108,7 +108,7 @@ namespace
 		}
 		case EWidgetTransitionBenchmarkMode::Easing:
 		{
-			return TEXT("CurveTable easing");
+			return TEXT("Cubic Bezier easing");
 		}
 		case EWidgetTransitionBenchmarkMode::Spring:
 		{
@@ -736,23 +736,20 @@ bool FWidgetTransitionTickDeltaTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionInvalidEasingFallbackTest, "UMGTransitions.WidgetTransition.Runtime.InvalidEasingFallback", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-bool FWidgetTransitionInvalidEasingFallbackTest::RunTest(const FString&)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionCubicEasingTest, "UMGTransitions.WidgetTransition.Runtime.CubicEasing", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetTransitionCubicEasingTest::RunTest(const FString&)
 {
-	UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
-	UImage* Widget = NewObject<UImage>(GetTransientPackage());
-	TestTrue(TEXT("Invalid easing transition is added through the builder"), FWidgetTransitionBuilder::Make(Subsystem)
-		.Target(Widget, TEXT("RenderOpacity"))
-		.From(0.0f)
-		.To(1.0f)
-		.Time(0.0f)
-		.Easing(NewObject<UCurveTable>(GetTransientPackage()), TEXT("MissingRow"))
-		.Add());
-
-	Subsystem->TickTransitionsForTesting(1.0f / 60.0f);
-
-	TestTrue(TEXT("Missing easing row falls back to the linear target value"), FMath::IsNearlyEqual(Widget->GetRenderOpacity(), 1.0f, Tolerance));
-	TestEqual(TEXT("Fallback transition completes"), Subsystem->Transitions.Num(), 0);
+	FWidgetTransitionEasing Easing;
+	Easing.FirstControlPoint = FVector2D(-1.0, -5.0);
+	Easing.SecondControlPoint = FVector2D(2.0, 5.0);
+	Easing.Clamp();
+	TestTrue(TEXT("Cubic easing clamps normalized time handles"), Easing.FirstControlPoint.X == 0.0 && Easing.SecondControlPoint.X == 1.0);
+	TestTrue(TEXT("Cubic easing clamps overshoot handles"), Easing.FirstControlPoint.Y == -2.0 && Easing.SecondControlPoint.Y == 2.0);
+	TestTrue(TEXT("Cubic easing starts at zero"), FMath::IsNearlyEqual(Easing.Evaluate(0.0f), 0.0f, Tolerance));
+	TestTrue(TEXT("Cubic easing ends at one"), FMath::IsNearlyEqual(Easing.Evaluate(1.0f), 1.0f, Tolerance));
+	Easing.FirstControlPoint = FVector2D(0.25, 1.0);
+	Easing.SecondControlPoint = FVector2D(0.75, 1.0);
+	TestTrue(TEXT("Cubic easing evaluates its control-point shape"), Easing.Evaluate(0.5f) > 0.7f);
 	return true;
 }
 
@@ -1489,13 +1486,6 @@ bool FWidgetTransitionModeMatrixPerformanceTest::RunTest(const FString&)
 	constexpr int32 TransitionCounts[] = { 100, 500 };
 	constexpr EWidgetTransitionBenchmarkMode Modes[] = { EWidgetTransitionBenchmarkMode::Linear, EWidgetTransitionBenchmarkMode::Easing, EWidgetTransitionBenchmarkMode::Spring };
 	constexpr float DeltaTime = 1.0f / 60.0f;
-	const FName CurveRow(TEXT("PerformanceEase"));
-	UCurveTable* CurveTable = NewObject<UCurveTable>(GetTransientPackage());
-	FRichCurve& EasingCurve = CurveTable->AddRichCurve(CurveRow);
-	EasingCurve.AddKey(0.0f, 0.0f);
-	EasingCurve.AddKey(0.5f, 0.2f);
-	EasingCurve.AddKey(1.0f, 1.0f);
-
 	for (const int32 TransitionCount : TransitionCounts)
 	{
 		for (const EWidgetTransitionBenchmarkMode Mode : Modes)
@@ -1509,7 +1499,7 @@ bool FWidgetTransitionModeMatrixPerformanceTest::RunTest(const FString&)
 				{
 					UImage* Widget = NewObject<UImage>(GetTransientPackage());
 					Widgets.Add(Widget);
-					FWidgetTransition Transition = MakeBenchmarkTransition(Widget, bBound, Mode, CurveTable, CurveRow);
+					FWidgetTransition Transition = MakeBenchmarkTransition(Widget, bBound, Mode);
 					TestTrue(FString::Printf(TEXT("Transition %d is initialized"), Index), !bBound || Transition.bBound);
 					const int32 TransitionIndex = Subsystem->Transitions.Emplace(MoveTemp(Transition));
 					FWidgetTransition& StoredTransition = Subsystem->Transitions[TransitionIndex];

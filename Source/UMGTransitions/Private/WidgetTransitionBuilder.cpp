@@ -156,10 +156,12 @@ FWidgetTransitionBuilder& FWidgetTransitionBuilder::ColorMix(EWidgetTransitionCo
 	return *this;
 }
 
-FWidgetTransitionBuilder& FWidgetTransitionBuilder::Easing(UCurveTable* CurveTable, FName RowName)
+FWidgetTransitionBuilder& FWidgetTransitionBuilder::Easing(FWidgetTransitionEasing Easing)
 {
-	Transition.Easing.CurveTable = CurveTable;
-	Transition.Easing.RowName = RowName;
+	Easing.Clamp();
+	Transition.Easing = MoveTemp(Easing);
+	Transition.bUseEasing = true;
+	Transition.bUseSpring = false;
 	return *this;
 }
 

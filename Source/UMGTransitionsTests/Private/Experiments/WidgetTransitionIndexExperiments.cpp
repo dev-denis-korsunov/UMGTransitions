@@ -3,7 +3,6 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-#include "Curves/RichCurve.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/AutomationTest.h"
 
@@ -20,12 +19,6 @@ bool FWidgetTransitionModeIndicesExperiment::RunTest(const FString&)
 {
 	constexpr int32 TransitionCount = 500;
 	constexpr int32 FrameCount = 300;
-	const FName CurveRow(TEXT("ModeIndices"));
-	UCurveTable* CurveTable = NewObject<UCurveTable>(GetTransientPackage());
-	FRichCurve& Curve = CurveTable->AddRichCurve(CurveRow);
-	Curve.AddKey(0.0f, 0.0f);
-	Curve.AddKey(0.5f, 0.2f);
-	Curve.AddKey(1.0f, 1.0f);
 	TArray<FWidgetTransition> Transitions;
 	TArray<FWidgetTransitionSpring> Springs;
 	TArray<int32> LinearTransitionIndices;
@@ -54,9 +47,7 @@ bool FWidgetTransitionModeIndicesExperiment::RunTest(const FString&)
 		}
 		case 1:
 		{
-			StoredTransition.Easing.CurveTable = CurveTable;
-			StoredTransition.Easing.RowName = CurveRow;
-			StoredTransition.EasingCurve = &Curve;
+			StoredTransition.bUseEasing = true;
 			EasingTransitionIndices.Add(TransitionIndex);
 			break;
 		}
@@ -79,7 +70,7 @@ bool FWidgetTransitionModeIndicesExperiment::RunTest(const FString&)
 		{
 			return Springs[Transition.SpringIndex].GetValue();
 		}
-		const float EasedAlpha = Transition.EasingCurve ? Transition.EasingCurve->Eval(Alpha) : Alpha;
+		const float EasedAlpha = Transition.bUseEasing ? Transition.Easing.Evaluate(Alpha) : Alpha;
 		return FMath::Lerp(Transition.FromValue.Channels, Transition.ToValue.Channels, EasedAlpha);
 	};
 	auto EvaluateLinear = [](const FWidgetTransition& Transition)
@@ -90,7 +81,7 @@ bool FWidgetTransitionModeIndicesExperiment::RunTest(const FString&)
 	auto EvaluateEasing = [](const FWidgetTransition& Transition)
 	{
 		const float Alpha = FMath::Clamp(Transition.CurrentTime / Transition.Time, 0.0f, 1.0f);
-		const float EasedAlpha = Transition.EasingCurve->Eval(Alpha);
+		const float EasedAlpha = Transition.Easing.Evaluate(Alpha);
 		return FMath::Lerp(Transition.FromValue.Channels, Transition.ToValue.Channels, EasedAlpha);
 	};
 	auto EvaluateSpring = [&Springs](const FWidgetTransition& Transition)

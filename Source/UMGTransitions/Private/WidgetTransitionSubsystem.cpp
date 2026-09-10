@@ -240,12 +240,7 @@ bool UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 			break;
 		}
 	}
-	Transition.EasingCurve = Transition.Easing.IsNull() ? nullptr : Transition.Easing.GetCurve(TEXT("Widget Transition"), false);
-	if (!Transition.Easing.IsNull() && !Transition.EasingCurve)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Widget Transition: easing row '%s' could not be resolved; using linear interpolation."), *Transition.Easing.RowName.ToString());
-		Transition.Easing = FCurveTableRowHandle();
-	}
+	Transition.Easing.Clamp();
 	if (Transition.bBound)
 	{
 		const bool bResolved = IsMaterialBinding(Transition.WidgetProperty)
@@ -454,7 +449,7 @@ FWidgetTransitionSample UWidgetTransitionSubsystem::SampleTransition(const FWidg
 	FWidgetTransitionSample Sample;
 	Sample.bCompleted = !Transition.bUseSpring && (Transition.Time <= 0.0f || Transition.CurrentTime >= Transition.Delay + Transition.Time);
 	const float NormalizedProgress = Transition.Time <= 0.0f ? 1.0f : FMath::Clamp((Transition.CurrentTime - Transition.Delay) / Transition.Time, 0.0f, 1.0f);
-	const float EasedProgress = Transition.EasingCurve ? Transition.EasingCurve->Eval(NormalizedProgress) : NormalizedProgress;
+	const float EasedProgress = Transition.bUseEasing ? Transition.Easing.Evaluate(NormalizedProgress) : NormalizedProgress;
 	if (Transition.ToValue.Type != EWidgetTransitionValueType::LinearColor)
 	{
 		Sample.Value = FMath::Lerp(Transition.FromValue.Channels, Transition.ToValue.Channels, EasedProgress);

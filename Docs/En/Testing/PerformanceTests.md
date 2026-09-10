@@ -8,7 +8,7 @@ Performance tests use repeated frame loops after warm-up and report microseconds
 | `Performance.UpdateInterval` | Updated callback cost at intervals 0, 0.033, 0.05, and 0.1 seconds. |
 | `Performance.AsyncTextCounter` | Plain text writes versus async Updated output. |
 | `Performance.FieldNotifyTextBinding` | FieldNotify push updates to a text widget at a configured interval. |
-| `Performance.ModeMatrix` | Linear, CurveTable easing, and spring at 100 and 500 transitions. |
+| `Performance.ModeMatrix` | Linear, cubic Bezier easing, and spring at 100 and 500 transitions. |
 | `Performance.PipeHandoff` | Completion of active Pipe predecessors and startup of their queued linear or spring successors at 1/20 s. |
 | `Performance.ConcurrentTick` | Scaling from 1 to 500 active transitions. |
 | `Performance.Construction` | Direct construction, Create function, and full pure-node pipeline. |

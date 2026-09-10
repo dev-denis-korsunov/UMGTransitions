@@ -13,11 +13,11 @@
 | `Performance.ExternalTextBinding` | 100 `UUserWidget.CounterValue` float property обновляются transition через reflective binding; 100 `UTextBlock.TextDelegate` читают значение и форматируют `FText`. | Измеряет сценарий внешнего numeric property binding, который отображается текстом без async `Updated` callback. |
 | `Performance.FieldNotifyTextBinding` | 100 FieldNotify `CounterValue` property обновляются transition, после записи subsystem broadcast-ит field change; native watcher обновляет `UTextBlock` с `UpdateInterval = 0.033` s. | Проверяет push-модель UMG/MVVM без polling text getter и с ограниченной частотой text update. |
 | `Performance.AsyncTextCounter` | Измеряет 100 async transition без `Widget Property`: output `Updated` интерполирует float `0→100`, а receiver записывает целое значение в `UTextBlock`. | Показывает цену пользовательского обновления счётчика без property binding плагина. |
-| `Performance.ModeMatrix` | 300 кадров для Linear, CurveTable easing и Spring, с binding и без него, при 100 и 500 transition. CurveTable содержит `(0,0)`, `(0.5,0.2)`, `(1,1)`. | Главный сравнительный тест алгоритмов. Вариант без binding выделяет математику; с binding показывает цену типичного использования. |
+| `Performance.ModeMatrix` | 300 кадров для Linear, cubic Bezier easing и Spring, с binding и без него, при 100 и 500 transition. Easing использует две ручки `(0.25,0.1)` и `(0.25,1.0)`. | Главный сравнительный тест алгоритмов. Вариант без binding выделяет математику; с binding показывает цену типичного использования. |
 | `Performance.PipeHandoff` | В одном completion-кадре завершает active `Pipe` transition и запускает его queued successor: linear и spring, для 1, 20, 100 и 500 свойств. | Изолирует границу между двумя transition в очереди, не смешивая её с ценой создания и постановки в очередь. |
 | `Performance.FastBindings` | 500 linear transition для каждого direct adapter: opacity, translation, scale, shear, angle, pivot. | Не даёт fast paths незаметно деградировать до reflective fallback. |
 
-`FRealCurve` резолвится при добавлении transition в subsystem. Уже запущенный transition не подхватывает изменения CurveTable: его надо создать заново. Для сравнения spring-вариантов используйте строку **without binding** — запись свойства добавляет шум, не относящийся к симуляции.
+Кубическая Bezier-кривая хранится непосредственно в transition и вычисляется без lookup во время tick. Для сравнения spring-вариантов используйте строку **without binding** — запись свойства добавляет шум, не относящийся к симуляции.
 
 ## Граница Pipe
 

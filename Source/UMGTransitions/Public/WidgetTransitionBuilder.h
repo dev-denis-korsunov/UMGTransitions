@@ -6,7 +6,6 @@
 
 class UWidget;
 class UWidgetTransitionSubsystem;
-class UCurveTable;
 
 /**
  * Native fluent contract for creating and starting one widget transition.
@@ -44,7 +43,7 @@ public:
 	FWidgetTransitionBuilder& YoYo(bool bEnabled = true);
 	FWidgetTransitionBuilder& EventInterval(float Seconds);
 	FWidgetTransitionBuilder& ColorMix(EWidgetTransitionColorMix Value);
-	FWidgetTransitionBuilder& Easing(UCurveTable* CurveTable, FName RowName);
+	FWidgetTransitionBuilder& Easing(FWidgetTransitionEasing Easing);
 
 	FWidgetTransitionBuilder& BindStart(FOnWidgetTransitionUpdate Callback);
 	FWidgetTransitionBuilder& BindUpdate(FOnWidgetTransitionUpdate Callback);

@@ -4,7 +4,7 @@
 
 ## Индексы режимов
 
-При добавлении transition его режим неизменяем: Linear, CurveTable easing или Spring. Поэтому можно один раз добавить индекс transition в один из трёх плотных массивов:
+При добавлении transition его режим неизменяем: Linear, cubic Bezier easing или Spring. Поэтому можно один раз добавить индекс transition в один из трёх плотных массивов:
 
 ```text
 LinearTransitionIndices

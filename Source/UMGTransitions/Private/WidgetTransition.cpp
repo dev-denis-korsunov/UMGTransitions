@@ -11,6 +11,9 @@
 
 namespace
 {
+	constexpr float MinimumEasingY = -2.0f;
+	constexpr float MaximumEasingY = 2.0f;
+
 	static FWidgetTransitionValue MakeTransitionValue(float Value)
 	{
 		FWidgetTransitionValue Result;
@@ -78,6 +81,46 @@ namespace
 	}
 
 } // namespace
+
+void FWidgetTransitionEasing::Clamp()
+{
+	FirstControlPoint.X = FMath::Clamp(FirstControlPoint.X, 0.0, 1.0);
+	SecondControlPoint.X = FMath::Clamp(SecondControlPoint.X, 0.0, 1.0);
+	FirstControlPoint.Y = FMath::Clamp(FirstControlPoint.Y, MinimumEasingY, MaximumEasingY);
+	SecondControlPoint.Y = FMath::Clamp(SecondControlPoint.Y, MinimumEasingY, MaximumEasingY);
+}
+
+float FWidgetTransitionEasing::Evaluate(float Progress) const
+{
+	const double ClampedProgress = FMath::Clamp(static_cast<double>(Progress), 0.0, 1.0);
+	const double FirstX = FMath::Clamp(FirstControlPoint.X, 0.0, 1.0);
+	const double SecondX = FMath::Clamp(SecondControlPoint.X, 0.0, 1.0);
+	const double FirstY = FMath::Clamp(FirstControlPoint.Y, MinimumEasingY, MaximumEasingY);
+	const double SecondY = FMath::Clamp(SecondControlPoint.Y, MinimumEasingY, MaximumEasingY);
+	const auto EvaluateAxis = [FirstX, SecondX, FirstY, SecondY](double T, bool bX)
+	{
+		const double InverseT = 1.0 - T;
+		const double First = bX ? FirstX : FirstY;
+		const double Second = bX ? SecondX : SecondY;
+		return 3.0 * InverseT * InverseT * T * First + 3.0 * InverseT * T * T * Second + T * T * T;
+	};
+
+	double Lower = 0.0;
+	double Upper = 1.0;
+	for (int32 Iteration = 0; Iteration < 12; ++Iteration)
+	{
+		const double T = (Lower + Upper) * 0.5;
+		if (EvaluateAxis(T, true) < ClampedProgress)
+		{
+			Lower = T;
+		}
+		else
+		{
+			Upper = T;
+		}
+	}
+	return static_cast<float>(EvaluateAxis((Lower + Upper) * 0.5, false));
+}
 
 bool FWidgetTransitionPropertyBinding::Resolve(UWidget* InWidget, const FString& InPropertyPath)
 {
@@ -484,10 +527,11 @@ FLinearColor UWidgetTransitionFunctionLibrary::AsColor(FWidgetTransitionValue Va
 	return FLinearColor(Value.Channels.X, Value.Channels.Y, Value.Channels.Z, Value.Channels.W);
 }
 
-FWidgetTransition UWidgetTransitionFunctionLibrary::Easing(FWidgetTransition Transition, UCurveTable* CurveTable, FName RowName)
+FWidgetTransition UWidgetTransitionFunctionLibrary::Easing(FWidgetTransition Transition, FWidgetTransitionEasing Easing)
 {
-	Transition.Easing.CurveTable = CurveTable;
-	Transition.Easing.RowName = RowName;
+	Easing.Clamp();
+	Transition.Easing = MoveTemp(Easing);
+	Transition.bUseEasing = true;
 	Transition.bUseSpring = false;
 	return Transition;
 }
