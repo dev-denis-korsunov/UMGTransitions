@@ -16,6 +16,11 @@
 #include "K2Node_VariableGet.h"
 #include "Materials/MaterialInterface.h"
 #include "Misc/OutputDeviceNull.h"
+#include "IPropertyTypeCustomization.h"
+#include "IDetailChildrenBuilder.h"
+#include "DetailWidgetRow.h"
+#include "PropertyEditorModule.h"
+#include "PropertyHandle.h"
 #include "ScopedTransaction.h"
 #include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
@@ -1156,6 +1161,94 @@ namespace UMGTransitionsEditor
 		TUniquePtr<FScopedTransaction> ActiveEasingEditTransaction;
 	};
 
+	/** Reuses the graph easing editor for FWidgetTransitionEasing properties in Details panels. */
+	class FWidgetTransitionEasingCustomization final : public IPropertyTypeCustomization
+	{
+	public:
+		static TSharedRef<IPropertyTypeCustomization> MakeInstance()
+		{
+			return MakeShared<FWidgetTransitionEasingCustomization>();
+		}
+
+		virtual void CustomizeHeader(TSharedRef<IPropertyHandle> PropertyHandle, FDetailWidgetRow& HeaderRow, IPropertyTypeCustomizationUtils&) override
+		{
+			EasingHandle = PropertyHandle;
+			FirstControlPointHandle = PropertyHandle->GetChildHandle(GET_MEMBER_NAME_CHECKED(FWidgetTransitionEasing, FirstControlPoint));
+			SecondControlPointHandle = PropertyHandle->GetChildHandle(GET_MEMBER_NAME_CHECKED(FWidgetTransitionEasing, SecondControlPoint));
+			HeaderRow.NameContent()[PropertyHandle->CreatePropertyNameWidget()]
+			.ValueContent()
+			.MinDesiredWidth(420.0f)
+			[MakeEditor()];
+		}
+
+		virtual void CustomizeChildren(TSharedRef<IPropertyHandle> PropertyHandle, IDetailChildrenBuilder& ChildBuilder, IPropertyTypeCustomizationUtils&) override
+		{
+			if (TSharedPtr<IPropertyHandle> FirstHandle = PropertyHandle->GetChildHandle(GET_MEMBER_NAME_CHECKED(FWidgetTransitionEasing, FirstControlPoint)))
+			{
+				ChildBuilder.AddProperty(FirstHandle.ToSharedRef());
+			}
+			if (TSharedPtr<IPropertyHandle> SecondHandle = PropertyHandle->GetChildHandle(GET_MEMBER_NAME_CHECKED(FWidgetTransitionEasing, SecondControlPoint)))
+			{
+				ChildBuilder.AddProperty(SecondHandle.ToSharedRef());
+			}
+		}
+
+	private:
+		FWidgetTransitionEasing GetValue() const
+		{
+			FWidgetTransitionEasing Value;
+			if (FirstControlPointHandle.IsValid() && SecondControlPointHandle.IsValid())
+			{
+				FirstControlPointHandle->GetValue(Value.FirstControlPoint);
+				SecondControlPointHandle->GetValue(Value.SecondControlPoint);
+			}
+			return Value;
+		}
+
+		void SetValue(FWidgetTransitionEasing Value)
+		{
+			if (!EasingHandle.IsValid())
+			{
+				return;
+			}
+			Value.Clamp();
+			TUniquePtr<FScopedTransaction> SingleEditTransaction;
+			if (!ActiveTransaction.IsValid())
+			{
+				SingleEditTransaction = MakeUnique<FScopedTransaction>(NSLOCTEXT("UMGTransitions", "EditEasingProperty", "Edit Easing Curve"));
+			}
+			FirstControlPointHandle->SetValue(Value.FirstControlPoint);
+			SecondControlPointHandle->SetValue(Value.SecondControlPoint);
+		}
+
+		TSharedRef<SWidget> MakeEditor()
+		{
+			return SNew(SCubicBezierEasingEditor)
+				.Value(this, &FWidgetTransitionEasingCustomization::GetValue)
+				.OnValueChanged(FOnCubicBezierEasingChanged::CreateSP(this, &FWidgetTransitionEasingCustomization::SetValue))
+				.OnEditStarted(FOnCubicBezierEasingEdit::CreateSP(this, &FWidgetTransitionEasingCustomization::BeginEdit))
+				.OnEditFinished(FOnCubicBezierEasingEdit::CreateSP(this, &FWidgetTransitionEasingCustomization::EndEdit));
+		}
+
+		void BeginEdit()
+		{
+			if (!ActiveTransaction.IsValid())
+			{
+				ActiveTransaction = MakeUnique<FScopedTransaction>(NSLOCTEXT("UMGTransitions", "EditEasingProperty", "Edit Easing Curve"));
+			}
+		}
+
+		void EndEdit()
+		{
+			ActiveTransaction.Reset();
+		}
+
+		TSharedPtr<IPropertyHandle> EasingHandle;
+		TSharedPtr<IPropertyHandle> FirstControlPointHandle;
+		TSharedPtr<IPropertyHandle> SecondControlPointHandle;
+		TUniquePtr<FScopedTransaction> ActiveTransaction;
+	};
+
 	class FTransitionPinFactory final : public FGraphPanelPinFactory
 	{
 	public:
@@ -1185,8 +1278,26 @@ namespace UMGTransitionsEditor
 class FUMGTransitionsEditorModule final : public IModuleInterface
 {
 public:
-	virtual void StartupModule() override { PinFactory = MakeShared<UMGTransitionsEditor::FTransitionPinFactory>(); FEdGraphUtilities::RegisterVisualPinFactory(PinFactory); }
-	virtual void ShutdownModule() override { if (PinFactory.IsValid()) { FEdGraphUtilities::UnregisterVisualPinFactory(PinFactory); PinFactory.Reset(); } }
+	virtual void StartupModule() override
+	{
+		PinFactory = MakeShared<UMGTransitionsEditor::FTransitionPinFactory>();
+		FEdGraphUtilities::RegisterVisualPinFactory(PinFactory);
+		FPropertyEditorModule& PropertyEditor = FModuleManager::LoadModuleChecked<FPropertyEditorModule>(TEXT("PropertyEditor"));
+		PropertyEditor.RegisterCustomPropertyTypeLayout(FWidgetTransitionEasing::StaticStruct()->GetFName(), FOnGetPropertyTypeCustomizationInstance::CreateStatic(&UMGTransitionsEditor::FWidgetTransitionEasingCustomization::MakeInstance));
+	}
+	virtual void ShutdownModule() override
+	{
+		if (FModuleManager::Get().IsModuleLoaded(TEXT("PropertyEditor")))
+		{
+			FPropertyEditorModule& PropertyEditor = FModuleManager::GetModuleChecked<FPropertyEditorModule>(TEXT("PropertyEditor"));
+			PropertyEditor.UnregisterCustomPropertyTypeLayout(FWidgetTransitionEasing::StaticStruct()->GetFName());
+		}
+		if (PinFactory.IsValid())
+		{
+			FEdGraphUtilities::UnregisterVisualPinFactory(PinFactory);
+			PinFactory.Reset();
+		}
+	}
 private:
 	TSharedPtr<FGraphPanelPinFactory> PinFactory;
 };
