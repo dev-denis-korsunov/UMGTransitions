@@ -743,7 +743,7 @@ bool FWidgetTransitionCubicEasingTest::RunTest(const FString&)
 	Easing.FirstControlPoint = FVector2D(-1.0, -5.0);
 	Easing.SecondControlPoint = FVector2D(2.0, 5.0);
 	Easing.Clamp();
-	TestTrue(TEXT("Cubic easing clamps control X and supported Y overshoot"), Easing.FirstControlPoint.Equals(FVector2D(0.0, -0.7)) && Easing.SecondControlPoint.Equals(FVector2D(1.0, 1.7)));
+	TestTrue(TEXT("Cubic easing clamps control X and per-handle Y overshoot"), Easing.FirstControlPoint.Equals(FVector2D(0.0, -2.0)) && Easing.SecondControlPoint.Equals(FVector2D(1.0, 3.0)));
 	TestTrue(TEXT("Cubic easing starts at zero"), FMath::IsNearlyEqual(Easing.Evaluate(0.0f), 0.0f, Tolerance));
 	TestTrue(TEXT("Cubic easing ends at one"), FMath::IsNearlyEqual(Easing.Evaluate(1.0f), 1.0f, Tolerance));
 	Easing.FirstControlPoint = FVector2D(0.25, 1.0);

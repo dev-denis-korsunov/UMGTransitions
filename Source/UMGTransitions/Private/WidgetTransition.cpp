@@ -11,8 +11,10 @@
 
 namespace
 {
-	constexpr double MinimumEasingY = -0.7;
-	constexpr double MaximumEasingY = 1.7;
+	constexpr double MinimumFirstControlPointY = -2.0;
+	constexpr double MaximumFirstControlPointY = 3.0;
+	constexpr double MinimumSecondControlPointY = -2.0;
+	constexpr double MaximumSecondControlPointY = 3.0;
 
 	static FWidgetTransitionValue MakeTransitionValue(float Value)
 	{
@@ -86,8 +88,8 @@ void FWidgetTransitionEasing::Clamp()
 {
 	FirstControlPoint.X = FMath::Clamp(FirstControlPoint.X, 0.0, 1.0);
 	SecondControlPoint.X = FMath::Clamp(SecondControlPoint.X, 0.0, 1.0);
-	FirstControlPoint.Y = FMath::Clamp(FirstControlPoint.Y, MinimumEasingY, MaximumEasingY);
-	SecondControlPoint.Y = FMath::Clamp(SecondControlPoint.Y, MinimumEasingY, MaximumEasingY);
+	FirstControlPoint.Y = FMath::Clamp(FirstControlPoint.Y, MinimumFirstControlPointY, MaximumFirstControlPointY);
+	SecondControlPoint.Y = FMath::Clamp(SecondControlPoint.Y, MinimumSecondControlPointY, MaximumSecondControlPointY);
 }
 
 float FWidgetTransitionEasing::Evaluate(float Progress) const
@@ -95,8 +97,8 @@ float FWidgetTransitionEasing::Evaluate(float Progress) const
 	const double ClampedProgress = FMath::Clamp(static_cast<double>(Progress), 0.0, 1.0);
 	const double FirstX = FMath::Clamp(FirstControlPoint.X, 0.0, 1.0);
 	const double SecondX = FMath::Clamp(SecondControlPoint.X, 0.0, 1.0);
-	const double FirstY = FMath::Clamp(FirstControlPoint.Y, MinimumEasingY, MaximumEasingY);
-	const double SecondY = FMath::Clamp(SecondControlPoint.Y, MinimumEasingY, MaximumEasingY);
+	const double FirstY = FMath::Clamp(FirstControlPoint.Y, MinimumFirstControlPointY, MaximumFirstControlPointY);
+	const double SecondY = FMath::Clamp(SecondControlPoint.Y, MinimumSecondControlPointY, MaximumSecondControlPointY);
 	const auto EvaluateAxis = [FirstX, SecondX, FirstY, SecondY](double T, bool bX)
 	{
 		const double InverseT = 1.0 - T;

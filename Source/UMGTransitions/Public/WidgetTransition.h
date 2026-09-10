@@ -60,17 +60,17 @@ struct UMGTRANSITIONS_API FWidgetTransitionEasing
 {
 	GENERATED_BODY()
 
-	/** Handle leaving the start point. Its X coordinate is constrained to normalized time. */
+	/** Handle leaving the start point. X is constrained to 0..1 and Y to -2..3. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widget Transition")
 	FVector2D FirstControlPoint = FVector2D(0.25, 0.1);
 
-	/** Handle arriving at the end point. Its X coordinate is constrained to normalized time. */
+	/** Handle arriving at the end point. X is constrained to 0..1 and Y to -2..3. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widget Transition")
 	FVector2D SecondControlPoint = FVector2D(0.25, 1.0);
 
 	/** Evaluates the easing at normalized progress. */
 	float Evaluate(float Progress) const;
-	/** Clamps control X to the normalized time interval and Y to the supported overshoot range. */
+	/** Clamps control X to normalized time and each control Y to its supported overshoot range. */
 	void Clamp();
 };
 
@@ -186,7 +186,7 @@ public:
 	static FWidgetTransition From(FWidgetTransition Transition, bool bUseFrom, FWidgetTransitionValue FromValue, UPARAM(meta = (ToolTip = "Applies From Value immediately, before the transition delay.")) bool bIgnoreDelay = true);
 
 	/** Applies a normalized cubic Bezier timing function to this transition. */
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition", AdvancedDisplay = "Easing"))
 	static FWidgetTransition Easing(FWidgetTransition Transition, FWidgetTransitionEasing Easing);
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
 	static FWidgetTransition Spring(FWidgetTransition Transition, UPARAM(meta = (ClampMin = "1.0", ToolTip = "Spring stiffness coefficient. 160 matches the default response; larger values make the spring faster. It does not affect Fit To Time.")) float SpringForce = 160.0f, float SpringDamping = 0.45f, UPARAM(meta = (AdvancedDisplay, ClampMin = "0.0")) float SpringMaxSpeed = 0.0f, UPARAM(meta = (AdvancedDisplay, ToolTip = "Derives spring frequency from Time and Damping so the transition completes at Time. Spring Force does not affect this mode.")) bool bFitToTime = false);

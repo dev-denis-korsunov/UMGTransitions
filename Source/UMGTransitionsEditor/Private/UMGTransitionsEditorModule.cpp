@@ -7,6 +7,7 @@
 #include "Components/Image.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
+#include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_Self.h"
 #include "SGraphPin.h"
@@ -18,12 +19,14 @@
 #include "ScopedTransaction.h"
 #include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
+#include "Styling/ToolBarStyle.h"
 #include "WidgetBlueprint.h"
 #include "Widgets/Input/SNumericEntryBox.h"
 #include "Widgets/Input/SSegmentedControl.h"
 #include "Widgets/Colors/SColorBlock.h"
 #include "Widgets/Colors/SColorPicker.h"
 #include "Widgets/Images/SImage.h"
+#include "Widgets/Input/SComboButton.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/SLeafWidget.h"
 #include "Widgets/SBoxPanel.h"
@@ -265,11 +268,12 @@ namespace UMGTransitionsEditor
 			OnValueChanged = InArgs._OnValueChanged;
 			OnEditStarted = InArgs._OnEditStarted;
 			OnEditFinished = InArgs._OnEditFinished;
+			SetClipping(EWidgetClipping::ClipToBounds);
 		}
 
 		virtual FVector2D ComputeDesiredSize(float) const override
 		{
-			return FVector2D(VisualCanvasWidth + HandleSize, VisualCanvasHeight + HandleSize);
+			return FVector2D(VisualCanvasWidth + AnchorSize, VisualCanvasHeight + AnchorSize);
 		}
 
 		virtual int32 OnPaint(const FPaintArgs&, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle&, bool) const override
@@ -356,11 +360,19 @@ namespace UMGTransitionsEditor
 			case EDragMode::FirstHandle:
 			{
 				Easing.FirstControlPoint += GetConstrainedHandleValueDelta(Plot, FVector2D::Zero(), Easing.FirstControlPoint, ScreenDelta);
+				if (MouseEvent.IsShiftDown())
+				{
+					Easing.FirstControlPoint = SnapControlPointToVisualGrid(Plot, FVector2D::Zero(), Easing.FirstControlPoint);
+				}
 				break;
 			}
 			case EDragMode::SecondHandle:
 			{
 				Easing.SecondControlPoint += GetConstrainedHandleValueDelta(Plot, FVector2D(1.0, 1.0), Easing.SecondControlPoint, ScreenDelta);
+				if (MouseEvent.IsShiftDown())
+				{
+					Easing.SecondControlPoint = SnapControlPointToVisualGrid(Plot, FVector2D(1.0, 1.0), Easing.SecondControlPoint);
+				}
 				break;
 			}
 			case EDragMode::Sculpt:
@@ -415,6 +427,7 @@ namespace UMGTransitionsEditor
 		};
 
 		static constexpr float HandleSize = 8.0f;
+		static constexpr float AnchorSize = 10.0f;
 		static constexpr float HandleHitRadius = 10.0f;
 		static constexpr double VisualCanvasWidth = 165.0;
 		static constexpr double VisualCanvasHeight = 154.6875;
@@ -439,7 +452,7 @@ namespace UMGTransitionsEditor
 		FSlateRect GetCanvasRect(const FGeometry& Geometry) const
 		{
 			const FVector2D Size = Geometry.GetLocalSize();
-			const FVector2D CanvasSize(FMath::Min(VisualCanvasWidth, Size.X - HandleSize), FMath::Min(VisualCanvasHeight, Size.Y - HandleSize));
+			const FVector2D CanvasSize(FMath::Min(VisualCanvasWidth, Size.X - AnchorSize), FMath::Min(VisualCanvasHeight, Size.Y - AnchorSize));
 			const FVector2D Offset = (Size - CanvasSize) * 0.5;
 			return FSlateRect(Offset.X, Offset.Y, Offset.X + CanvasSize.X, Offset.Y + CanvasSize.Y);
 		}
@@ -475,6 +488,23 @@ namespace UMGTransitionsEditor
 			ConstrainedHandle.X = FMath::Clamp(ConstrainedHandle.X, static_cast<double>(Plot.Left), static_cast<double>(Plot.Right));
 			const FVector2D EffectiveScreenDelta = ConstrainedHandle - VisualHandle;
 			return FVector2D(EffectiveScreenDelta.X / Plot.GetSize().X, -EffectiveScreenDelta.Y / Plot.GetSize().Y) / HandleVisualScale;
+		}
+
+		static FVector2D SnapControlPointToVisualGrid(const FSlateRect& Plot, FVector2D AnchorValue, FVector2D MathematicalHandle)
+		{
+			constexpr double SnapStep = 0.05;
+			const FVector2D Anchor = ToScreen(Plot, AnchorValue);
+			const FVector2D VisualHandle = GetVisualHandlePosition(Anchor, ToScreen(Plot, MathematicalHandle));
+			FVector2D VisualValue(
+				(VisualHandle.X - Plot.Left) / Plot.GetSize().X,
+				(Plot.Bottom - VisualHandle.Y) / Plot.GetSize().Y);
+			VisualValue.X = FMath::GridSnap(VisualValue.X, SnapStep);
+			VisualValue.Y = FMath::GridSnap(VisualValue.Y, SnapStep);
+			const FVector2D SnappedVisual = ToScreen(Plot, VisualValue);
+			const FVector2D SnappedMathematical = Anchor + (SnappedVisual - Anchor) / HandleVisualScale;
+			return FVector2D(
+				( SnappedMathematical.X - Plot.Left) / Plot.GetSize().X,
+				(Plot.Bottom - SnappedMathematical.Y) / Plot.GetSize().Y);
 		}
 
 		void UpdateHoveredHandle(const FGeometry& Geometry, FVector2D LocalPosition)
@@ -842,6 +872,7 @@ namespace UMGTransitionsEditor
 			return SNew(SBox)
 				.Visibility(this, &SGraphPin::GetDefaultValueVisibility)
 				.IsEnabled(this, &SGraphPin::GetDefaultValueIsEditable)
+				.Clipping(EWidgetClipping::ClipToBounds)
 			[
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot()
@@ -1017,22 +1048,27 @@ namespace UMGTransitionsEditor
 	protected:
 		virtual TSharedRef<SWidget> GetDefaultValueWidget() override
 		{
+			const FToolBarStyle& ToolBarStyle = FAppStyle::Get().GetWidgetStyle<FToolBarStyle>("EditorViewportToolBar");
 			return SNew(SBox)
 				.Visibility(this, &SGraphPin::GetDefaultValueVisibility)
 				.IsEnabled(this, &SGraphPin::GetDefaultValueIsEditable)
+				.Clipping(EWidgetClipping::ClipToBounds)
 			[
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot()
 				.AutoHeight()
 				.Padding(0.0f, 0.0f, 0.0f, 3.0f)
 				[
-					SAssignNew(TemplateComboBox, SComboBox<TSharedPtr<FEasingTemplate>>)
-					.OptionsSource(&Templates)
-					.OnGenerateWidget(this, &STransitionEasingPin::MakeTemplateWidget)
-					.OnSelectionChanged(this, &STransitionEasingPin::SelectTemplate)
+					SNew(SComboButton)
+					.ButtonStyle(&ToolBarStyle.ButtonStyle)
+					.ContentPadding(ToolBarStyle.ButtonPadding)
+					.OnGetMenuContent(this, &STransitionEasingPin::GetTemplateMenuContent)
+					.ButtonContent()
 					[
 						SNew(STextBlock)
 						.Text(NSLOCTEXT("UMGTransitions", "EasingTemplate", "Template"))
+						.TextStyle(&ToolBarStyle.LabelStyle)
+						.ColorAndOpacity(FSlateColor::UseForeground())
 					]
 				]
 				+ SVerticalBox::Slot()
@@ -1048,13 +1084,24 @@ namespace UMGTransitionsEditor
 		}
 
 	private:
-		TSharedRef<SWidget> MakeTemplateWidget(TSharedPtr<FEasingTemplate> Template) const
+		TSharedRef<SWidget> GetTemplateMenuContent()
 		{
-			return SNew(STextBlock)
-				.Text(Template.IsValid() ? FText::FromString(Template->Name) : FText::GetEmpty());
+			FMenuBuilder MenuBuilder(true, nullptr);
+			for (const TSharedPtr<FEasingTemplate>& Template : Templates)
+			{
+				if (Template.IsValid())
+				{
+					MenuBuilder.AddMenuEntry(
+						FText::FromString(Template->Name),
+						FText::GetEmpty(),
+						FSlateIcon(),
+						FUIAction(FExecuteAction::CreateSP(this, &STransitionEasingPin::ApplyTemplate, Template)));
+				}
+			}
+			return MenuBuilder.MakeWidget();
 		}
 
-		void SelectTemplate(TSharedPtr<FEasingTemplate> Template, ESelectInfo::Type)
+		void ApplyTemplate(TSharedPtr<FEasingTemplate> Template)
 		{
 			if (Template.IsValid())
 			{
@@ -1106,7 +1153,6 @@ namespace UMGTransitionsEditor
 		}
 
 		TArray<TSharedPtr<FEasingTemplate>> Templates;
-		TSharedPtr<SComboBox<TSharedPtr<FEasingTemplate>>> TemplateComboBox;
 		TUniquePtr<FScopedTransaction> ActiveEasingEditTransaction;
 	};
 

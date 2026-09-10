@@ -26,7 +26,7 @@ Build a transition with pure nodes, then start it with **Add Widget Transition**
 
 The Widget Property picker exposes supported numeric widget properties, slot properties, and material parameters for supported Image and Border widgets. Frequently used UMG fields (`RenderOpacity`, transform translation/scale/shear/angle, and pivot) use direct runtime adapters; other compatible float, `Vector2D`, and `LinearColor` properties use the property-path fallback.
 
-`Repeat Count = -1` repeats indefinitely. `Spring Force` is an unbounded stiffness coefficient: `160` matches the default response, values down to `1` are softer, and larger values are faster. `Spring Damping` remains normalized in the range 0–1; `Spring Max Speed = 0` leaves velocity unrestricted. The `Easing` function takes a cubic Bezier with fixed endpoints `(0,0)` and `(1,1)`; control-point X is constrained to `0..1`, while Y supports overshoot in `-0.7..1.7`.
+`Repeat Count = -1` repeats indefinitely. `Spring Force` is an unbounded stiffness coefficient: `160` matches the default response, values down to `1` are softer, and larger values are faster. `Spring Damping` remains normalized in the range 0–1; `Spring Max Speed = 0` leaves velocity unrestricted. The `Easing` function takes a cubic Bezier with fixed endpoints `(0,0)` and `(1,1)`; control-point X is constrained to `0..1`, while both control-point Y values support overshoot in `-2..3`.
 
 For execution pins, use **Add Widget Transition Async**. It exposes `Started`, `Updated`, and `Finished` while retaining the same transition definition.
 
