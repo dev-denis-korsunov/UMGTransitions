@@ -2,10 +2,12 @@
 
 ## Содержание
 
-1. [Как читать статусы](#как-читать-статусы)
-2. [Transition update path](#transition-update-path)
-3. [Открытое regression coverage](#открытое-regression-coverage)
-4. [Решённые callback-проблемы](#решённые-callback-проблемы)
+- [Как читать статусы](#как-читать-статусы)
+- [Transition update path](#transition-update-path)
+- [Открытое regression coverage](#открытое-regression-coverage)
+- [Решённые callback-проблемы](#решённые-callback-проблемы)
+
+
 
 ## Как читать статусы
 
@@ -19,13 +21,20 @@
 | Critical | Solved | Callback мог изменить `TArray` transitions, пока tick держал ссылку на его элемент. | Delegates dispatch-ятся из локальной копии, structural removals откладываются. `Runtime.CallbackReentrancy`. |
 | High | Solved | Explicit From с нулевым delay не применялся до первого tick. | `StartTransition` сразу записывает non-deferred From. `Runtime.ExplicitFrom`. |
 | High | Open | From после delay и повторные циклы не всегда показывают точное стартовое значение один кадр. | Выделить `ApplyCycleStartValue` с учётом `bIgnoreDelay`, repeat и Yo Yo. |
-| High | Solved | Async action могла не закончиться при отказе запуска. | Start возвращает success, async освобождается при failure. Покрыто async lifecycle tests. |
+| High | Solved | Async action могла не закончиться при отказе запуска. | Start возвращает success, async освобождается при failure. Путь отказа виден в Activate; отдельный end-to-end тест invalid context/binding отсутствует в приведённом покрытии. |
 | Medium | Solved | Spring callback progress выглядел как simulation progress, хотя физическая duration могла отличаться. | Public Updated передаёт только фактическое `Transition Value`. |
 
 ## Открытое regression coverage
 
-- Repeat с delay и Yo Yo должен явно проверить value на старте каждого цикла.
-- Изменение apply-from semantics требует отдельного regression теста до исправления.
+| Домен | Что не подтверждено текущим тестом | Статус |
+| --- | --- | --- |
+| From / repeat | Точный стартовый кадр после delay и Yo Yo | Открытый runtime-вопрос |
+| Async | Отказ старта при invalid context/binding через полный async node | Проверка кода, нет отдельного end-to-end regression |
+| Easing | Полная точность binary 12 и точные endpoints | Есть лишь проверки с допуском и одной формы |
+| ColorMix | Shortest path, gray endpoint, alpha, spring interaction | Выделенного набора нет |
+| Composer | Реальная cached geometry для wave | GridWaveTranslation задаёт направления вручную |
+
+Пропуск теста сам по себе не доказывает дефект. [Easing](CubicBezier.md#текущее-покрытие), [ColorMix](ColorMix.md#покрытие), [Composer](Composer.md#производительность-и-тестирование) описывают точные границы.
 
 ## Решённые callback-проблемы
 

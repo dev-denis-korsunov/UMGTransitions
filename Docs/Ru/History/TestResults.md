@@ -1,5 +1,7 @@
 # UMGTransitions — журнал automation-тестов
 
+Архив первичных записей: старые имена API, оценки шума и размеры относятся к своим этапам. Сопоставимые таблицы и границы выводов: [Тестирование](../Testing.md).
+
 2026-09-09 — UE 5.7 / Mac arm64 Development: `Fit To Time` semantics accepted.
 `Spring Force` no longer changes the derived frequency when `Fit To Time` is enabled;
 the spring is therefore controlled by `Time`, damping and the internal relative tolerance.
@@ -119,9 +121,9 @@ runtime transition state, and lifecycle dispatch records. This eliminates the am
 | 2026-09-09 | UE 5.7 / Mac arm64 Development | `Runtime.PipeOrder`, `Performance.PipeHandoff` | Passed | Keyed FIFO queues + active-key snapshot. Runtime 15/15. Linear 1/20/100/500: 0.870/13.036/71.567/380.379 μs/tick, 0.870/0.652/0.716/0.761 μs/handoff. Spring: 0.954/14.007/70.268/381.599, 0.954/0.700/0.703/0.763. 500 burst −88.8%. |
 | 2026-09-09 | UE 5.7 / Mac arm64 Development | `Runtime.Spring.FitToTime`, `Performance.ModeMatrix`, `Performance.SpringTargetUpdate` | Passed | Fit To Time ignores Force and preserves the deadline. Runtime 16/16. 500 spring: 10.680/24.842 and 10.554/25.224 μs/frame in two runs (без/с binding); target updates 25.514 μs/frame. |
 
-## Актуальный baseline
+## Исторический baseline после перехода на TArray
 
-Последний принятый вариант: `TArray<FWidgetTransition>`, dense `TArray<FWidgetTransitionSpring>` и отдельный `SpringTransitionIndices`.
+Состояние на этапе перехода на TArray: `TArray<FWidgetTransition>`, dense `TArray<FWidgetTransitionSpring>` и отдельный `SpringTransitionIndices`.
 
 | Тест | Ориентир |
 | --- | --- |
