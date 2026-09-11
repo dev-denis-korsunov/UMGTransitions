@@ -61,9 +61,9 @@ versus the earlier 6.754/6.826 μs. Log: `/tmp/UMGTransitionsPipeQueuePerformanc
 runtime transition state, and lifecycle dispatch records. This eliminates the ambiguous
 `Pipe` successor after parent removal; explicit widget removal remains the caller's responsibility.
 
-[English summary](../En/TestResults.md)
+[English summary](../../En/TestResults.md)
 
-Здесь записываются только завершённые прогоны. Описание покрытия находится в [Testing.md](Testing.md), методика perf-тестов — в [PerformanceTests.md](Testing/PerformanceTests.md), причины архитектурных решений — в [OptimizationHistory.md](Testing/OptimizationHistory.md).
+Здесь записываются только завершённые прогоны. Описание покрытия находится в [Testing.md](../Testing.md), методика perf-тестов — в [PerformanceTests.md](PerformanceTests.md), причины архитектурных решений — в [OptimizationHistory.md](OptimizationHistory.md).
 
 Новая строка добавляется после успешного запуска с фактическими значениями из лога. `Perf`-тесты не считаются unit-тестами с жёстким порогом: их результаты сравниваются лишь с прогонами той же конфигурации.
 

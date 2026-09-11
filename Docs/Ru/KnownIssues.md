@@ -1,42 +1,38 @@
 # Известные проблемы
 
-[English version](../En/KnownIssues.md)
+## Содержание
 
-Подтверждённые проблемы runtime-логики. Это не roadmap: запись остаётся здесь до исправления и regression-теста.
+1. [Как читать статусы](#как-читать-статусы)
+2. [Transition update path](#transition-update-path)
+3. [Открытое regression coverage](#открытое-regression-coverage)
+4. [Решённые callback-проблемы](#решённые-callback-проблемы)
+
+## Как читать статусы
+
+Страница содержит подтверждённые runtime/editor проблемы. Решённая запись остаётся как история качества, пока полезна для понимания инварианта и его regression-теста. Roadmap-функции сюда не попадают.
 
 ## Transition update path
 
-| Priority | Status | Problem | Current behavior | Intended resolution |
-| --- | --- | --- | --- | --- |
-| Critical | Solved | Inconsistent tick delta | `FWidgetTransitionSpring::Tick` получал полный `DeltaTime`, тогда как `FWidgetTransition::CurrentTime` ограничивался 50 ms. Во время hitch spring мог завершиться на секунду симуляции, когда transition продвинулся только на 50 ms. | `EffectiveDeltaTime` вычисляется один раз в `TickTransitions` и передаётся обоим проходам. Добавлен regression-тест `Runtime.TickDelta`. |
-| Critical | Solved | Callback reentrancy invalidates transition reference | `Started`, `Updated` и `Finished` исполнялись, пока tick хранил ссылку на элемент `TArray`. Blueprint callback мог очистить, заменить или добавить transition, вызвав `RemoveAtSwap` или reallocation; последующий доступ к старой ссылке был небезопасен. | Callback исполняется из локальной копии delegate, а структурные удаления откладываются до завершения dispatch. После этого sidecar-индексы чинятся при `RemoveAtSwap`. Regression-тест `Runtime.CallbackReentrancy` покрывает очистку собственного transition из всех трёх callbacks и рост массива из `Updated`. |
-| High | Solved | Явный `FromValue` не применялся до первого tick при нулевом Delay | `StartTransition` теперь сразу записывает явно заданный non-deferred From. Regression-тест `Runtime.ExplicitFrom` проверяет значение до первого tick, середину и завершение перехода. |
-| High | Open | Apply From After Delay и повторные циклы не показывают точное стартовое значение цикла один кадр | Выделить `ApplyCycleStartValue` для старта после delay и restart с учётом `bApplyFromAfterDelay`. |
-| High | Solved | Async action does not finish when start fails | `StartTransition` досрочно возвращает при invalid world/widget/binding/value, но async action уже зарегистрирован и никогда не получает lifecycle callback. | Пусть `StartTransition` возвращает success/ID; при неуспехе async action вызывает `Finished` и `SetReadyToDestroy`. |
-| Medium | Solved | Spring callback progress is not simulation progress | Для spring без fit-to-time `NormalizedProgress` был основан на `Time`, хотя симуляция могла продолжаться после достижения `1.0`. | Progress удалён из публичного `Updated`: событие возвращает только фактический `Transition Value`. |
-
-## Regression coverage to add
-
-- Hitch: один tick с `DeltaTime > 1/20` не рассинхронизирует spring и `CurrentTime`.
-- Solved: callback clears its own transition during Started, Updated и Finished; `Updated` also forces transition-array reallocation.
-- Solved: explicit From + zero delay применяется до первого tick (`Runtime.ExplicitFrom`).
-- Apply From After Delay, repeat with delay и YoYo cycle starts.
-- Async transition with invalid binding finishes and освобождает action.
-
-## Callback review — 2026-09-09
-
-| Priority | Status | Problem | Resolution |
+| Приоритет | Статус | Проблема | Решение и покрытие |
 | --- | --- | --- | --- |
-| High | Solved | Native-only Started и final Updated пропускались | Удалён отдельный native dispatch. C++ builder принимает готовые dynamic delegates через BindStart, BindUpdate, BindFinish. Runtime.NativeBuilder проверяет доставку всех трёх событий. |
-| High | Solved | Отмена оставляла async action зарегистрированным | Lifecycle sidecar хранит слабую ссылку на async owner; удаление освобождает его через SetReadyToDestroy без публичного Finished. Runtime.CallbackCancellation покрывает Clear, замену и invalid widget. |
-| Medium | Solved | Endpoint repeat доставлялся после следующего delay | Override endpoint принудительно отправляется на границе цикла до delay, независимо от UpdateInterval. Runtime.RepeatCallbackDelay проверяет callback и FieldNotify property. |
+| Critical | Solved | Spring получал полный `DeltaTime`, а transition time был ограничен 50 ms. | Один `EffectiveDeltaTime` передаётся обоим путям. `Runtime.TickDelta`. |
+| Critical | Solved | Callback мог изменить `TArray` transitions, пока tick держал ссылку на его элемент. | Delegates dispatch-ятся из локальной копии, structural removals откладываются. `Runtime.CallbackReentrancy`. |
+| High | Solved | Explicit From с нулевым delay не применялся до первого tick. | `StartTransition` сразу записывает non-deferred From. `Runtime.ExplicitFrom`. |
+| High | Open | From после delay и повторные циклы не всегда показывают точное стартовое значение один кадр. | Выделить `ApplyCycleStartValue` с учётом `bIgnoreDelay`, repeat и Yo Yo. |
+| High | Solved | Async action могла не закончиться при отказе запуска. | Start возвращает success, async освобождается при failure. Покрыто async lifecycle tests. |
+| Medium | Solved | Spring callback progress выглядел как simulation progress, хотя физическая duration могла отличаться. | Public Updated передаёт только фактическое `Transition Value`. |
 
-StartTransition теперь возвращает успех: builder передаёт этот результат вызывающему коду, async завершает себя при отказе запуска.
+## Открытое regression coverage
 
-C++ callback должен быть UFUNCTION с аргументом FWidgetTransitionValue. Пример:
+- Repeat с delay и Yo Yo должен явно проверить value на старте каждого цикла.
+- Изменение apply-from semantics требует отдельного regression теста до исправления.
 
-```cpp
-FOnWidgetTransitionUpdate Callback;
-Callback.BindDynamic(this, &UMyWidget::HandleTransitionUpdated);
-Builder.BindUpdate(Callback);
-```
+## Решённые callback-проблемы
+
+| Приоритет | Статус | Проблема | Решение |
+| --- | --- | --- | --- |
+| High | Solved | Native-only Started и final Updated пропускались. | Единый dynamic delegate path; C++ builder принимает BindStart/BindUpdate/BindFinish. `Runtime.NativeBuilder`. |
+| High | Solved | Отмена оставляла async action зарегистрированной. | Lifecycle sidecar хранит weak async owner и освобождает его без публичного Finished. `Runtime.CallbackCancellation`. |
+| Medium | Solved | Endpoint repeat доставлялся после следующего delay. | Override endpoint dispatch-ится на границе цикла независимо от Event Interval. `Runtime.RepeatCallbackDelay`. |
+
+Для устройства lifecycle и стоимости callbacks: [Events](Events.md). Для правил запуска и поиска regression: [Тестирование](Testing.md).

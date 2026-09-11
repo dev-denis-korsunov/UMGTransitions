@@ -1,53 +1,43 @@
 # UMGTransitions
 
-UMGTransitions is an Unreal Engine 5 plugin for runtime UMG transitions. It provides compact Blueprint nodes for animating widget properties, editable cubic Bezier easing, spring motion, lifecycle events, and selection of widgets from nested UMG hierarchies.
+UMGTransitions is an Unreal Engine 5 plugin for reusable runtime UMG property transitions. Build a Transition with compact Blueprint nodes, then apply it to widget properties, material parameters, text counters, and groups of widgets.
 
-## Requirements
+## What it includes
 
-- Unreal Engine 5.7 or later
-- C++ project, or a Blueprint project with a C++ toolchain available to build the plugin
+- property, transform, material scalar/vector, and color transitions;
+- cubic Bézier easing editor and templates;
+- analytical spring motion with optional Fit To Time;
+- repeat, Yo Yo, Replace, Skip, and Pipe modes;
+- async lifecycle events, FieldNotify-friendly updates, and configurable event interval;
+- Widget Selector for hierarchy traversal, ordering, and stagger/wave choreography.
 
-## Installation
+## Minimal Blueprint path
 
-1. Copy `UMGTransitions` into your project's `Plugins/` directory.
-2. Regenerate project files if Unreal asks for it, then build the project.
-3. Enable **UMGTransitions** in **Edit → Plugins** and restart the editor.
+```text
+Make Transition Value → Create Widget Transition → Add Widget Transition
+```
 
-The plugin includes runtime code and an editor module for the Widget Property picker.
+## Performance
 
-## Widget transitions
+The runtime keeps transition work compact: common UMG properties use direct adapters, spring state is stored separately from linear transitions, and Pipe uses keyed FIFO queues. Actual cost depends primarily on active transition count, property binding, callbacks, and platform.
 
-Build a transition with pure nodes, then start it with **Add Widget Transition** or **Add Widget Transition Array**.
+See the [testing methodology and current benchmarks](Docs/Ru/Testing.md) before comparing numbers.
 
-1. Create a `Transition Value` with **Make Float Transition Value**, **Make Vector2D Transition Value**, or **Make Color Transition Value**.
-2. Use **Create Widget Transition** to choose a target `Widget` and `Widget Property`.
-3. Expand **Create Widget Transition** for optional repeat, Yo Yo, repeat delay, ColorMix, removal, and event interval settings; compose **From**, **Easing**, and **Spring** only when needed.
-4. Start the result with **Add Widget Transition**.
+## Requirements and installation
 
-The Widget Property picker exposes supported numeric widget properties, slot properties, and material parameters for supported Image and Border widgets. Frequently used UMG fields (`RenderOpacity`, transform translation/scale/shear/angle, and pivot) use direct runtime adapters; other compatible float, `Vector2D`, and `LinearColor` properties use the property-path fallback.
+- Unreal Engine 5.7 or later.
+- A C++ project, or a Blueprint project with a C++ toolchain for building the plugin.
 
-`Repeat Count = -1` repeats indefinitely. `Spring Force` is an unbounded stiffness coefficient: `160` matches the default response, values down to `1` are softer, and larger values are faster. `Spring Damping` remains normalized in the range 0–1; `Spring Max Speed = 0` leaves velocity unrestricted. The `Easing` function takes a cubic Bezier with fixed endpoints `(0,0)` and `(1,1)`; control-point X is constrained to `0..1`, while both control-point Y values support overshoot in `-2..3`.
+Copy `UMGTransitions` to the project's `Plugins/` directory, enable it through **Edit → Plugins**, and restart the editor if requested.
 
-For execution pins, use **Add Widget Transition Async**. It exposes `Started`, `Updated`, and `Finished` while retaining the same transition definition.
+## Documentation
 
-## Widget Selector
-
-`Widget Selector` is a Blueprint function library for traversing UMG hierarchies:
-
-- get a User Widget's tree root or a named widget;
-- select direct children, all descendants, a specific depth, or all levels through a depth;
-- navigate to a parent or the full parent chain;
-- find descendants by one or several names.
-
-Traversal is depth-first and crosses nested `WidgetTree → UUserWidget` boundaries, so composed User Widgets behave as one hierarchy.
-
-## Examples and tests
-
-Example assets are included under `Content/TransitionExamples`.
-
-Documentation is available in [English](Docs/En/README.md) and [Russian](Docs/Ru/README.md). Automation tests and benchmark notes are separate from historical performance experiments.
-Confirmed runtime defects and their required regression coverage are tracked in [English](Docs/En/KnownIssues.md) and [Russian](Docs/Ru/KnownIssues.md).
+- [Russian documentation](Docs/Ru/Index.md)
+- [Getting started](Docs/Ru/Usage.md)
+- [Transition](Docs/Ru/Transition.md)
+- [Performance and Automation](Docs/Ru/Testing.md)
+- [Known issues](Docs/Ru/KnownIssues.md)
 
 ## License
 
-UMGTransitions is released under the [MIT License](LICENSE).
+[MIT License](LICENSE)
