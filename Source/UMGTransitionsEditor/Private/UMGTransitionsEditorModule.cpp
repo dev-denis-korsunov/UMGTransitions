@@ -278,19 +278,31 @@ namespace UMGTransitionsEditor
 
 		virtual FVector2D ComputeDesiredSize(float) const override
 		{
-			return FVector2D(VisualCanvasWidth + AnchorSize, VisualCanvasHeight + AnchorSize);
+			// Same preferred footprint as Runtime Float Curve. The actual canvas is not capped:
+			// Details panels and graph nodes may allocate any larger size.
+			return FVector2D(DefaultCanvasWidth, DefaultCanvasHeight);
 		}
 
-		virtual int32 OnPaint(const FPaintArgs&, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle&, bool) const override
+		virtual int32 OnPaint(const FPaintArgs&, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool) const override
 		{
-			const FSlateBrush* WhiteBrush = FCoreStyle::Get().GetBrush("WhiteBrush");
 			const FSlateRect Canvas = GetCanvasRect(AllottedGeometry);
-			FSlateDrawElement::MakeBox(OutDrawElements, LayerId, AllottedGeometry.ToPaintGeometry(Canvas.GetSize(), FSlateLayoutTransform(FVector2D(Canvas.Left, Canvas.Top))), WhiteBrush, ESlateDrawEffect::None, FLinearColor(0.012f, 0.014f, 0.015f, 1.0f));
+			// SCurveEditor draws CurveEd.TimelineArea over its own dark panel. This leaf widget
+			// has no such parent panel, so provide that same dark base explicitly.
+			const FSlateBrush* WhiteBrush = FCoreStyle::Get().GetBrush("WhiteBrush");
+			const FLinearColor CurveEditorBackgroundColor(0.015f, 0.015f, 0.015f, 1.0f);
+			FSlateDrawElement::MakeBox(
+				OutDrawElements,
+				LayerId,
+				AllottedGeometry.ToPaintGeometry(Canvas.GetSize(), FSlateLayoutTransform(FVector2D(Canvas.Left, Canvas.Top))),
+				WhiteBrush,
+				ESlateDrawEffect::None,
+				CurveEditorBackgroundColor * InWidgetStyle.GetColorAndOpacityTint());
 
 			const FSlateRect Plot = GetPlotRect(AllottedGeometry);
 			const FPaintGeometry PaintGeometry = AllottedGeometry.ToPaintGeometry();
-			const FLinearColor GridColor(0.048f, 0.053f, 0.056f, 0.9f);
-			DrawAlignedGrid(OutDrawElements, LayerId + 1, PaintGeometry, Canvas, Plot, 2, 2, GridColor);
+			// Matches SCurveEditor's Runtime Float Curve defaults.
+			const FLinearColor GridColor(0.0f, 0.0f, 0.0f, 0.3f);
+			DrawAlignedGrid(OutDrawElements, LayerId + 1, PaintGeometry, Canvas, Plot, 4, 2, GridColor);
 
 			const FWidgetTransitionEasing Easing = ValueAttribute.Get();
 			const FVector2D Start = ToScreen(Plot, FVector2D::Zero());
@@ -299,19 +311,20 @@ namespace UMGTransitionsEditor
 			const FVector2D MathematicalSecond = ToScreen(Plot, Easing.SecondControlPoint);
 			const FVector2D First = GetVisualHandlePosition(Start, MathematicalFirst);
 			const FVector2D Second = GetVisualHandlePosition(End, MathematicalSecond);
-			const FLinearColor HandleColor(0.48f, 0.55f, 0.62f, 0.9f);
-			const FLinearColor HoveredHandleColor(0.34f, 0.90f, 0.12f, 1.0f);
-			const FLinearColor FirstHandleColor = HoveredHandle == EHandle::First ? HoveredHandleColor : HandleColor;
-			const FLinearColor SecondHandleColor = HoveredHandle == EHandle::Second ? HoveredHandleColor : HandleColor;
-			FSlateDrawElement::MakeLines(OutDrawElements, LayerId + 2, PaintGeometry, { FVector2f(Start), FVector2f(First) }, ESlateDrawEffect::None, FirstHandleColor, true, 1.0f);
-			FSlateDrawElement::MakeLines(OutDrawElements, LayerId + 2, PaintGeometry, { FVector2f(Second), FVector2f(End) }, ESlateDrawEffect::None, SecondHandleColor, true, 1.0f);
+			// Mirrors Curve Editor point tinting: a dim neutral point becomes bright white when hovered.
+			const FLinearColor PointColor(0.4f, 0.4f, 0.4f, 1.0f);
+			const FLinearColor HoveredPointColor = FLinearColor::White;
+			const FLinearColor FirstHandleColor = HoveredHandle == EHandle::FirstHandle ? HoveredPointColor : PointColor;
+			const FLinearColor SecondHandleColor = HoveredHandle == EHandle::SecondHandle ? HoveredPointColor : PointColor;
+			DrawTangentLine(OutDrawElements, LayerId + 2, PaintGeometry, Start, First, FirstHandleColor);
+			DrawTangentLine(OutDrawElements, LayerId + 2, PaintGeometry, End, Second, SecondHandleColor);
 			const FLinearColor AxisColor(0.16f, 0.17f, 0.18f, 0.95f);
 			FSlateDrawElement::MakeLines(OutDrawElements, LayerId + 2, PaintGeometry, { FVector2f(Plot.Left, Start.Y), FVector2f(Plot.Right, Start.Y) }, ESlateDrawEffect::None, AxisColor, true, 1.0f);
 			FSlateDrawElement::MakeLines(OutDrawElements, LayerId + 2, PaintGeometry, { FVector2f(Plot.Left, End.Y), FVector2f(Plot.Right, End.Y) }, ESlateDrawEffect::None, AxisColor, true, 1.0f);
-			const FLinearColor CurveColor(0.30f, 0.72f, 1.0f, 1.0f);
-			FSlateDrawElement::MakeCubicBezierSpline(OutDrawElements, LayerId + 3, PaintGeometry, FVector2f(Start), FVector2f(MathematicalFirst), FVector2f(MathematicalSecond), FVector2f(End), 2.5f, ESlateDrawEffect::None, CurveColor);
-			DrawAnchorPoint(OutDrawElements, LayerId + 4, AllottedGeometry, Start, CurveColor);
-			DrawAnchorPoint(OutDrawElements, LayerId + 4, AllottedGeometry, End, CurveColor);
+			const FLinearColor CurveColor(0.2f, 0.2f, 0.2f, 1.0f);
+			FSlateDrawElement::MakeCubicBezierSpline(OutDrawElements, LayerId + 3, PaintGeometry, FVector2f(Start), FVector2f(MathematicalFirst), FVector2f(MathematicalSecond), FVector2f(End), 2.0f, ESlateDrawEffect::None, CurveColor);
+			DrawAnchorPoint(OutDrawElements, LayerId + 4, AllottedGeometry, Start, PointColor, InWidgetStyle);
+			DrawAnchorPoint(OutDrawElements, LayerId + 4, AllottedGeometry, End, PointColor, InWidgetStyle);
 			DrawHandle(OutDrawElements, LayerId + 5, AllottedGeometry, First, FirstHandleColor);
 			DrawHandle(OutDrawElements, LayerId + 5, AllottedGeometry, Second, SecondHandleColor);
 			return LayerId + 5;
@@ -419,8 +432,8 @@ namespace UMGTransitionsEditor
 		enum class EHandle : uint8
 		{
 			None,
-			First,
-			Second,
+			FirstHandle,
+			SecondHandle,
 		};
 
 		enum class EDragMode : uint8
@@ -431,11 +444,11 @@ namespace UMGTransitionsEditor
 			Sculpt,
 		};
 
-		static constexpr float HandleSize = 8.0f;
+		static constexpr float HandleSize = 9.0f;
 		static constexpr float AnchorSize = 10.0f;
 		static constexpr float HandleHitRadius = 10.0f;
-		static constexpr double VisualCanvasWidth = 165.0;
-		static constexpr double VisualCanvasHeight = 154.6875;
+		static constexpr double DefaultCanvasWidth = 300.0;
+		static constexpr double DefaultCanvasHeight = 150.0;
 		static constexpr double VisualPlotHeight = 82.5;
 		/** Visual handle length relative to the mathematical control vector. */
 		static constexpr double HandleVisualScale = 0.5;
@@ -457,7 +470,7 @@ namespace UMGTransitionsEditor
 		FSlateRect GetCanvasRect(const FGeometry& Geometry) const
 		{
 			const FVector2D Size = Geometry.GetLocalSize();
-			const FVector2D CanvasSize(FMath::Min(VisualCanvasWidth, Size.X - AnchorSize), FMath::Min(VisualCanvasHeight, Size.Y - AnchorSize));
+			const FVector2D CanvasSize(FMath::Max(0.0, Size.X - AnchorSize), FMath::Max(0.0, Size.Y - AnchorSize));
 			const FVector2D Offset = (Size - CanvasSize) * 0.5;
 			return FSlateRect(Offset.X, Offset.Y, Offset.X + CanvasSize.X, Offset.Y + CanvasSize.Y);
 		}
@@ -516,9 +529,19 @@ namespace UMGTransitionsEditor
 		{
 			const FSlateRect Plot = GetPlotRect(Geometry);
 			const FWidgetTransitionEasing Easing = ValueAttribute.Get();
-			const FVector2D FirstHandle = GetVisualHandlePosition(ToScreen(Plot, FVector2D::Zero()), ToScreen(Plot, Easing.FirstControlPoint));
-			const FVector2D SecondHandle = GetVisualHandlePosition(ToScreen(Plot, FVector2D(1.0, 1.0)), ToScreen(Plot, Easing.SecondControlPoint));
-			const EHandle NewHoveredHandle = (LocalPosition - FirstHandle).SizeSquared() <= HandleHitRadius * HandleHitRadius ? EHandle::First : (LocalPosition - SecondHandle).SizeSquared() <= HandleHitRadius * HandleHitRadius ? EHandle::Second : EHandle::None;
+			const FVector2D Start = ToScreen(Plot, FVector2D::Zero());
+			const FVector2D End = ToScreen(Plot, FVector2D(1.0, 1.0));
+			const FVector2D FirstHandle = GetVisualHandlePosition(Start, ToScreen(Plot, Easing.FirstControlPoint));
+			const FVector2D SecondHandle = GetVisualHandlePosition(End, ToScreen(Plot, Easing.SecondControlPoint));
+			EHandle NewHoveredHandle = EHandle::None;
+			if ((LocalPosition - FirstHandle).SizeSquared() <= HandleHitRadius * HandleHitRadius)
+			{
+				NewHoveredHandle = EHandle::FirstHandle;
+			}
+			else if ((LocalPosition - SecondHandle).SizeSquared() <= HandleHitRadius * HandleHitRadius)
+			{
+				NewHoveredHandle = EHandle::SecondHandle;
+			}
 			if (HoveredHandle != NewHoveredHandle)
 			{
 				HoveredHandle = NewHoveredHandle;
@@ -576,13 +599,50 @@ namespace UMGTransitionsEditor
 		static void DrawHandle(FSlateWindowElementList& OutDrawElements, int32 LayerId, const FGeometry& Geometry, FVector2D Position, FLinearColor Color)
 		{
 			const FVector2D HandleVisualSize(HandleSize, HandleSize);
-			FSlateDrawElement::MakeBox(OutDrawElements, LayerId, Geometry.ToPaintGeometry(HandleVisualSize, FSlateLayoutTransform(Position - HandleVisualSize * 0.5)), FCoreStyle::Get().GetBrush("WhiteBrush"), ESlateDrawEffect::None, Color);
+			FSlateDrawElement::MakeBox(
+				OutDrawElements,
+				LayerId,
+				Geometry.ToPaintGeometry(HandleVisualSize, FSlateLayoutTransform(Position - HandleVisualSize * 0.5)),
+				FAppStyle::Get().GetBrush("GenericCurveEditor.TangentHandle"),
+				ESlateDrawEffect::None,
+				Color);
 		}
 
-		static void DrawAnchorPoint(FSlateWindowElementList& OutDrawElements, int32 LayerId, const FGeometry& Geometry, FVector2D Position, FLinearColor Color)
+		/** Matches Curve Editor tangent lines: stop at the circular tangent handle's edge. */
+		static void DrawTangentLine(FSlateWindowElementList& OutDrawElements, int32 LayerId, const FPaintGeometry& PaintGeometry, FVector2D Anchor, FVector2D Handle, FLinearColor Color)
 		{
-			const FVector2D PointSize(10.0, 10.0);
-			FSlateDrawElement::MakeBox(OutDrawElements, LayerId, Geometry.ToPaintGeometry(PointSize, FSlateLayoutTransform(Position - PointSize * 0.5)), FAppStyle::Get().GetBrush("Graph.Pin.Connected"), ESlateDrawEffect::None, Color);
+			const FVector2D Direction = Handle - Anchor;
+			const double Length = Direction.Length();
+			if (Length <= UE_DOUBLE_SMALL_NUMBER)
+			{
+				return;
+			}
+			// The tangent-handle brush has a one-pixel transparent rim; compensate so the
+			// connecting line reaches its visible circular edge.
+			const double VisibleHandleRadius = HandleSize * 0.5 - 1.0;
+			const FVector2D HandleEdge = Handle - Direction * (VisibleHandleRadius / Length);
+			FSlateDrawElement::MakeLines(
+				OutDrawElements,
+				LayerId,
+				PaintGeometry,
+				{ FVector2f(Anchor), FVector2f(HandleEdge) },
+				ESlateDrawEffect::None,
+				Color,
+				true,
+				1.0f);
+		}
+
+		static void DrawAnchorPoint(FSlateWindowElementList& OutDrawElements, int32 LayerId, const FGeometry& Geometry, FVector2D Position, FLinearColor Color, const FWidgetStyle& WidgetStyle)
+		{
+			const FSlateBrush* KeyBrush = FAppStyle::Get().GetBrush("GenericCurveEditor.CubicKey");
+			const FVector2D PointSize(11.0, 11.0);
+			FSlateDrawElement::MakeBox(
+				OutDrawElements,
+				LayerId,
+				Geometry.ToPaintGeometry(PointSize, FSlateLayoutTransform(Position - PointSize * 0.5)),
+				KeyBrush,
+				ESlateDrawEffect::None,
+				KeyBrush->GetTint(WidgetStyle) * WidgetStyle.GetColorAndOpacityTint() * Color);
 		}
 
 		TAttribute<FWidgetTransitionEasing> ValueAttribute;
@@ -1050,11 +1110,12 @@ namespace UMGTransitionsEditor
 			SGraphPin::Construct(SGraphPin::FArguments(), Pin);
 		}
 
-	protected:
+		protected:
 		virtual TSharedRef<SWidget> GetDefaultValueWidget() override
 		{
 			const FToolBarStyle& ToolBarStyle = FAppStyle::Get().GetWidgetStyle<FToolBarStyle>("EditorViewportToolBar");
 			return SNew(SBox)
+				.WidthOverride(GraphEditorWidth)
 				.Visibility(this, &SGraphPin::GetDefaultValueVisibility)
 				.IsEnabled(this, &SGraphPin::GetDefaultValueIsEditable)
 				.Clipping(EWidgetClipping::ClipToBounds)
@@ -1088,7 +1149,9 @@ namespace UMGTransitionsEditor
 			];
 		}
 
-	private:
+		private:
+		static constexpr float GraphEditorWidth = 175.0f;
+
 		TSharedRef<SWidget> GetTemplateMenuContent()
 		{
 			FMenuBuilder MenuBuilder(true, nullptr);
