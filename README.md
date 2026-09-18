@@ -2,6 +2,10 @@
 
 Runtime UMG property transitions for Unreal Engine.
 
+## Demo
+
+![UMGTransitions demo](Docs/Media/demo.gif)
+
 ## Principles
 
 UMGTransitions is a procedural animation tool for transitions between two widget states, built on [Material Motion](https://m3.material.io/styles/motion/overview) and [Fluent Motion](https://fluent2.microsoft.design/motion) principles adapted to UMG:
