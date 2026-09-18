@@ -1,6 +1,6 @@
 # UMGTransitions
 
-Runtime UMG property transitions for Unreal Engine 5: widgets, transforms, material parameters, colors, text counters, springs, easing, callbacks, and Widget Selector.
+Runtime UMG property transitions for Unreal Engine.
 
 ## Principles
 
@@ -68,9 +68,9 @@ FWidgetTransitionBuilder::Make(this)
     .Add();
 ```
 
-## Composer
+## Widget Composer
 
-Composer turns a UMG hierarchy into a deterministic animation sequence. Collect the widgets, calculate their wave, then use `WaveIndex × Delay` to stagger transitions. It crosses nested `WidgetTree → UserWidget` boundaries and returns each item with its widget, depth, wave index, and wave direction.
+Widget Composer turns a UMG hierarchy into a deterministic animation sequence. Its wave-based sequencing is informed by the [GSAP Staggers](https://gsap.com/resources/getting-started/Staggers) approach: collect the widgets, calculate their wave, then use `WaveIndex × Delay` to stagger transitions. It crosses nested `WidgetTree → UserWidget` boundaries and returns each item with its widget, depth, wave index, and wave direction.
 
 | Function | Purpose |
 | --- | --- |
@@ -113,7 +113,7 @@ Run all editor automation tests with `Automation RunTests UMGTransitions.WidgetT
 | --- | --- | --- |
 | Runtime | Values, binding channels, easing fallback, spring convergence, delay/repeat/YoYo, and add modes | Keeps public transition behavior stable. |
 | Callbacks | Started/Updated/Finished values, intervals, cancellation, reentrancy, and `RemoveAtSwap` | Ensures callbacks can safely change transitions. |
-| Widget Selector | Tree traversal, ordering, duplicate filtering, and wave translation | Keeps selector output deterministic. |
+| Widget Composer | Tree traversal, ordering, duplicate filtering, and wave translation | Keeps composer output deterministic. |
 | Editor | Blueprint node metadata and easing-curve editor integration | Protects Blueprint authoring UX. |
 | Diagnostics | Runtime structure layout and storage budgets | Makes memory-layout changes visible. |
 | Performance | Tick, easing, springs, custom properties, callbacks, async updates, `ClearTransitions`, and `Replace` | Tracks scaling and regressions at 10/100/500 transitions. |

@@ -3,7 +3,7 @@
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 
-#include "WidgetSelectorLibrary.generated.h"
+#include "WidgetComposerLibrary.generated.h"
 
 class UUserWidget;
 class UWidget;
@@ -43,6 +43,14 @@ enum class EWidgetWaveOrigin : uint8
 	Widget UMETA(DisplayName = "Widget"),
 };
 
+/** Direction used when ordering an already composed wave. */
+UENUM(BlueprintType)
+enum class EWidgetWaveSortOrder : uint8
+{
+	NearToFar UMETA(DisplayName = "Near to Far"),
+	FarToNear UMETA(DisplayName = "Far to Near"),
+};
+
 USTRUCT(BlueprintType)
 struct UMGTRANSITIONS_API FWidgetDescendant
 {
@@ -55,19 +63,19 @@ struct UMGTRANSITIONS_API FWidgetDescendant
 	}
 
 	/** One-based animation wave index. It can repeat when widgets share a wave. */
-	UPROPERTY(BlueprintReadOnly, Category = "Widget Selector")
+	UPROPERTY(BlueprintReadOnly, Category = "Widget Composer")
 	int32 WaveIndex = 0;
 
-	/** Normalized screen-space direction from the wave origin to the top-level widget. */
-	UPROPERTY(BlueprintReadOnly, Category = "Widget Selector")
+	/** Normalized screen-space direction from the wave origin to this selected widget. */
+	UPROPERTY(BlueprintReadOnly, Category = "Widget Composer")
 	FVector2D WaveDirection = FVector2D::ZeroVector;
 
 	/** Hierarchy depth relative to the input root. */
-	UPROPERTY(BlueprintReadOnly, Category = "Widget Selector")
+	UPROPERTY(BlueprintReadOnly, Category = "Widget Composer")
 	int32 Depth = 0;
 
 	/** Selected widget. */
-	UPROPERTY(BlueprintReadOnly, Category = "Widget Selector")
+	UPROPERTY(BlueprintReadOnly, Category = "Widget Composer")
 	TObjectPtr<UWidget> Value = nullptr;
 };
 
@@ -80,7 +88,7 @@ struct UMGTRANSITIONS_API FWidgetDescendant
  * return an empty array (or nullptr for singular queries).
  */
 UCLASS()
-class UMGTRANSITIONS_API UWidgetSelectorLibrary final : public UBlueprintFunctionLibrary
+class UMGTRANSITIONS_API UWidgetComposerLibrary final : public UBlueprintFunctionLibrary
 {
 	GENERATED_BODY()
 
@@ -88,11 +96,11 @@ public:
 	//~ Begin User widget queries
 
 	/** Returns the root widget of a User Widget's WidgetTree. */
-	UFUNCTION(BlueprintPure, Category = "Widget Selector", meta = (DisplayName = "Get Widget Tree Root"))
+	UFUNCTION(BlueprintPure, Category = "Widget Composer", meta = (DisplayName = "Get Widget Tree Root"))
 	static UWidget* GetWidgetTreeRoot(const UUserWidget* UserWidget);
 
 	/** Finds a named widget in a User Widget's WidgetTree. */
-	UFUNCTION(BlueprintPure, Category = "Widget Selector", meta = (DisplayName = "Find Widget by Name"))
+	UFUNCTION(BlueprintPure, Category = "Widget Composer", meta = (DisplayName = "Find Widget by Name"))
 	static UWidget* FindWidgetByName(const UUserWidget* UserWidget, FName Name);
 
 	//~ End User widget queries
@@ -100,34 +108,49 @@ public:
 	//~ Begin Hierarchy traversal
 
 	/** Returns direct panel children, or the WidgetTree root when Widget is a User Widget. */
-	UFUNCTION(BlueprintPure, Category = "Widget Selector", meta = (DisplayName = "Get Widget Children"))
+	UFUNCTION(BlueprintPure, Category = "Widget Composer", meta = (DisplayName = "Get Widget Children"))
 	static TArray<UWidget*> GetWidgetChildren(UWidget* Widget);
 
 	/**
-	 * Returns descendants up to MaxDepth. Negative MaxDepth traverses the complete hierarchy.
-	 * WaveIndex is computed from the cached geometry of Root's direct children; deeper descendants inherit their top-level parent's wave.
+	 * Legacy one-call composition. New graphs should use Collect Widgets,
+	 * Apply Widget Wave, then Sort Widgets by Wave explicitly.
 	 */
-	UFUNCTION(BlueprintPure, Category = "Widget Selector", meta = (DisplayName = "Get Widget Descendants", AdvancedDisplay = "bIncludeRoot"))
+	UFUNCTION(BlueprintPure, Category = "Widget Composer", meta = (DisplayName = "Get Widget Descendants", AdvancedDisplay = "bIncludeRoot"))
 	static TArray<FWidgetDescendant> GetWidgetDescendants(UWidget* Root, int32 MaxDepth = -1, EWidgetDescendantTraversal Traversal = EWidgetDescendantTraversal::DepthFirst, EWidgetSiblingOrder SiblingOrder = EWidgetSiblingOrder::LeftToRight, EWidgetWavePattern WavePattern = EWidgetWavePattern::Manhattan, EWidgetWaveOrigin WaveOrigin = EWidgetWaveOrigin::Center, UWidget* OriginWidget = nullptr, bool bIncludeRoot = false);
 
-	/** Compatibility passthrough for graphs created before wave settings moved to Get Widget Descendants. */
-	UFUNCTION(BlueprintPure, Category = "Widget Selector", meta = (DeprecatedFunction, DeprecationMessage = "Configure the wave directly on Get Widget Descendants.", BlueprintInternalUseOnly = "true"))
+	/** First composition stage. Returns a hierarchy selection with Value and Depth; wave fields are reset. */
+	UFUNCTION(BlueprintPure, Category = "Widget Composer", meta = (DisplayName = "Collect Widgets", AdvancedDisplay = "bIncludeRoot"))
+	static TArray<FWidgetDescendant> CollectWidgets(UWidget* Root, int32 MaxDepth = -1, EWidgetDescendantTraversal Traversal = EWidgetDescendantTraversal::DepthFirst, EWidgetSiblingOrder SiblingOrder = EWidgetSiblingOrder::LeftToRight, bool bIncludeRoot = false);
+
+	/**
+	 * Second composition stage. Produces a copy of Widgets with WaveIndex and
+	 * WaveDirection calculated from the selected widgets' cached geometry.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Widget Composer", meta = (DisplayName = "Apply Widget Wave"))
+	static TArray<FWidgetDescendant> ApplyWidgetWave(const TArray<FWidgetDescendant>& Widgets, EWidgetWavePattern Pattern = EWidgetWavePattern::Manhattan, EWidgetWaveOrigin Origin = EWidgetWaveOrigin::Center, UWidget* OriginWidget = nullptr);
+
+	/** Final composition stage. Stable: items in the same wave keep selection order. */
+	UFUNCTION(BlueprintPure, Category = "Widget Composer", meta = (DisplayName = "Sort Widgets by Wave"))
+	static TArray<FWidgetDescendant> SortWidgetsByWave(const TArray<FWidgetDescendant>& Widgets, EWidgetWaveSortOrder Order = EWidgetWaveSortOrder::NearToFar);
+
+	/** Compatibility passthrough for graphs created before waves were separate composition stages. */
+	UFUNCTION(BlueprintPure, Category = "Widget Composer", meta = (DeprecatedFunction, DeprecationMessage = "Use Apply Widget Wave after Collect Widgets.", BlueprintInternalUseOnly = "true"))
 	static TArray<FWidgetDescendant> BuildWidgetWave(const TArray<FWidgetDescendant>& Descendants, int32 Columns = 1, EWidgetWavePattern Pattern = EWidgetWavePattern::Manhattan, EWidgetWaveOrigin Origin = EWidgetWaveOrigin::Center, UWidget* OriginWidget = nullptr);
 
 	/** Returns widgets exactly at Depth, where Root is depth zero. */
-	UFUNCTION(BlueprintPure, Category = "Widget Selector", meta = (DisplayName = "Get Widgets at Depth"))
+	UFUNCTION(BlueprintPure, Category = "Widget Composer", meta = (DisplayName = "Get Widgets at Depth"))
 	static TArray<UWidget*> GetWidgetsAtDepth(UWidget* Root, int32 Depth);
 
 	/** Returns Root and its descendants through Depth, where Root is depth zero. */
-	UFUNCTION(BlueprintPure, Category = "Widget Selector", meta = (DisplayName = "Get Widgets through Depth"))
+	UFUNCTION(BlueprintPure, Category = "Widget Composer", meta = (DisplayName = "Get Widgets through Depth"))
 	static TArray<UWidget*> GetWidgetsThroughDepth(UWidget* Root, int32 Depth);
 
 	/** Returns the direct hierarchy parent, crossing from a WidgetTree root to its owning User Widget. */
-	UFUNCTION(BlueprintPure, Category = "Widget Selector", meta = (DisplayName = "Get Widget Parent"))
+	UFUNCTION(BlueprintPure, Category = "Widget Composer", meta = (DisplayName = "Get Widget Parent"))
 	static UWidget* GetWidgetParent(UWidget* Widget);
 
 	/** Returns hierarchy parents from the direct parent up to the root, including owning User Widgets. */
-	UFUNCTION(BlueprintPure, Category = "Widget Selector", meta = (DisplayName = "Get Widget Parents"))
+	UFUNCTION(BlueprintPure, Category = "Widget Composer", meta = (DisplayName = "Get Widget Parents"))
 	static TArray<UWidget*> GetWidgetParents(UWidget* Widget);
 
 	//~ End Hierarchy traversal
@@ -135,11 +158,11 @@ public:
 	//~ Begin Name selection
 
 	/** Returns descendants whose object name equals Name. Optionally includes Root in the search. */
-	UFUNCTION(BlueprintPure, Category = "Widget Selector", meta = (DisplayName = "Find Widget Descendants by Name", AdvancedDisplay = "bIncludeRoot"))
+	UFUNCTION(BlueprintPure, Category = "Widget Composer", meta = (DisplayName = "Find Widget Descendants by Name", AdvancedDisplay = "bIncludeRoot"))
 	static TArray<UWidget*> FindWidgetDescendantsByName(UWidget* Root, FName Name, bool bIncludeRoot = false);
 
 	/** Returns descendants whose object name is present in Names, preserving depth-first tree order. */
-	UFUNCTION(BlueprintPure, Category = "Widget Selector", meta = (DisplayName = "Find Widget Descendants by Names", AdvancedDisplay = "bIncludeRoot"))
+	UFUNCTION(BlueprintPure, Category = "Widget Composer", meta = (DisplayName = "Find Widget Descendants by Names", AdvancedDisplay = "bIncludeRoot"))
 	static TArray<UWidget*> FindWidgetDescendantsByNames(UWidget* Root, const TArray<FName>& Names, bool bIncludeRoot = false);
 
 	//~ End Name selection

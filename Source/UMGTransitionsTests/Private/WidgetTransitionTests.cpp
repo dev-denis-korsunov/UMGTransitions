@@ -2,7 +2,7 @@
 #include "WidgetTransitionBuilder.h"
 #include "WidgetTransitionAsyncAction.h"
 #include "WidgetTransitionSubsystem.h"
-#include "WidgetSelectorLibrary.h"
+#include "WidgetComposerLibrary.h"
 #include "WidgetTransitionTestTypes.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -202,14 +202,14 @@ bool FWidgetTransitionStorageLayoutTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetSelectorHierarchyTest, "UMGTransitions.WidgetSelector.Runtime.Hierarchy", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-bool FWidgetSelectorHierarchyTest::RunTest(const FString&)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetComposerHierarchyTest, "UMGTransitions.WidgetComposer.Runtime.Hierarchy", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetComposerHierarchyTest::RunTest(const FString&)
 {
 	UVerticalBox* Root = NewObject<UVerticalBox>(GetTransientPackage(), TEXT("Root"));
 	UImage* First = NewObject<UImage>(GetTransientPackage(), TEXT("First"));
 	UVerticalBox* Branch = NewObject<UVerticalBox>(GetTransientPackage(), TEXT("Branch"));
 	UImage* Grandchild = NewObject<UImage>(GetTransientPackage(), TEXT("Grandchild"));
-	UWidgetSelectorTestUserWidget* NestedUserWidget = NewObject<UWidgetSelectorTestUserWidget>(GetTransientPackage(), TEXT("NestedUserWidget"));
+	UWidgetComposerTestUserWidget* NestedUserWidget = NewObject<UWidgetComposerTestUserWidget>(GetTransientPackage(), TEXT("NestedUserWidget"));
 	NestedUserWidget->WidgetTree = NewObject<UWidgetTree>(NestedUserWidget);
 	UImage* NestedRoot = NewObject<UImage>(NestedUserWidget->WidgetTree, TEXT("NestedRoot"));
 	NestedUserWidget->WidgetTree->RootWidget = NestedRoot;
@@ -218,35 +218,45 @@ bool FWidgetSelectorHierarchyTest::RunTest(const FString&)
 	Root->AddChild(NestedUserWidget);
 	Branch->AddChild(Grandchild);
 
-	const TArray<UWidget*> Children = UWidgetSelectorLibrary::GetWidgetChildren(Root);
+	const TArray<UWidget*> Children = UWidgetComposerLibrary::GetWidgetChildren(Root);
 	TestEqual(TEXT("Root has three direct children"), Children.Num(), 3);
 	TestTrue(TEXT("Direct child order follows the panel"), Children == TArray<UWidget*>({First, Branch, NestedUserWidget}));
-	TestTrue(TEXT("Nested User Widget exposes its WidgetTree root as a child"), UWidgetSelectorLibrary::GetWidgetChildren(NestedUserWidget) == TArray<UWidget*>({NestedRoot}));
+	TestTrue(TEXT("Nested User Widget exposes its WidgetTree root as a child"), UWidgetComposerLibrary::GetWidgetChildren(NestedUserWidget) == TArray<UWidget*>({NestedRoot}));
 
-	const TArray<FWidgetDescendant> Descendants = UWidgetSelectorLibrary::GetWidgetDescendants(Root);
+	const TArray<FWidgetDescendant> Descendants = UWidgetComposerLibrary::GetWidgetDescendants(Root);
 	TestTrue(TEXT("Descendants use depth-first order across WidgetTree boundaries"), GetDescendantValues(Descendants) == TArray<UWidget*>({First, Branch, Grandchild, NestedUserWidget, NestedRoot}));
 	TestTrue(TEXT("Descendants inherit their top-level parent's wave index"), Descendants[0].WaveIndex == 1 && Descendants[1].WaveIndex == 2 && Descendants[2].WaveIndex == 2 && Descendants[3].WaveIndex == 3 && Descendants[4].WaveIndex == 3);
 	TestTrue(TEXT("Descendants retain hierarchy depth"), Descendants[0].Depth == 1 && Descendants[1].Depth == 1 && Descendants[2].Depth == 2 && Descendants[3].Depth == 1 && Descendants[4].Depth == 2);
-	TestTrue(TEXT("Max depth one returns only direct children"), GetDescendantValues(UWidgetSelectorLibrary::GetWidgetDescendants(Root, 1)) == TArray<UWidget*>({First, Branch, NestedUserWidget}));
-	TestTrue(TEXT("Breadth-first traversal completes each level before the next"), GetDescendantValues(UWidgetSelectorLibrary::GetWidgetDescendants(Root, -1, EWidgetDescendantTraversal::BreadthFirst)) == TArray<UWidget*>({First, Branch, NestedUserWidget, Grandchild, NestedRoot}));
-	TestTrue(TEXT("Right-to-left ordering reverses every sibling group"), GetDescendantValues(UWidgetSelectorLibrary::GetWidgetDescendants(Root, -1, EWidgetDescendantTraversal::DepthFirst, EWidgetSiblingOrder::RightToLeft)) == TArray<UWidget*>({NestedUserWidget, NestedRoot, Branch, Grandchild, First}));
-	const TArray<FWidgetDescendant> CenterOut = UWidgetSelectorLibrary::GetWidgetDescendants(Root, 1, EWidgetDescendantTraversal::DepthFirst, EWidgetSiblingOrder::CenterOut);
+	const TArray<FWidgetDescendant> Collected = UWidgetComposerLibrary::CollectWidgets(Root);
+	TestTrue(TEXT("Collection stage retains tree order without a wave"), GetDescendantValues(Collected) == TArray<UWidget*>({First, Branch, Grandchild, NestedUserWidget, NestedRoot}) && Collected[0].WaveIndex == 0 && Collected[2].Depth == 2 && Collected[2].WaveDirection.IsNearlyZero());
+	TArray<FWidgetDescendant> UnsortedWave = Collected;
+	UnsortedWave[0].WaveIndex = 2;
+	UnsortedWave[1].WaveIndex = 1;
+	UnsortedWave[2].WaveIndex = 2;
+	const TArray<FWidgetDescendant> SortedWave = UWidgetComposerLibrary::SortWidgetsByWave(UnsortedWave);
+	TestTrue(TEXT("Wave sort is stable and does not mutate the collected result"), GetDescendantValues(SortedWave) == TArray<UWidget*>({Branch, First, Grandchild, NestedUserWidget, NestedRoot}) && Collected[0].WaveIndex == 0);
+	const TArray<FWidgetDescendant> AppliedWave = UWidgetComposerLibrary::ApplyWidgetWave(Collected);
+	TestTrue(TEXT("Wave stage returns a modified copy"), AppliedWave[0].WaveIndex >= 1 && AppliedWave[1].WaveIndex >= 1 && AppliedWave[2].WaveIndex >= 1 && Collected[0].WaveIndex == 0);
+	TestTrue(TEXT("Max depth one returns only direct children"), GetDescendantValues(UWidgetComposerLibrary::GetWidgetDescendants(Root, 1)) == TArray<UWidget*>({First, Branch, NestedUserWidget}));
+	TestTrue(TEXT("Breadth-first traversal completes each level before the next"), GetDescendantValues(UWidgetComposerLibrary::GetWidgetDescendants(Root, -1, EWidgetDescendantTraversal::BreadthFirst)) == TArray<UWidget*>({First, Branch, NestedUserWidget, Grandchild, NestedRoot}));
+	TestTrue(TEXT("Right-to-left ordering reverses every sibling group"), GetDescendantValues(UWidgetComposerLibrary::GetWidgetDescendants(Root, -1, EWidgetDescendantTraversal::DepthFirst, EWidgetSiblingOrder::RightToLeft)) == TArray<UWidget*>({NestedUserWidget, NestedRoot, Branch, Grandchild, First}));
+	const TArray<FWidgetDescendant> CenterOut = UWidgetComposerLibrary::GetWidgetDescendants(Root, 1, EWidgetDescendantTraversal::DepthFirst, EWidgetSiblingOrder::CenterOut);
 	TestTrue(TEXT("Center-out ordering starts at the central direct child"), GetDescendantValues(CenterOut) == TArray<UWidget*>({Branch, First, NestedUserWidget}));
 	TestTrue(TEXT("Center-out siblings share wave indices symmetrically"), CenterOut[0].WaveIndex == 1 && CenterOut[1].WaveIndex == 2 && CenterOut[2].WaveIndex == 2);
-	TestTrue(TEXT("Depth zero is the root"), UWidgetSelectorLibrary::GetWidgetsAtDepth(Root, 0) == TArray<UWidget*>({Root}));
-	TestTrue(TEXT("Depth one contains direct children"), UWidgetSelectorLibrary::GetWidgetsAtDepth(Root, 1) == TArray<UWidget*>({First, Branch, NestedUserWidget}));
-	TestTrue(TEXT("Depth two crosses into the nested WidgetTree"), UWidgetSelectorLibrary::GetWidgetsAtDepth(Root, 2) == TArray<UWidget*>({Grandchild, NestedRoot}));
-	TestTrue(TEXT("Through depth includes every preceding level"), UWidgetSelectorLibrary::GetWidgetsThroughDepth(Root, 1) == TArray<UWidget*>({Root, First, Branch, NestedUserWidget}));
-	TestEqual(TEXT("Direct parent is returned"), UWidgetSelectorLibrary::GetWidgetParent(Grandchild), static_cast<UWidget*>(Branch));
-	TestTrue(TEXT("Parents are returned from nearest to root"), UWidgetSelectorLibrary::GetWidgetParents(Grandchild) == TArray<UWidget*>({Branch, Root}));
-	TestTrue(TEXT("Nested root climbs through the owning User Widget"), UWidgetSelectorLibrary::GetWidgetParents(NestedRoot) == TArray<UWidget*>({NestedUserWidget, Root}));
-	TestTrue(TEXT("Single name lookup finds a descendant"), UWidgetSelectorLibrary::FindWidgetDescendantsByName(Root, TEXT("Grandchild")) == TArray<UWidget*>({Grandchild}));
-	TestTrue(TEXT("Multiple name lookup preserves tree order"), UWidgetSelectorLibrary::FindWidgetDescendantsByNames(Root, {TEXT("Grandchild"), TEXT("First")}) == TArray<UWidget*>({First, Grandchild}));
+	TestTrue(TEXT("Depth zero is the root"), UWidgetComposerLibrary::GetWidgetsAtDepth(Root, 0) == TArray<UWidget*>({Root}));
+	TestTrue(TEXT("Depth one contains direct children"), UWidgetComposerLibrary::GetWidgetsAtDepth(Root, 1) == TArray<UWidget*>({First, Branch, NestedUserWidget}));
+	TestTrue(TEXT("Depth two crosses into the nested WidgetTree"), UWidgetComposerLibrary::GetWidgetsAtDepth(Root, 2) == TArray<UWidget*>({Grandchild, NestedRoot}));
+	TestTrue(TEXT("Through depth includes every preceding level"), UWidgetComposerLibrary::GetWidgetsThroughDepth(Root, 1) == TArray<UWidget*>({Root, First, Branch, NestedUserWidget}));
+	TestEqual(TEXT("Direct parent is returned"), UWidgetComposerLibrary::GetWidgetParent(Grandchild), static_cast<UWidget*>(Branch));
+	TestTrue(TEXT("Parents are returned from nearest to root"), UWidgetComposerLibrary::GetWidgetParents(Grandchild) == TArray<UWidget*>({Branch, Root}));
+	TestTrue(TEXT("Nested root climbs through the owning User Widget"), UWidgetComposerLibrary::GetWidgetParents(NestedRoot) == TArray<UWidget*>({NestedUserWidget, Root}));
+	TestTrue(TEXT("Single name lookup finds a descendant"), UWidgetComposerLibrary::FindWidgetDescendantsByName(Root, TEXT("Grandchild")) == TArray<UWidget*>({Grandchild}));
+	TestTrue(TEXT("Multiple name lookup preserves tree order"), UWidgetComposerLibrary::FindWidgetDescendantsByNames(Root, {TEXT("Grandchild"), TEXT("First")}) == TArray<UWidget*>({First, Grandchild}));
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetSelectorGridWaveTranslationTest, "UMGTransitions.WidgetSelector.Diagnostics.GridWaveTranslation", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-bool FWidgetSelectorGridWaveTranslationTest::RunTest(const FString&)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetComposerGridWaveTranslationTest, "UMGTransitions.WidgetComposer.Diagnostics.GridWaveTranslation", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetComposerGridWaveTranslationTest::RunTest(const FString&)
 {
 	constexpr int32 GridSize = 5;
 	constexpr float TranslationDistance = 40.0f;
@@ -325,8 +335,8 @@ bool FWidgetSelectorGridWaveTranslationTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetSelectorNoDuplicateDescendantsTest, "UMGTransitions.WidgetSelector.Diagnostics.NoDuplicateDescendants", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-bool FWidgetSelectorNoDuplicateDescendantsTest::RunTest(const FString&)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetComposerNoDuplicateDescendantsTest, "UMGTransitions.WidgetComposer.Diagnostics.NoDuplicateDescendants", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetComposerNoDuplicateDescendantsTest::RunTest(const FString&)
 {
 	UVerticalBox* Root = NewObject<UVerticalBox>(GetTransientPackage(), TEXT("DuplicateRoot"));
 	UVerticalBox* Branch = NewObject<UVerticalBox>(Root, TEXT("DuplicateBranch"));
@@ -338,15 +348,15 @@ bool FWidgetSelectorNoDuplicateDescendantsTest::RunTest(const FString&)
 
 	// A panel should reject a second ownership entry for the same widget.
 	Root->AddChild(SharedImage);
-	const TArray<FWidgetDescendant> Descendants = UWidgetSelectorLibrary::GetWidgetDescendants(Root);
+	const TArray<FWidgetDescendant> Descendants = UWidgetComposerLibrary::GetWidgetDescendants(Root);
 	TSet<UWidget*> UniqueWidgets;
 	for (const FWidgetDescendant& Descendant : Descendants)
 	{
 		UniqueWidgets.Add(Descendant.Value);
 	}
 
-	TestEqual(TEXT("Selector returns the expected valid descendants"), Descendants.Num(), 3);
-	TestEqual(TEXT("Selector returns no duplicate widget pointers"), UniqueWidgets.Num(), Descendants.Num());
+	TestEqual(TEXT("Composer returns the expected valid descendants"), Descendants.Num(), 3);
+	TestEqual(TEXT("Composer returns no duplicate widget pointers"), UniqueWidgets.Num(), Descendants.Num());
 	TestTrue(TEXT("Shared widget appears only once"), UniqueWidgets.Contains(SharedImage) && GetDescendantValues(Descendants).FilterByPredicate([SharedImage](UWidget* Widget) { return Widget == SharedImage; }).Num() == 1);
 	TestTrue(TEXT("Nested widget appears only once"), UniqueWidgets.Contains(NestedImage) && GetDescendantValues(Descendants).FilterByPredicate([NestedImage](UWidget* Widget) { return Widget == NestedImage; }).Num() == 1);
 	return true;
@@ -1063,11 +1073,89 @@ bool FWidgetTransitionConcurrentTickPerformanceTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionCustomPropertyTickPerformanceTest, "UMGTransitions.WidgetTransition.Performance.CustomPropertyTick", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
+bool FWidgetTransitionCustomPropertyTickPerformanceTest::RunTest(const FString&)
+{
+	constexpr int32 FrameCount = 300;
+	constexpr int32 TransitionCounts[] = { 10, 100, 500 };
+	constexpr float DeltaTime = 1.0f / 60.0f;
+
+	for (const int32 TransitionCount : TransitionCounts)
+	{
+		UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+		TArray<UWidgetTransitionTestCounterUserWidget*> Widgets;
+		Widgets.Reserve(TransitionCount);
+		for (int32 TransitionIndex = 0; TransitionIndex < TransitionCount; ++TransitionIndex)
+		{
+			UWidgetTransitionTestCounterUserWidget* Widget = NewObject<UWidgetTransitionTestCounterUserWidget>(GetTransientPackage());
+			Widgets.Add(Widget);
+			FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(
+				Widget, TEXT("CounterValue"), UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(1.0f), 60.0f);
+			Transition.bBound = Transition.PropertyBinding.Resolve(Widget, TEXT("CounterValue"));
+			TestTrue(FString::Printf(TEXT("CounterValue resolves for custom transition %d"), TransitionIndex), Transition.bBound);
+			Subsystem->Transitions.Emplace(MoveTemp(Transition));
+		}
+
+		Subsystem->TickTransitionsForTesting(DeltaTime);
+		const double StartTime = FPlatformTime::Seconds();
+		for (int32 FrameIndex = 0; FrameIndex < FrameCount; ++FrameIndex)
+		{
+			Subsystem->TickTransitionsForTesting(DeltaTime);
+		}
+		const double ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
+		AddInfo(FString::Printf(TEXT("%d custom CounterValue property transitions: %s / frame, %s / transition (%d frames)"), TransitionCount, *FormatMicroseconds(ElapsedSeconds / FrameCount), *FormatMicroseconds(ElapsedSeconds / (FrameCount * TransitionCount)), FrameCount));
+		TestEqual(FString::Printf(TEXT("All %d custom property transitions remain active"), TransitionCount), Subsystem->Transitions.Num(), TransitionCount);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionSpringTranslateTickPerformanceTest, "UMGTransitions.WidgetTransition.Performance.SpringTranslateTick", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
+bool FWidgetTransitionSpringTranslateTickPerformanceTest::RunTest(const FString&)
+{
+	constexpr int32 FrameCount = 300;
+	constexpr int32 TransitionCounts[] = { 10, 100, 500 };
+	constexpr float DeltaTime = 1.0f / 60.0f;
+
+	for (const int32 TransitionCount : TransitionCounts)
+	{
+		UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+		TArray<UImage*> Widgets;
+		Widgets.Reserve(TransitionCount);
+		for (int32 TransitionIndex = 0; TransitionIndex < TransitionCount; ++TransitionIndex)
+		{
+			UImage* Widget = NewObject<UImage>(GetTransientPackage());
+			Widgets.Add(Widget);
+			FWidgetTransition Transition = UWidgetTransitionFunctionLibrary::CreateWidgetTransition(
+				Widget, TEXT("RenderTransform.Translation"), UWidgetTransitionFunctionLibrary::MakeVectorTransitionValue(FVector2D(100.0f, 0.0f)), 60.0f);
+			Transition.bUseSpring = true;
+			Transition.RepeatCount = -1;
+			Transition.bBound = Transition.PropertyBinding.Resolve(Widget, TEXT("RenderTransform.Translation"));
+			TestTrue(FString::Printf(TEXT("Translation resolves for spring transition %d"), TransitionIndex), Transition.bBound);
+			const int32 StoredIndex = Subsystem->Transitions.Emplace(MoveTemp(Transition));
+			FWidgetTransition& StoredTransition = Subsystem->Transitions[StoredIndex];
+			StoredTransition.SpringIndex = Subsystem->Springs.Emplace(36.0f, 7.2f);
+			Subsystem->SpringTransitionIndices.Add(StoredIndex);
+			Subsystem->Springs[StoredTransition.SpringIndex].Start(StoredTransition.FromValue.Channels, StoredTransition.ToValue.Channels);
+		}
+
+		Subsystem->TickTransitionsForTesting(DeltaTime);
+		const double StartTime = FPlatformTime::Seconds();
+		for (int32 FrameIndex = 0; FrameIndex < FrameCount; ++FrameIndex)
+		{
+			Subsystem->TickTransitionsForTesting(DeltaTime);
+		}
+		const double ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
+		AddInfo(FString::Printf(TEXT("%d spring RenderTransform.Translation transitions: %s / frame, %s / transition (%d frames)"), TransitionCount, *FormatMicroseconds(ElapsedSeconds / FrameCount), *FormatMicroseconds(ElapsedSeconds / (FrameCount * TransitionCount)), FrameCount));
+		TestEqual(FString::Printf(TEXT("All %d spring translation transitions remain active"), TransitionCount), Subsystem->Transitions.Num(), TransitionCount);
+	}
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionPipeHandoffPerformanceTest, "UMGTransitions.WidgetTransition.Performance.PipeHandoff", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
 bool FWidgetTransitionPipeHandoffPerformanceTest::RunTest(const FString&)
 {
 	constexpr int32 SampleCount = 200;
-	constexpr int32 TransitionCounts[] = { 1, 20, 100, 500 };
+	constexpr int32 TransitionCounts[] = { 1, 10, 100, 500 };
 	constexpr float CompletionDeltaTime = 1.0f / 20.0f;
 
 	for (const bool bSpringSuccessor : { false, true })
@@ -1112,10 +1200,76 @@ bool FWidgetTransitionPipeHandoffPerformanceTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionReplacePerformanceTest, "UMGTransitions.WidgetTransition.Performance.Replace", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
+bool FWidgetTransitionReplacePerformanceTest::RunTest(const FString&)
+{
+	constexpr int32 SampleCount = 500;
+	constexpr int32 TransitionCounts[] = { 10, 100, 500 };
+
+	for (const int32 TransitionCount : TransitionCounts)
+	{
+		double ElapsedSeconds = 0.0;
+		for (int32 SampleIndex = 0; SampleIndex < SampleCount; ++SampleIndex)
+		{
+			UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+			TArray<UImage*> Widgets;
+			Widgets.Reserve(TransitionCount);
+			for (int32 TransitionIndex = 0; TransitionIndex < TransitionCount; ++TransitionIndex)
+			{
+				UImage* Widget = NewObject<UImage>(GetTransientPackage());
+				Widgets.Add(Widget);
+				Subsystem->Transitions.Emplace(MakeRuntimeOpacityTransition(Widget));
+			}
+
+			FWidgetTransition Replacement = MakeRuntimeOpacityTransition(Widgets.Last());
+			const double StartTime = FPlatformTime::Seconds();
+			const bool bStarted = Subsystem->StartTransition(MoveTemp(Replacement));
+			ElapsedSeconds += FPlatformTime::Seconds() - StartTime;
+			TestTrue(FString::Printf(TEXT("Replace starts with %d active transitions"), TransitionCount), bStarted);
+			TestEqual(FString::Printf(TEXT("Replace retains %d transitions"), TransitionCount), Subsystem->Transitions.Num(), TransitionCount);
+		}
+
+		AddInfo(FString::Printf(TEXT("Replace last of %d active transitions: %s / replace (%d samples)"), TransitionCount, *FormatMicroseconds(ElapsedSeconds / SampleCount), SampleCount));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionClearPerformanceTest, "UMGTransitions.WidgetTransition.Performance.Clear", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
+bool FWidgetTransitionClearPerformanceTest::RunTest(const FString&)
+{
+	constexpr int32 SampleCount = 500;
+	constexpr int32 TransitionCounts[] = { 10, 100, 500 };
+
+	for (const int32 TransitionCount : TransitionCounts)
+	{
+		double ElapsedSeconds = 0.0;
+		for (int32 SampleIndex = 0; SampleIndex < SampleCount; ++SampleIndex)
+		{
+			UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+			TArray<UImage*> Widgets;
+			Widgets.Reserve(TransitionCount);
+			for (int32 TransitionIndex = 0; TransitionIndex < TransitionCount; ++TransitionIndex)
+			{
+				UImage* Widget = NewObject<UImage>(GetTransientPackage());
+				Widgets.Add(Widget);
+				Subsystem->Transitions.Emplace(MakeRuntimeOpacityTransition(Widget));
+			}
+
+			const double StartTime = FPlatformTime::Seconds();
+			Subsystem->ClearTransitions(Widgets.Last());
+			ElapsedSeconds += FPlatformTime::Seconds() - StartTime;
+			TestEqual(FString::Printf(TEXT("Clear removes the final transition from %d active transitions"), TransitionCount), Subsystem->Transitions.Num(), TransitionCount - 1);
+		}
+
+		AddInfo(FString::Printf(TEXT("Clear last of %d active transitions: %s / removal (%d samples)"), TransitionCount, *FormatMicroseconds(ElapsedSeconds / SampleCount), SampleCount));
+	}
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionCallbacksPerformanceTest, "UMGTransitions.WidgetTransition.Performance.Callbacks", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
 bool FWidgetTransitionCallbacksPerformanceTest::RunTest(const FString&)
 {
-	constexpr int32 TransitionCounts[] = { 20, 30, 50, 100 };
+	constexpr int32 TransitionCounts[] = { 10, 100, 500 };
 	constexpr int32 FrameCount = 300;
 	constexpr float DeltaTime = 1.0f / 60.0f;
 	enum class ECallbackMode : uint8
@@ -1193,7 +1347,7 @@ bool FWidgetTransitionSpringTargetUpdatePerformanceTest::RunTest(const FString&)
 {
 	constexpr int32 FrameCount = 300;
 	constexpr float DeltaTime = 1.0f / 60.0f;
-	constexpr int32 TransitionCounts[] = { 100, 500 };
+	constexpr int32 TransitionCounts[] = { 10, 100, 500 };
 
 	for (const int32 TransitionCount : TransitionCounts)
 	{
@@ -1240,7 +1394,7 @@ bool FWidgetTransitionSpringTargetUpdatePerformanceTest::RunTest(const FString&)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionEventIntervalPerformanceTest, "UMGTransitions.WidgetTransition.Performance.EventInterval", EAutomationTestFlags::EditorContext | EAutomationTestFlags::PerfFilter)
 bool FWidgetTransitionEventIntervalPerformanceTest::RunTest(const FString&)
 {
-	constexpr int32 TransitionCount = 100;
+	constexpr int32 TransitionCounts[] = { 10, 100, 500 };
 	constexpr int32 FrameCount = 300;
 	constexpr float DeltaTime = 1.0f / 60.0f;
 	struct FEventIntervalCase
@@ -1255,39 +1409,42 @@ bool FWidgetTransitionEventIntervalPerformanceTest::RunTest(const FString&)
 		{ 1.0f / 20.0f, 100 },
 		{ 0.1f, 50 },
 	};
-	for (const FEventIntervalCase& Case : Cases)
+	for (const int32 TransitionCount : TransitionCounts)
 	{
-		UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
-		UWidgetTransitionTestEventReceiver* Receiver = NewObject<UWidgetTransitionTestEventReceiver>(GetTransientPackage());
-		TArray<UImage*> Widgets;
-		Widgets.Reserve(TransitionCount);
-		for (int32 Index = 0; Index < TransitionCount; ++Index)
+		for (const FEventIntervalCase& Case : Cases)
 		{
-			UImage* Widget = NewObject<UImage>(GetTransientPackage());
-			FWidgetTransition Transition;
-			Transition.Widget = Widget;
-			Transition.Time = 60.0f;
-			Transition.EventInterval = Case.Interval;
-			FWidgetTransitionCallbacks Callbacks;
-			Callbacks.OnUpdated.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleUpdated);
-			AddTransitionWithCallbacks(Subsystem, MoveTemp(Transition), MoveTemp(Callbacks));
-			Widgets.Add(Widget);
-		}
+			UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
+			UWidgetTransitionTestEventReceiver* Receiver = NewObject<UWidgetTransitionTestEventReceiver>(GetTransientPackage());
+			TArray<UImage*> Widgets;
+			Widgets.Reserve(TransitionCount);
+			for (int32 Index = 0; Index < TransitionCount; ++Index)
+			{
+				UImage* Widget = NewObject<UImage>(GetTransientPackage());
+				FWidgetTransition Transition;
+				Transition.Widget = Widget;
+				Transition.Time = 60.0f;
+				Transition.EventInterval = Case.Interval;
+				FWidgetTransitionCallbacks Callbacks;
+				Callbacks.OnUpdated.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleUpdated);
+				AddTransitionWithCallbacks(Subsystem, MoveTemp(Transition), MoveTemp(Callbacks));
+				Widgets.Add(Widget);
+			}
 
-		Subsystem->TickTransitionsForTesting(DeltaTime);
-		for (FWidgetTransitionUpdateState& UpdateState : Subsystem->CallbackStore.UpdateStates)
-		{
-			UpdateState.UpdateElapsed = 0.0f;
-		}
-		Receiver->UpdatedCount = 0;
-		const double StartTime = FPlatformTime::Seconds();
-		for (int32 FrameIndex = 0; FrameIndex < FrameCount; ++FrameIndex)
-		{
 			Subsystem->TickTransitionsForTesting(DeltaTime);
+			for (FWidgetTransitionUpdateState& UpdateState : Subsystem->CallbackStore.UpdateStates)
+			{
+				UpdateState.UpdateElapsed = 0.0f;
+			}
+			Receiver->UpdatedCount = 0;
+			const double StartTime = FPlatformTime::Seconds();
+			for (int32 FrameIndex = 0; FrameIndex < FrameCount; ++FrameIndex)
+			{
+				Subsystem->TickTransitionsForTesting(DeltaTime);
+			}
+			const double ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
+			AddInfo(FString::Printf(TEXT("%d Updated callbacks with %.3f s interval: %s / frame, %s / transition"), TransitionCount, Case.Interval, *FormatMicroseconds(ElapsedSeconds / FrameCount), *FormatMicroseconds(ElapsedSeconds / (FrameCount * TransitionCount))));
+			TestEqual(FString::Printf(TEXT("Updated callbacks at %.3f s interval"), Case.Interval), Receiver->UpdatedCount, TransitionCount * Case.ExpectedUpdatesPerTransition);
 		}
-		const double ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
-		AddInfo(FString::Printf(TEXT("%d Updated callbacks with %.3f s interval: %s / frame, %s / transition"), TransitionCount, Case.Interval, *FormatMicroseconds(ElapsedSeconds / FrameCount), *FormatMicroseconds(ElapsedSeconds / (FrameCount * TransitionCount))));
-		TestEqual(FString::Printf(TEXT("Updated callbacks at %.3f s interval"), Case.Interval), Receiver->UpdatedCount, TransitionCount * Case.ExpectedUpdatesPerTransition);
 	}
 	return true;
 }
@@ -1482,7 +1639,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetTransitionModeMatrixPerformanceTest, "UM
 bool FWidgetTransitionModeMatrixPerformanceTest::RunTest(const FString&)
 {
 	constexpr int32 FrameCount = 300;
-	constexpr int32 TransitionCounts[] = { 100, 500 };
+	constexpr int32 TransitionCounts[] = { 10, 100, 500 };
 	constexpr EWidgetTransitionBenchmarkMode Modes[] = { EWidgetTransitionBenchmarkMode::Linear, EWidgetTransitionBenchmarkMode::Easing, EWidgetTransitionBenchmarkMode::Spring };
 	constexpr float DeltaTime = 1.0f / 60.0f;
 	for (const int32 TransitionCount : TransitionCounts)

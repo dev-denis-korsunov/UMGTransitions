@@ -1,4 +1,4 @@
-#include "WidgetSelectorLibrary.h"
+#include "WidgetComposerLibrary.h"
 
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetTree.h"
@@ -6,7 +6,7 @@
 #include "Components/Widget.h"
 #include "Layout/Geometry.h"
 
-namespace WidgetSelector
+namespace WidgetComposer
 {
 	static void AppendDirectChildren(UWidget* Widget, TArray<UWidget*>& OutWidgets)
 	{
@@ -24,7 +24,7 @@ namespace WidgetSelector
 
 		if (const UUserWidget* UserWidget = Cast<UUserWidget>(Widget))
 		{
-			if (UWidget* Root = UWidgetSelectorLibrary::GetWidgetTreeRoot(UserWidget))
+			if (UWidget* Root = UWidgetComposerLibrary::GetWidgetTreeRoot(UserWidget))
 			{
 				OutWidgets.Add(Root);
 			}
@@ -313,6 +313,87 @@ namespace WidgetSelector
 		return InheritedWaveData;
 	}
 
+	static void ApplyWaveToSelection(TArray<FWidgetDescendant>& Descendants, EWidgetWavePattern Pattern, EWidgetWaveOrigin Origin, UWidget* OriginWidget)
+	{
+		struct FWaveItem
+		{
+			int32 DescendantIndex = INDEX_NONE;
+			FVector2D Center = FVector2D::ZeroVector;
+		};
+
+		TArray<FWaveItem> Items;
+		TArray<FIndexedWidget> Widgets;
+		Items.Reserve(Descendants.Num());
+		Widgets.Reserve(Descendants.Num());
+		for (int32 Index = 0; Index < Descendants.Num(); ++Index)
+		{
+			FVector2D Center;
+			if (GetWidgetGeometryCenter(Descendants[Index].Value, Center))
+			{
+				Items.Add({Index, Center});
+				Widgets.Add({Descendants[Index].Value, 0});
+			}
+			else
+			{
+				// A selection remains usable before its first layout pass.
+				Descendants[Index].WaveIndex = Index + 1;
+				Descendants[Index].WaveDirection = FVector2D::ZeroVector;
+			}
+		}
+
+		if (Items.IsEmpty())
+		{
+			return;
+		}
+
+		TArray<FVector2D> Centers;
+		Centers.Reserve(Items.Num());
+		for (const FWaveItem& Item : Items)
+		{
+			Centers.Add(Item.Center);
+		}
+		FVector2D Minimum = Centers[0];
+		FVector2D Maximum = Centers[0];
+		for (const FVector2D& Center : Centers)
+		{
+			Minimum.X = FMath::Min(Minimum.X, Center.X);
+			Minimum.Y = FMath::Min(Minimum.Y, Center.Y);
+			Maximum.X = FMath::Max(Maximum.X, Center.X);
+			Maximum.Y = FMath::Max(Maximum.Y, Center.Y);
+		}
+
+		FVector2D OriginPosition = (Minimum + Maximum) * 0.5f;
+		switch (Origin)
+		{
+		case EWidgetWaveOrigin::TopLeft: OriginPosition = Minimum; break;
+		case EWidgetWaveOrigin::TopRight: OriginPosition = FVector2D(Maximum.X, Minimum.Y); break;
+		case EWidgetWaveOrigin::BottomLeft: OriginPosition = FVector2D(Minimum.X, Maximum.Y); break;
+		case EWidgetWaveOrigin::BottomRight: OriginPosition = Maximum; break;
+		case EWidgetWaveOrigin::Widget:
+			GetWidgetGeometryCenter(OriginWidget, OriginPosition);
+			break;
+		default: break;
+		}
+
+		const TArray<float> HorizontalLevels = GetAxisLevels(Centers, true, GetAxisTolerance(Widgets, true));
+		const TArray<float> VerticalLevels = GetAxisLevels(Centers, false, GetAxisTolerance(Widgets, false));
+		const float CenterHorizontalSpan = Origin == EWidgetWaveOrigin::Center && HorizontalLevels.Num() % 2 == 0 ? 0.5f : 0.0f;
+		const float CenterVerticalSpan = Origin == EWidgetWaveOrigin::Center && VerticalLevels.Num() % 2 == 0 ? 0.5f : 0.0f;
+		const int32 OriginHorizontalLevel = GetNearestAxisLevel(HorizontalLevels, OriginPosition.X);
+		const int32 OriginVerticalLevel = GetNearestAxisLevel(VerticalLevels, OriginPosition.Y);
+		for (const FWaveItem& Item : Items)
+		{
+			const int32 HorizontalLevel = GetNearestAxisLevel(HorizontalLevels, Item.Center.X);
+			const int32 VerticalLevel = GetNearestAxisLevel(VerticalLevels, Item.Center.Y);
+			const float HorizontalDistance = FMath::Max(0.0f, FMath::Abs(static_cast<float>(HorizontalLevel - OriginHorizontalLevel)) - CenterHorizontalSpan);
+			const float VerticalDistance = FMath::Max(0.0f, FMath::Abs(static_cast<float>(VerticalLevel - OriginVerticalLevel)) - CenterVerticalSpan);
+			float Distance = Pattern == EWidgetWavePattern::Horizontal ? HorizontalDistance : Pattern == EWidgetWavePattern::Vertical ? VerticalDistance : Pattern == EWidgetWavePattern::Radial ? FMath::Sqrt(FMath::Square(HorizontalDistance) + FMath::Square(VerticalDistance)) : HorizontalDistance + VerticalDistance;
+			FWidgetDescendant& Descendant = Descendants[Item.DescendantIndex];
+			Descendant.WaveIndex = FMath::FloorToInt(Distance + KINDA_SMALL_NUMBER) + 1;
+			Descendant.WaveDirection = (Item.Center - OriginPosition).GetSafeNormal();
+		}
+	}
+
 	static void AppendDescendantsDepthFirst(UWidget* Root, int32 CurrentDepth, int32 MaxDepth, EWidgetSiblingOrder SiblingOrder, const FWidgetWaveData& InheritedWaveData, const TMap<UWidget*, FWidgetWaveData>& TopLevelWaveData, TArray<FWidgetDescendant>& OutWidgets)
 	{
 		if (MaxDepth >= 0 && CurrentDepth >= MaxDepth)
@@ -409,24 +490,24 @@ namespace WidgetSelector
 	}
 }
 
-UWidget* UWidgetSelectorLibrary::GetWidgetTreeRoot(const UUserWidget* UserWidget)
+UWidget* UWidgetComposerLibrary::GetWidgetTreeRoot(const UUserWidget* UserWidget)
 {
 	return IsValid(UserWidget) && UserWidget->WidgetTree ? UserWidget->WidgetTree->RootWidget : nullptr;
 }
 
-UWidget* UWidgetSelectorLibrary::FindWidgetByName(const UUserWidget* UserWidget, FName Name)
+UWidget* UWidgetComposerLibrary::FindWidgetByName(const UUserWidget* UserWidget, FName Name)
 {
 	return IsValid(UserWidget) && !Name.IsNone() ? UserWidget->GetWidgetFromName(Name) : nullptr;
 }
 
-TArray<UWidget*> UWidgetSelectorLibrary::GetWidgetChildren(UWidget* Widget)
+TArray<UWidget*> UWidgetComposerLibrary::GetWidgetChildren(UWidget* Widget)
 {
 	TArray<UWidget*> Children;
-	WidgetSelector::AppendDirectChildren(Widget, Children);
+	WidgetComposer::AppendDirectChildren(Widget, Children);
 	return Children;
 }
 
-TArray<FWidgetDescendant> UWidgetSelectorLibrary::GetWidgetDescendants(UWidget* Root, int32 MaxDepth, EWidgetDescendantTraversal Traversal, EWidgetSiblingOrder SiblingOrder, EWidgetWavePattern WavePattern, EWidgetWaveOrigin WaveOrigin, UWidget* OriginWidget, bool bIncludeRoot)
+TArray<FWidgetDescendant> UWidgetComposerLibrary::GetWidgetDescendants(UWidget* Root, int32 MaxDepth, EWidgetDescendantTraversal Traversal, EWidgetSiblingOrder SiblingOrder, EWidgetWavePattern WavePattern, EWidgetWaveOrigin WaveOrigin, UWidget* OriginWidget, bool bIncludeRoot)
 {
 	TArray<FWidgetDescendant> Widgets;
 	if (!IsValid(Root))
@@ -438,34 +519,76 @@ TArray<FWidgetDescendant> UWidgetSelectorLibrary::GetWidgetDescendants(UWidget* 
 	{
 		Widgets.Add({0, 0, Root});
 	}
-	const TMap<UWidget*, WidgetSelector::FWidgetWaveData> TopLevelWaveData = WidgetSelector::GetTopLevelWaveData(Root, SiblingOrder, WavePattern, WaveOrigin, OriginWidget);
+	const TMap<UWidget*, WidgetComposer::FWidgetWaveData> TopLevelWaveData = WidgetComposer::GetTopLevelWaveData(Root, SiblingOrder, WavePattern, WaveOrigin, OriginWidget);
 	if (Traversal == EWidgetDescendantTraversal::BreadthFirst)
 	{
-		WidgetSelector::AppendDescendantsBreadthFirst(Root, MaxDepth, SiblingOrder, TopLevelWaveData, Widgets);
+		WidgetComposer::AppendDescendantsBreadthFirst(Root, MaxDepth, SiblingOrder, TopLevelWaveData, Widgets);
 	}
 	else
 	{
-		WidgetSelector::AppendDescendantsDepthFirst(Root, 0, MaxDepth, SiblingOrder, {}, TopLevelWaveData, Widgets);
+		WidgetComposer::AppendDescendantsDepthFirst(Root, 0, MaxDepth, SiblingOrder, {}, TopLevelWaveData, Widgets);
 	}
 	return Widgets;
 }
 
-TArray<FWidgetDescendant> UWidgetSelectorLibrary::BuildWidgetWave(const TArray<FWidgetDescendant>& Descendants, int32 Columns, EWidgetWavePattern Pattern, EWidgetWaveOrigin Origin, UWidget* OriginWidget)
+TArray<FWidgetDescendant> UWidgetComposerLibrary::CollectWidgets(UWidget* Root, int32 MaxDepth, EWidgetDescendantTraversal Traversal, EWidgetSiblingOrder SiblingOrder, bool bIncludeRoot)
 {
-	return Descendants;
+	TArray<FWidgetDescendant> Widgets;
+	if (!IsValid(Root))
+	{
+		return Widgets;
+	}
+
+	if (bIncludeRoot)
+	{
+		Widgets.Add({0, 0, Root});
+	}
+
+	const TMap<UWidget*, WidgetComposer::FWidgetWaveData> NoWaveData;
+	if (Traversal == EWidgetDescendantTraversal::BreadthFirst)
+	{
+		WidgetComposer::AppendDescendantsBreadthFirst(Root, MaxDepth, SiblingOrder, NoWaveData, Widgets);
+	}
+	else
+	{
+		WidgetComposer::AppendDescendantsDepthFirst(Root, 0, MaxDepth, SiblingOrder, {}, NoWaveData, Widgets);
+	}
+	return Widgets;
 }
 
-TArray<UWidget*> UWidgetSelectorLibrary::GetWidgetsAtDepth(UWidget* Root, int32 Depth)
+TArray<FWidgetDescendant> UWidgetComposerLibrary::ApplyWidgetWave(const TArray<FWidgetDescendant>& Widgets, EWidgetWavePattern Pattern, EWidgetWaveOrigin Origin, UWidget* OriginWidget)
+{
+	TArray<FWidgetDescendant> Wave = Widgets;
+	WidgetComposer::ApplyWaveToSelection(Wave, Pattern, Origin, OriginWidget);
+	return Wave;
+}
+
+TArray<FWidgetDescendant> UWidgetComposerLibrary::SortWidgetsByWave(const TArray<FWidgetDescendant>& Widgets, EWidgetWaveSortOrder Order)
+{
+	TArray<FWidgetDescendant> Sorted = Widgets;
+	Sorted.StableSort([Order](const FWidgetDescendant& Left, const FWidgetDescendant& Right)
+	{
+		return Order == EWidgetWaveSortOrder::NearToFar ? Left.WaveIndex < Right.WaveIndex : Left.WaveIndex > Right.WaveIndex;
+	});
+	return Sorted;
+}
+
+TArray<FWidgetDescendant> UWidgetComposerLibrary::BuildWidgetWave(const TArray<FWidgetDescendant>& Descendants, int32 Columns, EWidgetWavePattern Pattern, EWidgetWaveOrigin Origin, UWidget* OriginWidget)
+{
+	return ApplyWidgetWave(Descendants, Pattern, Origin, OriginWidget);
+}
+
+TArray<UWidget*> UWidgetComposerLibrary::GetWidgetsAtDepth(UWidget* Root, int32 Depth)
 {
 	TArray<UWidget*> Widgets;
 	if (Depth >= 0)
 	{
-		WidgetSelector::AppendWidgetsAtDepth(Root, 0, Depth, Widgets);
+		WidgetComposer::AppendWidgetsAtDepth(Root, 0, Depth, Widgets);
 	}
 	return Widgets;
 }
 
-TArray<UWidget*> UWidgetSelectorLibrary::GetWidgetsThroughDepth(UWidget* Root, int32 Depth)
+TArray<UWidget*> UWidgetComposerLibrary::GetWidgetsThroughDepth(UWidget* Root, int32 Depth)
 {
 	TArray<UWidget*> Widgets;
 	if (!IsValid(Root) || Depth < 0)
@@ -473,16 +596,16 @@ TArray<UWidget*> UWidgetSelectorLibrary::GetWidgetsThroughDepth(UWidget* Root, i
 		return Widgets;
 	}
 
-	WidgetSelector::AppendWidgetsThroughDepth(Root, 0, Depth, Widgets);
+	WidgetComposer::AppendWidgetsThroughDepth(Root, 0, Depth, Widgets);
 	return Widgets;
 }
 
-UWidget* UWidgetSelectorLibrary::GetWidgetParent(UWidget* Widget)
+UWidget* UWidgetComposerLibrary::GetWidgetParent(UWidget* Widget)
 {
-	return WidgetSelector::FindHierarchyParent(Widget);
+	return WidgetComposer::FindHierarchyParent(Widget);
 }
 
-TArray<UWidget*> UWidgetSelectorLibrary::GetWidgetParents(UWidget* Widget)
+TArray<UWidget*> UWidgetComposerLibrary::GetWidgetParents(UWidget* Widget)
 {
 	TArray<UWidget*> Parents;
 	for (UWidget* Parent = GetWidgetParent(Widget); Parent; Parent = GetWidgetParent(Parent))
@@ -492,12 +615,12 @@ TArray<UWidget*> UWidgetSelectorLibrary::GetWidgetParents(UWidget* Widget)
 	return Parents;
 }
 
-TArray<UWidget*> UWidgetSelectorLibrary::FindWidgetDescendantsByName(UWidget* Root, FName Name, bool bIncludeRoot)
+TArray<UWidget*> UWidgetComposerLibrary::FindWidgetDescendantsByName(UWidget* Root, FName Name, bool bIncludeRoot)
 {
 	return FindWidgetDescendantsByNames(Root, {Name}, bIncludeRoot);
 }
 
-TArray<UWidget*> UWidgetSelectorLibrary::FindWidgetDescendantsByNames(UWidget* Root, const TArray<FName>& Names, bool bIncludeRoot)
+TArray<UWidget*> UWidgetComposerLibrary::FindWidgetDescendantsByNames(UWidget* Root, const TArray<FName>& Names, bool bIncludeRoot)
 {
 	TArray<UWidget*> Matches;
 	if (!IsValid(Root) || Names.IsEmpty())

@@ -365,7 +365,8 @@ namespace UMGTransitionsEditor
 		{
 			if (!HasMouseCapture())
 			{
-				UpdateHoveredHandle(MyGeometry, MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition()));
+				const FVector2D LocalPosition = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
+				UpdateHoveredHandle(MyGeometry, LocalPosition);
 				return FReply::Unhandled();
 			}
 			const FVector2D LocalPosition = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
