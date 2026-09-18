@@ -2,8 +2,6 @@
 
 Runtime UMG property transitions for Unreal Engine.
 
-## Demo
-
 ![UMGTransitions demo](Docs/Media/demo.gif)
 
 ## Principles
