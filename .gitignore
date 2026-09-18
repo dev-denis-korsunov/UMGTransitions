@@ -8,3 +8,9 @@ DerivedDataCache/
 .idea/
 .DS_Store
 *.bak
+
+# Retired documentation and local test reports
+/Docs/En/
+/Docs/Ru/
+*.log
+*.uba
