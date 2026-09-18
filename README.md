@@ -29,7 +29,7 @@ A transition is built with Blueprint nodes and added to the system through `Add 
 
 ![Building and starting a transition](Docs/Media/transition-flow.webp)
 
-1. `Widget Property` binds the transition to a property of the connected widget. Available properties depend on the widget's type, while the base properties `RenderTransform` and `RenderOpacity` are always available. Scalar and vector material parameters are also supported.
+1. `Widget Property` binds the transition to a property of the connected widget. Available properties depend on the widget's type, while the base properties `RenderTransform` and `RenderOpacity` are always available. Scalar and vector material parameters are also supported. Set it to `None` for custom counters that use the transition value without a widget-property binding.
 
 
 2. `From` sets an explicit starting value, such as zero opacity or an off-screen position for an entrance animation. If omitted, the system reads the property's current value when the transition starts.
