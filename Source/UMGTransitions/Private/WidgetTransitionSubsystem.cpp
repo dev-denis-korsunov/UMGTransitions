@@ -256,7 +256,7 @@ bool UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 			UE_LOG(LogTemp, Warning, TEXT("Widget Transition: target value type is incompatible with '%s'."), *Transition.WidgetProperty.ToString());
 			return false;
 		}
-		if (Transition.bUseFrom)
+		if (Transition.bSetFrom)
 		{
 			if (!NormalizeValue(Transition.FromValue, Transition.PropertyBinding.ChannelCount, Transition.FromValue.Channels))
 			{
@@ -272,7 +272,7 @@ bool UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 		{
 			return false;
 		}
-		if (Transition.bUseFrom && Transition.bIgnoreDelay)
+		if (Transition.bSetFrom && Transition.bSetImmediate)
 		{
 			Transition.PropertyBinding.Apply(TargetWidget, Transition.FromValue.Channels);
 		}
@@ -280,7 +280,7 @@ bool UWidgetTransitionSubsystem::StartTransition(FWidgetTransition Transition, F
 	else
 	{
 		Transition.PropertyBinding.ChannelCount = Transition.ToValue.Type == EWidgetTransitionValueType::Float ? 1 : Transition.ToValue.Type == EWidgetTransitionValueType::Vector2D ? 2 : 4;
-		Transition.FromValue.Channels = Transition.bUseFrom ? Transition.FromValue.Channels : FVector4f::Zero();
+		Transition.FromValue.Channels = Transition.bSetFrom ? Transition.FromValue.Channels : FVector4f::Zero();
 	}
 	if (!IsSpringCompatible(Transition.PropertyBinding.ChannelCount))
 	{

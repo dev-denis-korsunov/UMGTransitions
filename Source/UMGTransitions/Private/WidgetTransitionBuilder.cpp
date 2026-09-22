@@ -1,18 +1,17 @@
 #include "WidgetTransitionBuilder.h"
 
-#include "Engine/Engine.h"
 #include "WidgetTransitionSubsystem.h"
 
-FWidgetTransitionBuilder::FWidgetTransitionBuilder(const UObject* InContext, UWidget* InWidget, FName InWidgetProperty)
-	: Context(InContext)
+FWidgetTransitionBuilder::FWidgetTransitionBuilder(UWorld* InWorldContext, UWidget* InWidget, FName InWidgetProperty)
+	: WorldContext(InWorldContext)
 {
 	Transition.Widget = InWidget;
 	Transition.WidgetProperty = InWidgetProperty;
 }
 
-FWidgetTransitionBuilder FWidgetTransitionBuilder::Make(const UObject* Context)
+FWidgetTransitionBuilder FWidgetTransitionBuilder::Make(UWorld* WorldContext)
 {
-	return FWidgetTransitionBuilder(Context, nullptr, NAME_None);
+	return FWidgetTransitionBuilder(WorldContext, nullptr, NAME_None);
 }
 
 FWidgetTransitionBuilder& FWidgetTransitionBuilder::Target(UWidget* Widget, FName WidgetProperty)
@@ -28,31 +27,35 @@ FWidgetTransitionBuilder& FWidgetTransitionBuilder::Property(FName WidgetPropert
 	return *this;
 }
 
-FWidgetTransitionBuilder& FWidgetTransitionBuilder::From(float Value)
+FWidgetTransitionBuilder& FWidgetTransitionBuilder::From(float Value, bool bSetImmediate)
 {
 	Transition.FromValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(Value);
-	Transition.bUseFrom = true;
+	Transition.bSetFrom = true;
+	Transition.bSetImmediate = bSetImmediate;
 	return *this;
 }
 
-FWidgetTransitionBuilder& FWidgetTransitionBuilder::From(FVector2D Value)
+FWidgetTransitionBuilder& FWidgetTransitionBuilder::From(FVector2D Value, bool bSetImmediate)
 {
 	Transition.FromValue = UWidgetTransitionFunctionLibrary::MakeVectorTransitionValue(Value);
-	Transition.bUseFrom = true;
+	Transition.bSetFrom = true;
+	Transition.bSetImmediate = bSetImmediate;
 	return *this;
 }
 
-FWidgetTransitionBuilder& FWidgetTransitionBuilder::From(FLinearColor Value)
+FWidgetTransitionBuilder& FWidgetTransitionBuilder::From(FLinearColor Value, bool bSetImmediate)
 {
 	Transition.FromValue = UWidgetTransitionFunctionLibrary::MakeColorTransitionValue(Value);
-	Transition.bUseFrom = true;
+	Transition.bSetFrom = true;
+	Transition.bSetImmediate = bSetImmediate;
 	return *this;
 }
 
-FWidgetTransitionBuilder& FWidgetTransitionBuilder::From(FWidgetTransitionValue Value)
+FWidgetTransitionBuilder& FWidgetTransitionBuilder::From(FWidgetTransitionValue Value, bool bSetImmediate)
 {
 	Transition.FromValue = MoveTemp(Value);
-	Transition.bUseFrom = true;
+	Transition.bSetFrom = true;
+	Transition.bSetImmediate = bSetImmediate;
 	return *this;
 }
 
@@ -120,12 +123,6 @@ FWidgetTransitionBuilder& FWidgetTransitionBuilder::FitToTime(bool bEnabled)
 	return *this;
 }
 
-FWidgetTransitionBuilder& FWidgetTransitionBuilder::IgnoreDelay(bool bEnabled)
-{
-	Transition.bIgnoreDelay = bEnabled;
-	return *this;
-}
-
 FWidgetTransitionBuilder& FWidgetTransitionBuilder::RepeatDelay(bool bEnabled)
 {
 	Transition.bRepeatDelay = bEnabled;
@@ -172,16 +169,12 @@ FWidgetTransition FWidgetTransitionBuilder::GetTransition() const
 
 bool FWidgetTransitionBuilder::Add()
 {
-	if (!IsValid(Transition.Widget.Get()) || Context == nullptr)
+	UWorld* World = WorldContext.Get();
+	if (!IsValid(Transition.Widget.Get()) || !IsValid(World))
 	{
 		return false;
 	}
-	UWidgetTransitionSubsystem* Subsystem = Cast<UWidgetTransitionSubsystem>(const_cast<UObject*>(Context));
-	if (Subsystem == nullptr)
-	{
-		const UWorld* World = GEngine->GetWorldFromContextObject(Context, EGetWorldErrorMode::LogAndReturnNull);
-		Subsystem = World ? World->GetSubsystem<UWidgetTransitionSubsystem>() : nullptr;
-	}
+	UWidgetTransitionSubsystem* Subsystem = World->GetSubsystem<UWidgetTransitionSubsystem>();
 	if (Subsystem == nullptr)
 	{
 		return false;

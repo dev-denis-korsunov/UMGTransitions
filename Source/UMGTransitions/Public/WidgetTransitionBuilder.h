@@ -5,6 +5,7 @@
 
 
 class UWidget;
+class UWorld;
 class UWidgetTransitionSubsystem;
 
 /**
@@ -18,15 +19,16 @@ class UWidgetTransitionSubsystem;
 class UMGTRANSITIONS_API FWidgetTransitionBuilder final
 {
 public:
-	/** Creates a builder. Context is used to locate the owning world subsystem. */
-	static FWidgetTransitionBuilder Make(const UObject* Context);
+	/** Creates a builder for one world. */
+	static FWidgetTransitionBuilder Make(UWorld* WorldContext);
 
 	FWidgetTransitionBuilder& Target(UWidget* Widget, FName WidgetProperty = NAME_None);
 	FWidgetTransitionBuilder& Property(FName WidgetProperty);
-	FWidgetTransitionBuilder& From(float Value);
-	FWidgetTransitionBuilder& From(FVector2D Value);
-	FWidgetTransitionBuilder& From(FLinearColor Value);
-	FWidgetTransitionBuilder& From(FWidgetTransitionValue Value);
+	/** Sets the starting value. SetImmediate applies it before Delay; false applies it when Delay ends. */
+	FWidgetTransitionBuilder& From(float Value, bool bSetImmediate = true);
+	FWidgetTransitionBuilder& From(FVector2D Value, bool bSetImmediate = true);
+	FWidgetTransitionBuilder& From(FLinearColor Value, bool bSetImmediate = true);
+	FWidgetTransitionBuilder& From(FWidgetTransitionValue Value, bool bSetImmediate = true);
 	FWidgetTransitionBuilder& To(float Value);
 	FWidgetTransitionBuilder& To(FVector2D Value);
 	FWidgetTransitionBuilder& To(FLinearColor Value);
@@ -37,7 +39,6 @@ public:
 	FWidgetTransitionBuilder& SpringDamping(float Value);
 	FWidgetTransitionBuilder& SpringMaxSpeed(float Value);
 	FWidgetTransitionBuilder& FitToTime(bool bEnabled = true);
-	FWidgetTransitionBuilder& IgnoreDelay(bool bEnabled = true);
 	FWidgetTransitionBuilder& RepeatDelay(bool bEnabled = true);
 	FWidgetTransitionBuilder& Repeat(int32 Count);
 	FWidgetTransitionBuilder& YoYo(bool bEnabled = true);
@@ -49,15 +50,15 @@ public:
 	FWidgetTransitionBuilder& BindUpdate(FOnWidgetTransitionUpdate Callback);
 	FWidgetTransitionBuilder& BindFinish(FOnWidgetTransitionUpdate Callback);
 
-	/** Adds the built transition to the context's world subsystem. Returns false on invalid input. */
+	/** Adds the built transition to the world's subsystem. Returns false on invalid input. */
 	bool Add();
 	/** Returns the configured transition without adding it to the subsystem. */
 	FWidgetTransition GetTransition() const;
 
 private:
-	FWidgetTransitionBuilder(const UObject* InContext, UWidget* InWidget, FName InWidgetProperty);
+	FWidgetTransitionBuilder(UWorld* InWorldContext, UWidget* InWidget, FName InWidgetProperty);
 
-	const UObject* Context = nullptr;
+	TWeakObjectPtr<UWorld> WorldContext;
 	FWidgetTransition Transition;
 	FWidgetTransitionCallbacks Callbacks;
 };

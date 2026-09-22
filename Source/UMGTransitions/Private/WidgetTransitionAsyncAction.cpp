@@ -7,7 +7,7 @@ UWidgetTransitionAsyncAction* UWidgetTransitionAsyncAction::AddWidgetTransition(
 {
 	UWidgetTransitionAsyncAction* Action = NewObject<UWidgetTransitionAsyncAction>();
 	Action->PendingTransition = MoveTemp(Transition);
-	Action->EventValue = Action->PendingTransition.bUseFrom ? Action->PendingTransition.FromValue : FWidgetTransitionValue();
+	Action->EventValue = Action->PendingTransition.bSetFrom ? Action->PendingTransition.FromValue : FWidgetTransitionValue();
 	Action->EventValue.Type = Action->PendingTransition.ToValue.Type;
 	Action->WorldContextObject = WorldContextObject;
 	Action->RegisterWithGameInstance(WorldContextObject);
@@ -70,7 +70,7 @@ void UWidgetTransitionAsyncAction::HandleFinished(FWidgetTransitionValue Value)
 bool UWidgetTransitionAsyncAction::InitializeUpdateForTesting(FWidgetTransition Transition)
 {
 	PendingTransition = MoveTemp(Transition);
-	EventValue = PendingTransition.bUseFrom ? PendingTransition.FromValue : FWidgetTransitionValue();
+	EventValue = PendingTransition.bSetFrom ? PendingTransition.FromValue : FWidgetTransitionValue();
 	EventValue.Type = PendingTransition.ToValue.Type;
 	return Updated.IsBound();
 }

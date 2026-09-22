@@ -496,11 +496,11 @@ FWidgetTransition UWidgetTransitionFunctionLibrary::CreateWidgetTransition(UWidg
 	return Transition;
 }
 
-FWidgetTransition UWidgetTransitionFunctionLibrary::From(FWidgetTransition Transition, bool bUseFrom, FWidgetTransitionValue FromValue, bool bIgnoreDelay)
+FWidgetTransition UWidgetTransitionFunctionLibrary::From(FWidgetTransition Transition, bool bSetFrom, FWidgetTransitionValue FromValue, bool bSetImmediate)
 {
 	Transition.FromValue = MoveTemp(FromValue);
-	Transition.bUseFrom = bUseFrom;
-	Transition.bIgnoreDelay = bIgnoreDelay;
+	Transition.bSetFrom = bSetFrom;
+	Transition.bSetImmediate = bSetImmediate;
 	return Transition;
 }
 

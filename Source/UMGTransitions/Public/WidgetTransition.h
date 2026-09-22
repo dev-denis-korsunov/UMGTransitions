@@ -153,11 +153,11 @@ struct UMGTRANSITIONS_API FWidgetTransition
 	EWidgetTransitionColorMix ColorMix = EWidgetTransitionColorMix::RGB;
 	/** Determines whether a transition replaces, skips, or queues behind an active property transition. */
 	EWidgetTransitionAddMode AddMode = EWidgetTransitionAddMode::Replace;
-	uint16 bUseFrom : 1 = false;
+	uint16 bSetFrom : 1 = false;
 	/** Whether to evaluate the cubic Bezier easing instead of linear progress. */
 	uint16 bUseEasing : 1 = false;
 	/** Applies From Value immediately, before the initial delay. */
-	uint16 bIgnoreDelay : 1 = true;
+	uint16 bSetImmediate : 1 = true;
 	/** Applies Delay again at the start of every repeated cycle. */
 	uint16 bRepeatDelay : 1 = false;
 	uint16 bYoYo : 1 = false;
@@ -182,8 +182,8 @@ public:
 	/** Creates a transition bound to a widget property or a Material.Parameter entry. */
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (DisplayName = "Create Widget Transition", DefaultToSelf = "Widget", UMGTransitionsBinding = "Combined", ReturnDisplayName = "Transition", AdvancedDisplay = "bYoYo,RepeatCount,bRepeatDelay,AddMode,ColorMix,EventInterval"))
 	static FWidgetTransition CreateWidgetTransition(UWidget* Widget, UPARAM(meta = (UMGTransitionsRole = "WidgetProperty")) FName WidgetProperty, FWidgetTransitionValue ToValue, float Time = 0.2f, float Delay = 0.0f, bool bYoYo = false, UPARAM(meta = (ClampMin = "-1", ToolTip = "Number of additional cycles. Minus one repeats indefinitely.")) int32 RepeatCount = 0, UPARAM(meta = (ToolTip = "Applies Delay again at the start of every repeated cycle.")) bool bRepeatDelay = false, UPARAM(meta = (UMGTransitionsSegmentedControl, ToolTip = "Replace replaces, Skip ignores this transition when the property is busy, and Pipe queues behind the active transition.")) EWidgetTransitionAddMode AddMode = EWidgetTransitionAddMode::Replace, UPARAM(meta = (DisplayName = "ColorMix", UMGTransitionsSegmentedControl, ToolTip = "Color interpolation method: RGB, HSV, or OKLCH.")) EWidgetTransitionColorMix ColorMix = EWidgetTransitionColorMix::RGB, UPARAM(meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", ToolTip = "Seconds between async-node Update callbacks and FieldNotify broadcasts. Zero dispatches events every tick.")) float EventInterval = 0.033f);
-	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (CPP_Default_bUseFrom = "true", CPP_Default_bIgnoreDelay = "true", ReturnDisplayName = "Transition"))
-	static FWidgetTransition From(FWidgetTransition Transition, bool bUseFrom, FWidgetTransitionValue FromValue, UPARAM(meta = (DisplayName = "Set From Immediately", ToolTip = "Sets From Value immediately, before the transition delay. Disable to set From Value after the delay.")) bool bIgnoreDelay = true);
+	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition"))
+	static FWidgetTransition From(FWidgetTransition Transition, bool bSetFrom, FWidgetTransitionValue FromValue, UPARAM(meta = (ToolTip = "Sets From Value immediately, before the transition delay. Disable to set From Value after the delay.")) bool bSetImmediate = true);
 
 	/** Applies a normalized cubic Bezier timing function to this transition. */
 	UFUNCTION(BlueprintPure, Category = "Widget Transition", meta = (ReturnDisplayName = "Transition", AdvancedDisplay = "Easing"))

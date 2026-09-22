@@ -52,7 +52,7 @@ namespace
 
 	FWidgetTransition MakeRuntimeOpacityTransition(UImage* Widget)
 	{
-		FWidgetTransition Transition = FWidgetTransitionBuilder::Make(GetTransientPackage())
+		FWidgetTransition Transition = FWidgetTransitionBuilder::Make(nullptr)
 			.Target(Widget, TEXT("RenderOpacity"))
 			.From(0.0f)
 			.To(1.0f)
@@ -311,13 +311,14 @@ bool FWidgetComposerGridWaveTranslationTest::RunTest(const FString&)
 		const int32 Column = ImageIndex % GridSize;
 		const FVector2D GridPosition(static_cast<float>(Column - GridSize / 2), static_cast<float>(Row - GridSize / 2));
 		const FVector2D ExpectedTranslation = GridPosition.GetSafeNormal() * TranslationDistance;
-		const bool bAdded = FWidgetTransitionBuilder::Make(Subsystem)
+		FWidgetTransition Transition = FWidgetTransitionBuilder::Make(nullptr)
 			.Target(Images[ImageIndex], TEXT("RenderTransform.Translation"))
 			.From(FVector2D::ZeroVector)
 			.To(ExpectedTranslation)
 			.Time(0.2f)
-			.Add();
-		TestTrue(FString::Printf(TEXT("Runtime cell %d,%d is added through the subsystem context"), Row, Column), bAdded);
+			.GetTransition();
+		const bool bAdded = Subsystem->StartTransition(MoveTemp(Transition));
+		TestTrue(FString::Printf(TEXT("Runtime cell %d,%d is added from the builder specification"), Row, Column), bAdded);
 	}
 	for (int32 TickIndex = 0; TickIndex < 4; ++TickIndex)
 	{
@@ -373,8 +374,8 @@ bool FWidgetTransitionBuilderTest::RunTest(const FString&)
 	Transition = UWidgetTransitionFunctionLibrary::Spring(MoveTemp(Transition), 0.8f, 0.25f, 0.0f, true);
 	TestEqual(TEXT("Target retains semantic Float type"), Transition.ToValue.Type, EWidgetTransitionValueType::Float);
 	TestEqual(TEXT("From retains independent Vector2D type"), Transition.FromValue.Type, EWidgetTransitionValueType::Vector2D);
-	TestTrue(TEXT("From modifier is enabled"), Transition.bUseFrom);
-	TestTrue(TEXT("Create retains repeat delay and default immediate From option"), Transition.bRepeatDelay && Transition.bIgnoreDelay);
+	TestTrue(TEXT("SetFrom modifier is enabled"), Transition.bSetFrom);
+	TestTrue(TEXT("Create retains repeat delay and default SetImmediate option"), Transition.bRepeatDelay && Transition.bSetImmediate);
 	TestTrue(TEXT("Create retains the event interval"), FMath::IsNearlyEqual(Transition.EventInterval, 0.05f));
 	TestEqual(TEXT("Create retains the color mix mode"), Transition.ColorMix, EWidgetTransitionColorMix::HSV);
 	TestTrue(TEXT("Binding is retained"), Transition.Widget == Widget && Transition.WidgetProperty == TEXT("RenderTransform.Scale"));
@@ -535,20 +536,19 @@ bool FWidgetTransitionNativeBuilderTest::RunTest(const FString&)
 	UWidgetTransitionTestEventReceiver* Receiver = NewObject<UWidgetTransitionTestEventReceiver>();
 	FOnWidgetTransitionUpdate Finished;
 	Finished.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleFinished);
-	FWidgetTransitionBuilder Builder = FWidgetTransitionBuilder::Make(GetTransientPackage())
+	FWidgetTransitionBuilder Builder = FWidgetTransitionBuilder::Make(nullptr)
 		.Target(Widget, TEXT("RenderTransform.Translation"))
-		.From(FVector2D(10.0f, 20.0f))
+		.From(FVector2D(10.0f, 20.0f), false)
 		.To(0.0f)
 		.Time(0.5f)
 		.SpringForce(240.0f)
-		.IgnoreDelay(false)
 		.BindFinish(Finished);
 	TestFalse(TEXT("Native builder rejects a context without a world"), Builder.Add());
 	const FWidgetTransition Transition = Builder.GetTransition();
 
 	TestTrue(TEXT("Native builder keeps its target widget and property"), Transition.Widget == Widget && Transition.WidgetProperty == TEXT("RenderTransform.Translation"));
-	TestTrue(TEXT("Native builder enables explicit From"), Transition.bUseFrom && Transition.FromValue.Type == EWidgetTransitionValueType::Vector2D);
-	TestTrue(TEXT("Native builder configures To, time, spring and delayed From options"), Transition.ToValue.Type == EWidgetTransitionValueType::Float && FMath::IsNearlyEqual(Transition.Time, 0.5f) && Transition.bUseSpring && !Transition.bIgnoreDelay);
+	TestTrue(TEXT("Native builder enables explicit SetFrom"), Transition.bSetFrom && Transition.FromValue.Type == EWidgetTransitionValueType::Vector2D);
+	TestTrue(TEXT("Native builder configures To, time, spring and delayed SetFrom options"), Transition.ToValue.Type == EWidgetTransitionValueType::Float && FMath::IsNearlyEqual(Transition.Time, 0.5f) && Transition.bUseSpring && !Transition.bSetImmediate);
 	TestTrue(TEXT("Native builder preserves an unnormalized spring force"), FMath::IsNearlyEqual(Transition.SpringForce, 240.0f));
 	TestTrue(TEXT("Native builder accepts a dynamic completion callback"), Builder.GetTransition().Widget == Widget);
 	TestEqual(TEXT("Builder test callback remains untouched until Start"), Receiver->FinishedCount, 0);
@@ -558,9 +558,12 @@ bool FWidgetTransitionNativeBuilderTest::RunTest(const FString&)
 	Started.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleStarted);
 	FOnWidgetTransitionUpdate Updated;
 	Updated.BindDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleUpdatedAndCapture);
-	TestTrue(TEXT("Builder starts a transition with all three dynamic callbacks"),
-		FWidgetTransitionBuilder::Make(Subsystem).Target(Widget).From(0.0f).To(10.0f).Time(0.0f)
-		.BindStart(Started).BindUpdate(Updated).BindFinish(Finished).Add());
+	FWidgetTransition CallbackTransition = FWidgetTransitionBuilder::Make(nullptr).Target(Widget).From(0.0f).To(10.0f).Time(0.0f).GetTransition();
+	FWidgetTransitionCallbacks Callbacks;
+	Callbacks.OnStarted = Started;
+	Callbacks.OnUpdated = Updated;
+	Callbacks.OnFinished = Finished;
+	TestTrue(TEXT("Builder specification starts with all three dynamic callbacks"), Subsystem->StartTransition(MoveTemp(CallbackTransition), MoveTemp(Callbacks)));
 	Subsystem->TickTransitionsForTesting(0.01f);
 	TestEqual(TEXT("Builder dispatches Started"), Receiver->StartedCount, 1);
 	TestEqual(TEXT("Builder dispatches final Updated"), Receiver->UpdatedCount, 1);
@@ -605,13 +608,13 @@ bool FWidgetTransitionExplicitFromTest::RunTest(const FString&)
 	UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
 	UImage* Widget = NewObject<UImage>(GetTransientPackage());
 	Widget->SetRenderOpacity(1.0f);
-	TestTrue(TEXT("Explicit From transition is added through the builder"), FWidgetTransitionBuilder::Make(Subsystem)
+	FWidgetTransition ExplicitFromTransition = FWidgetTransitionBuilder::Make(nullptr)
 		.Target(Widget, TEXT("RenderOpacity"))
 		.From(0.0f)
-		.IgnoreDelay()
 		.To(1.0f)
 		.Time(0.2f)
-		.Add());
+		.GetTransition();
+	TestTrue(TEXT("Explicit From transition is started from the builder specification"), Subsystem->StartTransition(MoveTemp(ExplicitFromTransition)));
 	TestTrue(TEXT("Explicit From is applied before the first tick"), FMath::IsNearlyEqual(Widget->GetRenderOpacity(), 0.0f, Tolerance));
 	Subsystem->TickTransitionsForTesting(0.05f);
 	Subsystem->TickTransitionsForTesting(0.05f);
@@ -697,13 +700,14 @@ bool FWidgetTransitionYoYoTest::RunTest(const FString&)
 {
 	UWidgetTransitionSubsystem* Subsystem = NewObject<UWidgetTransitionSubsystem>(GetTransientPackage());
 	UImage* Widget = NewObject<UImage>(GetTransientPackage());
-	TestTrue(TEXT("Yo Yo transition is added through the builder"), FWidgetTransitionBuilder::Make(Subsystem)
+	FWidgetTransition YoYoTransition = FWidgetTransitionBuilder::Make(nullptr)
 		.Target(Widget, TEXT("RenderOpacity"))
 		.From(0.0f)
 		.To(1.0f)
 		.Time(0.1f)
 		.YoYo()
-		.Add());
+		.GetTransition();
+	TestTrue(TEXT("Yo Yo transition is started from the builder specification"), Subsystem->StartTransition(MoveTemp(YoYoTransition)));
 
 	float MaximumOpacity = 0.0f;
 	for (int32 Step = 0; Step < 60; ++Step)
@@ -792,7 +796,7 @@ bool FWidgetTransitionEventIntervalTest::RunTest(const FString&)
 		Transition.Widget = Widget;
 		Transition.FromValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.0f);
 		Transition.ToValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(10.0f);
-		Transition.bUseFrom = true;
+		Transition.bSetFrom = true;
 		Transition.Time = 0.01f;
 		Transition.RepeatCount = 1;
 		Transition.EventInterval = 0.0f;
@@ -858,7 +862,7 @@ bool FWidgetTransitionCallbackReentrancyTest::RunTest(const FString&)
 		Transition.FromValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.25f);
 		Transition.ToValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.75f);
 		Transition.Time = Time;
-		Transition.bUseFrom = true;
+		Transition.bSetFrom = true;
 		Transition.bStarted = bStarted;
 		Transition.EventInterval = Callbacks.OnUpdated.IsBound() ? 0.0f : Transition.EventInterval;
 		AddTransitionWithCallbacks(Subsystem, MoveTemp(Transition), MoveTemp(Callbacks));
@@ -1360,7 +1364,7 @@ bool FWidgetTransitionSpringTargetUpdatePerformanceTest::RunTest(const FString&)
 			Transition.WidgetProperty = TEXT("RenderTransform.Translation");
 			Transition.FromValue = UWidgetTransitionFunctionLibrary::MakeVectorTransitionValue(FVector2D::ZeroVector);
 			Transition.ToValue = UWidgetTransitionFunctionLibrary::MakeVectorTransitionValue(FVector2D(100.0f, 0.0f));
-			Transition.bUseFrom = true;
+			Transition.bSetFrom = true;
 			Transition.bBound = Transition.PropertyBinding.Resolve(Widget, Transition.WidgetProperty.ToString());
 			Transition.bUseSpring = true;
 			Transition.RepeatCount = -1;
@@ -1580,7 +1584,7 @@ bool FWidgetTransitionAsyncTextCounterPerformanceTest::RunTest(const FString&)
 		Transition.Widget = TextWidget;
 		Transition.FromValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.0f);
 		Transition.ToValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(100.0f);
-		Transition.bUseFrom = true;
+		Transition.bSetFrom = true;
 		Action->Updated.AddDynamic(Receiver, &UWidgetTransitionTestEventReceiver::HandleAsyncUpdated);
 		Receiver->CounterText = TextWidget;
 		TestTrue(FString::Printf(TEXT("Async text counter %d initializes"), Index), Action->InitializeUpdateForTesting(MoveTemp(Transition)));
@@ -1708,7 +1712,7 @@ bool FWidgetTransitionFastBindingPerformanceTest::RunTest(const FString&)
 			Transition.FromValue = FromValue;
 			Transition.ToValue = ToValue;
 			Transition.Time = 60.0f;
-			Transition.bUseFrom = true;
+			Transition.bSetFrom = true;
 			Transition.bBound = Transition.PropertyBinding.Resolve(Widget, PropertyName.ToString());
 			TestTrue(FString::Printf(TEXT("%s resolves for transition %d"), *PropertyName.ToString(), Index), Transition.bBound);
 			Subsystem->Transitions.Emplace(MoveTemp(Transition));

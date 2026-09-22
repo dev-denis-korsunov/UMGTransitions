@@ -89,7 +89,7 @@ bool FWidgetTransitionArrayStorageExperiment::RunTest(const FString&)
 		Transition.FromValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(0.0f);
 		Transition.ToValue = UWidgetTransitionFunctionLibrary::MakeFloatTransitionValue(1.0f);
 		Transition.Time = 60.0f;
-		Transition.bUseFrom = true;
+		Transition.bSetFrom = true;
 		return Subsystem.Transitions.Emplace(MoveTemp(Transition));
 	};
 	auto Measure = [this, ActiveTransitionCount, FrameCount, DeltaTime](const TCHAR* Name, UWidgetTransitionSubsystem& Subsystem)
