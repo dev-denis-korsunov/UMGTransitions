@@ -19,6 +19,7 @@ public class UMGTransitions : ModuleRules
 			{
 				"CoreUObject",
 				"Engine",
+				"SlateCore",
 				"PropertyPath"
 			});
 	}

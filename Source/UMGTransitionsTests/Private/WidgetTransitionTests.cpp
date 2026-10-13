@@ -2,7 +2,7 @@
 #include "WidgetTransitionBuilder.h"
 #include "WidgetTransitionAsyncAction.h"
 #include "WidgetTransitionSubsystem.h"
-#include "WidgetComposerLibrary.h"
+#include "WidgetCollectionLibrary.h"
 #include "WidgetTransitionTestTypes.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -39,13 +39,13 @@ namespace
 		return FString::Printf(TEXT("%.3f us"), Seconds * 1000000.0);
 	}
 
-	TArray<UWidget*> GetDescendantValues(const TArray<FWidgetDescendant>& Descendants)
+	TArray<UWidget*> GetDescendantValues(const TArray<FWidgetCollectionItem>& Descendants)
 	{
 		TArray<UWidget*> Values;
 		Values.Reserve(Descendants.Num());
-		for (const FWidgetDescendant& Descendant : Descendants)
+		for (const FWidgetCollectionItem& Descendant : Descendants)
 		{
-			Values.Add(Descendant.Value);
+			Values.Add(Descendant.Widget);
 		}
 		return Values;
 	}
@@ -202,14 +202,14 @@ bool FWidgetTransitionStorageLayoutTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetComposerHierarchyTest, "UMGTransitions.WidgetComposer.Runtime.Hierarchy", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-bool FWidgetComposerHierarchyTest::RunTest(const FString&)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetCollectionHierarchyTest, "UMGTransitions.WidgetCollection.Runtime.Hierarchy", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetCollectionHierarchyTest::RunTest(const FString&)
 {
 	UVerticalBox* Root = NewObject<UVerticalBox>(GetTransientPackage(), TEXT("Root"));
 	UImage* First = NewObject<UImage>(GetTransientPackage(), TEXT("First"));
 	UVerticalBox* Branch = NewObject<UVerticalBox>(GetTransientPackage(), TEXT("Branch"));
 	UImage* Grandchild = NewObject<UImage>(GetTransientPackage(), TEXT("Grandchild"));
-	UWidgetComposerTestUserWidget* NestedUserWidget = NewObject<UWidgetComposerTestUserWidget>(GetTransientPackage(), TEXT("NestedUserWidget"));
+	UWidgetCollectionTestUserWidget* NestedUserWidget = NewObject<UWidgetCollectionTestUserWidget>(GetTransientPackage(), TEXT("NestedUserWidget"));
 	NestedUserWidget->WidgetTree = NewObject<UWidgetTree>(NestedUserWidget);
 	UImage* NestedRoot = NewObject<UImage>(NestedUserWidget->WidgetTree, TEXT("NestedRoot"));
 	NestedUserWidget->WidgetTree->RootWidget = NestedRoot;
@@ -218,45 +218,70 @@ bool FWidgetComposerHierarchyTest::RunTest(const FString&)
 	Root->AddChild(NestedUserWidget);
 	Branch->AddChild(Grandchild);
 
-	const TArray<UWidget*> Children = UWidgetComposerLibrary::GetWidgetChildren(Root);
-	TestEqual(TEXT("Root has three direct children"), Children.Num(), 3);
-	TestTrue(TEXT("Direct child order follows the panel"), Children == TArray<UWidget*>({First, Branch, NestedUserWidget}));
-	TestTrue(TEXT("Nested User Widget exposes its WidgetTree root as a child"), UWidgetComposerLibrary::GetWidgetChildren(NestedUserWidget) == TArray<UWidget*>({NestedRoot}));
-
-	const TArray<FWidgetDescendant> Descendants = UWidgetComposerLibrary::GetWidgetDescendants(Root);
+	const TArray<FWidgetCollectionItem> Descendants = UWidgetCollectionLibrary::CollectWidgets(Root);
 	TestTrue(TEXT("Descendants use depth-first order across WidgetTree boundaries"), GetDescendantValues(Descendants) == TArray<UWidget*>({First, Branch, Grandchild, NestedUserWidget, NestedRoot}));
-	TestTrue(TEXT("Descendants inherit their top-level parent's wave index"), Descendants[0].WaveIndex == 1 && Descendants[1].WaveIndex == 2 && Descendants[2].WaveIndex == 2 && Descendants[3].WaveIndex == 3 && Descendants[4].WaveIndex == 3);
-	TestTrue(TEXT("Descendants retain hierarchy depth"), Descendants[0].Depth == 1 && Descendants[1].Depth == 1 && Descendants[2].Depth == 2 && Descendants[3].Depth == 1 && Descendants[4].Depth == 2);
-	const TArray<FWidgetDescendant> Collected = UWidgetComposerLibrary::CollectWidgets(Root);
-	TestTrue(TEXT("Collection stage retains tree order without a wave"), GetDescendantValues(Collected) == TArray<UWidget*>({First, Branch, Grandchild, NestedUserWidget, NestedRoot}) && Collected[0].WaveIndex == 0 && Collected[2].Depth == 2 && Collected[2].WaveDirection.IsNearlyZero());
-	TArray<FWidgetDescendant> UnsortedWave = Collected;
-	UnsortedWave[0].WaveIndex = 2;
-	UnsortedWave[1].WaveIndex = 1;
-	UnsortedWave[2].WaveIndex = 2;
-	const TArray<FWidgetDescendant> SortedWave = UWidgetComposerLibrary::SortWidgetsByWave(UnsortedWave);
-	TestTrue(TEXT("Wave sort is stable and does not mutate the collected result"), GetDescendantValues(SortedWave) == TArray<UWidget*>({Branch, First, Grandchild, NestedUserWidget, NestedRoot}) && Collected[0].WaveIndex == 0);
-	const TArray<FWidgetDescendant> AppliedWave = UWidgetComposerLibrary::ApplyWidgetWave(Collected);
-	TestTrue(TEXT("Wave stage returns a modified copy"), AppliedWave[0].WaveIndex >= 1 && AppliedWave[1].WaveIndex >= 1 && AppliedWave[2].WaveIndex >= 1 && Collected[0].WaveIndex == 0);
-	TestTrue(TEXT("Max depth one returns only direct children"), GetDescendantValues(UWidgetComposerLibrary::GetWidgetDescendants(Root, 1)) == TArray<UWidget*>({First, Branch, NestedUserWidget}));
-	TestTrue(TEXT("Breadth-first traversal completes each level before the next"), GetDescendantValues(UWidgetComposerLibrary::GetWidgetDescendants(Root, -1, EWidgetDescendantTraversal::BreadthFirst)) == TArray<UWidget*>({First, Branch, NestedUserWidget, Grandchild, NestedRoot}));
-	TestTrue(TEXT("Right-to-left ordering reverses every sibling group"), GetDescendantValues(UWidgetComposerLibrary::GetWidgetDescendants(Root, -1, EWidgetDescendantTraversal::DepthFirst, EWidgetSiblingOrder::RightToLeft)) == TArray<UWidget*>({NestedUserWidget, NestedRoot, Branch, Grandchild, First}));
-	const TArray<FWidgetDescendant> CenterOut = UWidgetComposerLibrary::GetWidgetDescendants(Root, 1, EWidgetDescendantTraversal::DepthFirst, EWidgetSiblingOrder::CenterOut);
-	TestTrue(TEXT("Center-out ordering starts at the central direct child"), GetDescendantValues(CenterOut) == TArray<UWidget*>({Branch, First, NestedUserWidget}));
-	TestTrue(TEXT("Center-out siblings share wave indices symmetrically"), CenterOut[0].WaveIndex == 1 && CenterOut[1].WaveIndex == 2 && CenterOut[2].WaveIndex == 2);
-	TestTrue(TEXT("Depth zero is the root"), UWidgetComposerLibrary::GetWidgetsAtDepth(Root, 0) == TArray<UWidget*>({Root}));
-	TestTrue(TEXT("Depth one contains direct children"), UWidgetComposerLibrary::GetWidgetsAtDepth(Root, 1) == TArray<UWidget*>({First, Branch, NestedUserWidget}));
-	TestTrue(TEXT("Depth two crosses into the nested WidgetTree"), UWidgetComposerLibrary::GetWidgetsAtDepth(Root, 2) == TArray<UWidget*>({Grandchild, NestedRoot}));
-	TestTrue(TEXT("Through depth includes every preceding level"), UWidgetComposerLibrary::GetWidgetsThroughDepth(Root, 1) == TArray<UWidget*>({Root, First, Branch, NestedUserWidget}));
-	TestEqual(TEXT("Direct parent is returned"), UWidgetComposerLibrary::GetWidgetParent(Grandchild), static_cast<UWidget*>(Branch));
-	TestTrue(TEXT("Parents are returned from nearest to root"), UWidgetComposerLibrary::GetWidgetParents(Grandchild) == TArray<UWidget*>({Branch, Root}));
-	TestTrue(TEXT("Nested root climbs through the owning User Widget"), UWidgetComposerLibrary::GetWidgetParents(NestedRoot) == TArray<UWidget*>({NestedUserWidget, Root}));
-	TestTrue(TEXT("Single name lookup finds a descendant"), UWidgetComposerLibrary::FindWidgetDescendantsByName(Root, TEXT("Grandchild")) == TArray<UWidget*>({Grandchild}));
-	TestTrue(TEXT("Multiple name lookup preserves tree order"), UWidgetComposerLibrary::FindWidgetDescendantsByNames(Root, {TEXT("Grandchild"), TEXT("First")}) == TArray<UWidget*>({First, Grandchild}));
+	TestTrue(TEXT("Descendants retain hierarchy depth"), Descendants[0].Depth == 0 && Descendants[1].Depth == 0 && Descendants[2].Depth == 1 && Descendants[3].Depth == 0 && Descendants[4].Depth == 1);
+	const TArray<FWidgetCollectionItem> Collected = UWidgetCollectionLibrary::CollectWidgets(Root);
+	TestTrue(TEXT("Collection stage retains tree order without a wave"), GetDescendantValues(Collected) == TArray<UWidget*>({First, Branch, Grandchild, NestedUserWidget, NestedRoot}) && Collected[0].Index == 0 && Collected[2].Index == 2 && Collected[2].Depth == 1 && Collected[2].Direction.IsNearlyZero());
+	TestTrue(TEXT("Collection respects maximum depth"), GetDescendantValues(UWidgetCollectionLibrary::CollectWidgets(Root, 1)) == TArray<UWidget*>({First, Branch, NestedUserWidget}));
+	TestTrue(TEXT("Depth zero with root included selects only root"), GetDescendantValues(UWidgetCollectionLibrary::CollectWidgets(Root, 0, true)) == TArray<UWidget*>({Root}));
+	const TArray<FWidgetCollectionItem> ExactLevel = UWidgetCollectionLibrary::CollectWidgets(Root, 2, false, true);
+	TestTrue(TEXT("Exact source depth crosses nested User Widgets"), GetDescendantValues(ExactLevel) == TArray<UWidget*>({Grandchild, NestedRoot}));
+	TestTrue(TEXT("An exact level has zero local depth and sequential indices"), ExactLevel[0].Depth == 0 && ExactLevel[1].Depth == 0 && ExactLevel[0].Index == 0 && ExactLevel[1].Index == 1);
+	TestTrue(TEXT("Exact depth one selects direct children only"), GetDescendantValues(UWidgetCollectionLibrary::CollectWidgets(Root, 1, true, true)) == TArray<UWidget*>({First, Branch, NestedUserWidget}));
+	TestTrue(TEXT("Exact depth zero explicitly selects the source root"), GetDescendantValues(UWidgetCollectionLibrary::CollectWidgets(Root, 0, false, true)) == TArray<UWidget*>({Root}));
+	TestTrue(TEXT("Missing exact level returns an empty collection"), UWidgetCollectionLibrary::CollectWidgets(Root, 3, false, true).IsEmpty());
+	TestTrue(TEXT("Depth-only toggle selects the requested level or all levels through it"), UWidgetCollectionLibrary::CollectWidgets(Root, 2, false, true).Num() == 2 && UWidgetCollectionLibrary::CollectWidgets(Root, 2, false, false).Num() == 5);
+	TestTrue(TEXT("Unspecified target depth and null source return empty collections"), UWidgetCollectionLibrary::CollectWidgets(Root, -1, false, true).IsEmpty() && UWidgetCollectionLibrary::CollectWidgets(nullptr, 0, false, true).IsEmpty());
+	TestTrue(TEXT("Invalid root yields an empty collection"), UWidgetCollectionLibrary::CollectWidgets(nullptr).IsEmpty());
+	const TArray<FWidgetCollectionItem> Deep = {Collected[2], Collected[4]};
+	const TArray<FWidgetCollectionItem> Flat = UWidgetCollectionLibrary::MakeWidgetCollection({First, nullptr, Grandchild, First});
+	TestTrue(TEXT("Flat collection removes invalid widgets and duplicates"), Flat.Num() == 2 && Flat[1].Index == 1 && Flat[1].Depth == 0);
+	const TArray<FWidgetCollectionItem> Union = UWidgetCollectionLibrary::UnionWidgetCollections(Deep, Flat);
+	TestTrue(TEXT("Union retains first occurrence metadata and order"), GetDescendantValues(Union) == TArray<UWidget*>({Grandchild, NestedRoot, First}) && Union[0].Depth == 0 && Union[0].Index == 2);
+	const TArray<FWidgetCollectionItem> Images = UWidgetCollectionLibrary::FilterWidgetCollection(Collected, {UImage::StaticClass()});
+	TestTrue(TEXT("Class filter removes ancestors and rebases depths"), GetDescendantValues(Images) == TArray<UWidget*>({First, Grandchild, NestedRoot}) && Images[0].Depth == 0 && Images[1].Depth == 0 && Images[2].Depth == 0);
+	const TArray<FWidgetCollectionItem> MixedClasses = UWidgetCollectionLibrary::FilterWidgetCollection(Collected, {UPanelWidget::StaticClass(), UUserWidget::StaticClass(), nullptr});
+	TestTrue(TEXT("Class filter supports multiple classes and subclasses"), GetDescendantValues(MixedClasses) == TArray<UWidget*>({Branch, NestedUserWidget}));
+	const TArray<FWidgetCollectionItem> FilterSource = {{7, 99, Grandchild, FVector2D(1, 0)}, {8, -7, Root}, {9, 42, nullptr}};
+	const TArray<FWidgetCollectionItem> Filtered = UWidgetCollectionLibrary::FilterWidgetCollection(FilterSource, {nullptr, UWidget::StaticClass(), UImage::StaticClass()});
+	TestTrue(TEXT("Filter compresses missing ancestors and ignores incoming depths"), GetDescendantValues(Filtered) == TArray<UWidget*>({Grandchild, Root}) && Filtered[0].Depth == 1 && Filtered[1].Depth == 0);
+	TestTrue(TEXT("Filter preserves launch metadata and leaves source untouched"), Filtered[0].Index == 7 && Filtered[0].Direction == FVector2D(1, 0) && FilterSource[0].Depth == 99 && Collected[2].Depth == 1);
+	TestTrue(TEXT("Empty or null-only class lists keep no widgets"), UWidgetCollectionLibrary::FilterWidgetCollection(Collected, {}).IsEmpty() && UWidgetCollectionLibrary::FilterWidgetCollection(Collected, {nullptr}).IsEmpty());
+	const TArray<FWidgetCollectionItem> AppliedWave = UWidgetCollectionLibrary::ApplyWidgetWave(Collected, Root);
+	TestTrue(TEXT("Wave stage returns a modified copy"), AppliedWave[0].Index == 0 && AppliedWave[1].Index == 1 && AppliedWave[2].Index == 2 && Collected[0].Index == 0);
+	const TArray<FWidgetCollectionItem> ReverseWave = UWidgetCollectionLibrary::ApplyWidgetWave(Collected, Root, EWidgetWavePattern::Manhattan, true);
+	TestTrue(TEXT("Reverse wave changes launch indices while retaining array order and source"), GetDescendantValues(ReverseWave) == GetDescendantValues(Collected) && ReverseWave[0].Index == 4 && ReverseWave[4].Index == 0 && Collected[0].Index == 0);
+	const TArray<FWidgetCollectionItem> MissingOrigin = UWidgetCollectionLibrary::ApplyWidgetWave(Collected, nullptr);
+	TestTrue(TEXT("Missing origin uses sequential launch indices and zero directions"), MissingOrigin[0].Index == 0 && MissingOrigin[4].Index == 4 && MissingOrigin[0].Direction.IsNearlyZero() && MissingOrigin[4].Direction.IsNearlyZero());
+	TestTrue(TEXT("Reverse of an empty wave is empty"), UWidgetCollectionLibrary::ApplyWidgetWave({}, nullptr, EWidgetWavePattern::Manhattan, true).IsEmpty());
+	TestTrue(TEXT("Exact name search returns a collection with original metadata"), UWidgetCollectionLibrary::CollectWidgetsByName(Root, TEXT("Grandchild"))[0].Index == 2 && UWidgetCollectionLibrary::CollectWidgetsByName(Root, TEXT("Grandchild"))[0].Depth == 0);
+	TestTrue(TEXT("Wildcard search crosses nested WidgetTree boundaries"), GetDescendantValues(UWidgetCollectionLibrary::CollectWidgetsByName(Root, TEXT("Nested*"))) == TArray<UWidget*>({NestedUserWidget, NestedRoot}));
+	TestTrue(TEXT("Wildcard can match in the middle and at the end"), GetDescendantValues(UWidgetCollectionLibrary::CollectWidgetsByName(Root, TEXT("*and*"))) == TArray<UWidget*>({Grandchild}));
+	TestTrue(TEXT("Engine question-mark wildcard matches a character"), GetDescendantValues(UWidgetCollectionLibrary::CollectWidgetsByName(Root, TEXT("?irst"))) == TArray<UWidget*>({First}));
+	TestTrue(TEXT("Engine mixed wildcards cross nested WidgetTree boundaries"), GetDescendantValues(UWidgetCollectionLibrary::CollectWidgetsByName(Root, TEXT("Nest?d*"))) == TArray<UWidget*>({NestedUserWidget, NestedRoot}));
+	TestTrue(TEXT("Name search is case sensitive"), UWidgetCollectionLibrary::CollectWidgetsByName(Root, TEXT("nested*")).IsEmpty());
+	TestTrue(TEXT("All-widgets pattern preserves traversal order"), GetDescendantValues(UWidgetCollectionLibrary::CollectWidgetsByName(Root, TEXT("*"))) == GetDescendantValues(Collected));
+	TestTrue(TEXT("Root inclusion is explicit"), UWidgetCollectionLibrary::CollectWidgetsByName(Root, Root->GetName()).IsEmpty() && UWidgetCollectionLibrary::CollectWidgetsByName(Root, Root->GetName(), true).Num() == 1);
+	TestTrue(TEXT("Invalid root and empty pattern return empty collections"), UWidgetCollectionLibrary::CollectWidgetsByName(nullptr, TEXT("*")).IsEmpty() && UWidgetCollectionLibrary::CollectWidgetsByName(Root, TEXT("")).IsEmpty());
+	const TArray<FWidgetCollectionItem> WithRoot = UWidgetCollectionLibrary::CollectWidgets(Root, -1, true);
+	TestTrue(TEXT("Included root anchors local hierarchy depth"), WithRoot[0].Depth == 0 && WithRoot[1].Depth == 1 && WithRoot[3].Depth == 2);
+	const TArray<FWidgetCollectionItem> Sparse = UWidgetCollectionLibrary::MakeWidgetCollection({Grandchild, Root});
+	TestTrue(TEXT("Missing intermediate ancestors and input order do not create depth gaps"), Sparse[0].Depth == 1 && Sparse[1].Depth == 0);
+	const TArray<FWidgetCollectionItem> Joined = UWidgetCollectionLibrary::UnionWidgetCollections({{3, 99, Grandchild}}, {{4, -7, Root}, {5, 1000, Branch}});
+	TestTrue(TEXT("Union ignores foreign depths and rebuilds the final hierarchy"), Joined[0].Depth == 2 && Joined[1].Depth == 0 && Joined[2].Depth == 1 && Joined[0].Index == 3);
+	const TArray<FWidgetCollectionItem> RebasingWave = UWidgetCollectionLibrary::ApplyWidgetWave({{0, 42, Grandchild}, {1, -5, Root}}, Root);
+	TestTrue(TEXT("Wave also recalculates local depths"), RebasingWave[0].Depth == 1 && RebasingWave[1].Depth == 0);
+	const TArray<FWidgetCollectionItem> SelectedNested = UWidgetCollectionLibrary::CollectWidgetsByName(Root, TEXT("Nested*"));
+	TestTrue(TEXT("Pattern selection has its own local hierarchy"), SelectedNested[0].Depth == 0 && SelectedNested[1].Depth == 1);
+	const TArray<FWidgetCollectionItem> EmptyUnion = UWidgetCollectionLibrary::UnionWidgetCollections({}, {});
+	TestTrue(TEXT("Empty local collection remains empty"), EmptyUnion.IsEmpty());
+	TestEqual(TEXT("Direct parent is returned"), UWidgetCollectionLibrary::GetWidgetParent(Grandchild), static_cast<UWidget*>(Branch));
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetComposerGridWaveTranslationTest, "UMGTransitions.WidgetComposer.Diagnostics.GridWaveTranslation", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-bool FWidgetComposerGridWaveTranslationTest::RunTest(const FString&)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetCollectionGridWaveTranslationTest, "UMGTransitions.WidgetCollection.Diagnostics.GridWaveTranslation", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetCollectionGridWaveTranslationTest::RunTest(const FString&)
 {
 	constexpr int32 GridSize = 5;
 	constexpr float TranslationDistance = 40.0f;
@@ -336,8 +361,8 @@ bool FWidgetComposerGridWaveTranslationTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetComposerNoDuplicateDescendantsTest, "UMGTransitions.WidgetComposer.Diagnostics.NoDuplicateDescendants", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-bool FWidgetComposerNoDuplicateDescendantsTest::RunTest(const FString&)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWidgetCollectionNoDuplicateDescendantsTest, "UMGTransitions.WidgetCollection.Diagnostics.NoDuplicateDescendants", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWidgetCollectionNoDuplicateDescendantsTest::RunTest(const FString&)
 {
 	UVerticalBox* Root = NewObject<UVerticalBox>(GetTransientPackage(), TEXT("DuplicateRoot"));
 	UVerticalBox* Branch = NewObject<UVerticalBox>(Root, TEXT("DuplicateBranch"));
@@ -349,11 +374,11 @@ bool FWidgetComposerNoDuplicateDescendantsTest::RunTest(const FString&)
 
 	// A panel should reject a second ownership entry for the same widget.
 	Root->AddChild(SharedImage);
-	const TArray<FWidgetDescendant> Descendants = UWidgetComposerLibrary::GetWidgetDescendants(Root);
+	const TArray<FWidgetCollectionItem> Descendants = UWidgetCollectionLibrary::CollectWidgets(Root);
 	TSet<UWidget*> UniqueWidgets;
-	for (const FWidgetDescendant& Descendant : Descendants)
+	for (const FWidgetCollectionItem& Descendant : Descendants)
 	{
-		UniqueWidgets.Add(Descendant.Value);
+		UniqueWidgets.Add(Descendant.Widget);
 	}
 
 	TestEqual(TEXT("Composer returns the expected valid descendants"), Descendants.Num(), 3);

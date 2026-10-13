@@ -55,7 +55,7 @@ public:
 };
 
 UCLASS()
-class UWidgetComposerTestUserWidget final : public UUserWidget
+class UWidgetCollectionTestUserWidget final : public UUserWidget
 {
 	GENERATED_BODY()
 };
